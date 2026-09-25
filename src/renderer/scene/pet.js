@@ -8,6 +8,8 @@ import * as art from '../gfx/art.js';
 import { hearts } from '../../core/amie.js';
 import { ACTIONS, soloOptions, socialOptions, WALK_SPEED, RUN_SPEED } from './behaviors.js';
 import { HABIT_ACTIONS, habitOptions } from './habits.js';
+import { MOVE_ACTIONS, moveOptions } from './moves.js';
+import { SOCIAL_ACTIONS, groupOptions, maybeComfort } from './social.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
@@ -51,11 +53,16 @@ export class Pet {
   get asset() { return this.stage.sprites.peek(this.mon.species, this.mon.shiny); }
   get S() { return this.stage.S; }
   get types() { return this.stage.dex.get(this.mon.species).types; }
-  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state]; }
+  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state]; }
   // 圖的腳底在螢幕上的 y（含飄浮與離地高度，不含走路的上下晃動）
   get y() { return this.gy - (this.alt + this.z) * this.S; }
   restY() { return this.gy - this.alt * this.S; }
-  set(state, dur = 0) { this.state = state; this.stateT = 0; this.dur = dur; }
+  set(state, dur = 0) {
+    const was = this.state;
+    this.state = state; this.stateT = 0; this.dur = dur;
+    // 跌倒或頭暈時，感情好的夥伴可能會跑來安慰
+    if ((state === 'trip' || state === 'dizzy') && was !== state && !this.leaving) maybeComfort(this);
+  }
 
   // 腳底可以站的範圍：頭不能超出螢幕上緣
   bounds() {
@@ -138,6 +145,7 @@ export class Pet {
       case 'refuse': p.rot = Math.sin(this.stateT * 20) * 0.06; break;
     }
     this.act?.pose?.(this, p, k);
+    if (this.flinchT > 0) p.ox += Math.floor(this.flinchT * 30) % 2 ? 2 : -2;
     if (this.squashT > 0) { const s = this.squashT / 0.18; p.sx *= 1 + 0.22 * s; p.sy *= 1 - 0.2 * s; }
     return p;
   }
@@ -194,6 +202,8 @@ export class Pet {
     this.endPlay();
     this.meet = null;
     this.habit = null;
+    this.moveCtx = null;
+    this.moveAlpha = 1;
     this.watching = null;
     this.faded = false;
     this.grab = { dx: px - r.x, dy: py - r.y };
@@ -246,6 +256,8 @@ export class Pet {
     this.t += dt;
     this.stateT += dt;
     this.squashT = Math.max(0, this.squashT - dt);
+    this.flinchT = Math.max(0, (this.flinchT ?? 0) - dt); // 被招式打到
+    this.flipT = Math.max(0, (this.flipT ?? 0) - dt); // 被「顛倒」倒過來
     if (this.emote && this.t > this.emote.until) this.emote = null;
     const p = st.pointer;
     const near = p.known && Math.abs(p.x - this.x) < 260 * (S / 2) && Math.abs(p.y - this.y) < 300 * (S / 2);
@@ -488,6 +500,8 @@ export class Pet {
       ...soloOptions(this),
       ...socialOptions(this, others),
       ...habitOptions(this, others), // 這一種寶可夢專屬的習性
+      ...moveOptions(this, others), // 練習招式、切磋
+      ...groupOptions(this, others.filter(o => !o.group)), // 一群一起玩、好朋友之間
     ].filter(([, w]) => w > 0);
     const total = choices.reduce((sum, [, w]) => sum + w, 0);
     let r = Math.random() * total;
@@ -527,8 +541,9 @@ export class Pet {
       ctx.clip();
       ctx.translate(0, Math.round(sink * a.h) * S);
     }
-    if (this.upsideDown || (pose.sx === 1 && pose.sy === 1 && pose.rot === 0)) {
-      blit(ctx, img, r.x + pose.ox * S, r.y, S, { flipX: this.facing > 0, flipY: this.upsideDown, alpha });
+    const flipY = this.upsideDown || this.flipT > 0;
+    if (flipY || (pose.sx === 1 && pose.sy === 1 && pose.rot === 0)) {
+      blit(ctx, img, r.x + pose.ox * S, r.y, S, { flipX: this.facing > 0, flipY, alpha });
       if (sleepy) blit(ctx, a.dark, r.x, r.y, S, { flipX: this.facing > 0, alpha: 0.18 * alpha });
     } else {
       const w = a.w * S, h = a.h * S;
@@ -545,6 +560,8 @@ export class Pet {
       ctx.restore();
     }
     if (sink > 0) ctx.restore();
+    // 被招式打到：白色閃爍
+    if (this.flinchT > 0 && Math.floor(this.flinchT * 20) % 2) blit(ctx, a.white, r.x + pose.ox * S, r.y, S, { flipX: this.facing > 0, flipY, alpha: 0.6 * alpha });
     act?.drawOver?.(this, ctx);
     if (this.eating && this.eating.bites < 3) {
       const m = this.mouth();

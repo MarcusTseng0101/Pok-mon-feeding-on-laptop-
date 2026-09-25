@@ -271,3 +271,8 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .shinytag { color: #c08800; text-shadow: 0 0 3px #fff6c0; }
 .badge.chain { background: #7a5cd6; color: #fff; }
 .party .habits { color: var(--muted); font-size: 12px; }
+
+/* 招式 */
+.bubble .moves { margin-top: 4px; }
+.bubble .moves button { border-width: 2px; border-style: solid; }
+.party .move { display: inline-block; margin: 1px 3px 1px 0; padding: 0 4px; border: 2px solid; border-radius: 3px; font-size: 11px; color: var(--ink, #2a2030); }

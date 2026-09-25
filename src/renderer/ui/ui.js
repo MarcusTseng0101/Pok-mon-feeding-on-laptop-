@@ -11,6 +11,7 @@ import { STARTERS, BOND_LEVELS, bondLevel } from '../../core/game.js';
 import { shinyChance, chainRolls, BASE_ODDS, CHARM_AT } from '../../core/shiny.js';
 import { MAX_OUT } from '../../core/save.js';
 import { habitNames } from '../scene/habits.js';
+import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
@@ -249,7 +250,8 @@ export class UI {
         <div>No.${sp.id} ${esc(sp.name.zh)} ${this.typeChips(sp.types)}</div>
         <div>性格：${esc(nature.zh)}</div><div>口味：${esc(taste)}</div>
         <div>${this.friendLine(m)}</div>
-        <div class="habits">習性：${habitNames(m.species).map(esc).join('、') || '—'}</div></div></div>
+        <div class="habits">習性：${habitNames(m.species).map(esc).join('、') || '—'}</div>
+        <div class="habits">招式：${movesetFor(this.dex, m.species).map(id => `<span class="move" style="border-color:${art.TYPE_COLORS[MOVES[id].type]}">${esc(MOVES[id].zh)}</span>`).join('')}</div></div></div>
       <div class="stats">
         <div class="stat"><span>好感</span>${this.heartsHtml(m.affection)}</div>
         ${this.bar('飽足感', m.fullness, MAX, 'full')}
@@ -488,6 +490,7 @@ export class UI {
   openPetBubble(pet) {
     this.closePicker();
     this.bubblePet = pet;
+    this.bubbleMoves = false;
     this.renderBubble();
     this.bubble.classList.remove('hidden');
     this.audio.sfx('click');
@@ -497,16 +500,29 @@ export class UI {
     const pet = this.bubblePet, m = pet.mon;
     const evo = this.game.evolutionStatus(m.uid);
     const n = hearts(m.affection);
+    const moves = this.bubbleMoves
+      ? `<div class="btns moves">${movesetFor(this.dex, m.species).map(id => `<button data-move="${id}" style="border-color:${art.TYPE_COLORS[MOVES[id].type]}">${esc(MOVES[id].zh)}</button>`).join('')}</div>`
+      : '';
     this.bubble.innerHTML = `<div class="name">${esc(this.game.displayName(m))} <span class="hearts">${'♥'.repeat(n)}<i>${'♥'.repeat(5 - n)}</i></span></div>
-      <div class="btns"><button data-act="feed">餵泡芙</button><button data-act="info">看看牠</button><button data-act="recall">回球裡</button>
-      ${evo?.ready ? '<button class="primary" data-act="evolve">✦ 進化</button>' : ''}</div>`;
+      <div class="btns"><button data-act="feed">餵泡芙</button><button data-act="moves" class="${this.bubbleMoves ? 'sel' : ''}">招式</button><button data-act="info">看看牠</button><button data-act="recall">回球裡</button>
+      ${evo?.ready ? '<button class="primary" data-act="evolve">✦ 進化</button>' : ''}</div>${moves}`;
   }
 
   onBubbleClick(e) {
-    const act = e.target.closest('button')?.dataset.act;
+    const btn = e.target.closest('button');
+    const act = btn?.dataset.act;
     const pet = this.bubblePet;
-    if (!act || !pet) return;
+    if (!btn || !pet) return;
     this.audio.sfx('click');
+    if (btn.dataset.move) {
+      // 叫牠對前方使出招式（只是演出）
+      if (['held', 'evolving', 'move', 'eat', 'fall', 'appear'].includes(pet.state) || pet.duel || pet.group) return;
+      pet.partner = null;
+      useMove(pet, btn.dataset.move, practicePoint(pet));
+      this.closeBubble();
+      return;
+    }
+    if (act === 'moves') { this.bubbleMoves = !this.bubbleMoves; this.renderBubble(); return; }
     if (act === 'feed') { this.closeBubble(); this.openPuffPicker(key => this.director.feedMode(key, 'pet')); }
     if (act === 'info') { this.selectedUid = pet.uid; this.closeBubble(); this.open('party'); }
     if (act === 'recall') { this.closeBubble(); this.game.setOut(pet.uid, false); }
