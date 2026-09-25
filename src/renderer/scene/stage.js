@@ -53,7 +53,7 @@ export class Stage {
     this.S = Math.max(1, Math.round(2 * dpr)); // 「2x 像素」：每個美術像素 = 2 CSS 像素（取整數裝置像素）
     this.floorY = this.H;
     this.ctx.imageSmoothingEnabled = false;
-    for (const p of this.pets.values()) p.y = Math.min(p.y, p.restY());
+    for (const p of this.pets.values()) p.clamp();
   }
 
   toDevice(cx, cy) { return { x: cx * this.dpr, y: cy * this.dpr }; }
@@ -80,7 +80,24 @@ export class Stage {
     const list = [...this.pets.values()].filter(p => !p.leaving).sort((a, b) => this.drawOrder(b) - this.drawOrder(a));
     return list.find(p => p.hit(x, y)) ?? null;
   }
-  drawOrder(p) { return (p.floats ? 1e6 : 0) + p.y; }
+  drawOrder(p) { return (p.floats ? 1e6 : 0) + p.gy; } // 桌面上越下面（越靠近你）的畫在越前面
+
+  // 游標最近的移動速度（裝置像素／秒）
+  pointerSpeed() {
+    const tr = this.trail;
+    if (tr.length < 2) return 0;
+    const a = tr[0], b = tr[tr.length - 1];
+    if (performance.now() - b.t > 150) return 0;
+    return Math.hypot(b.x - a.x, b.y - a.y) / (Math.max(16, b.t - a.t) / 1000);
+  }
+
+  // 把夥伴的位置記進存檔（用螢幕比例，換解析度也放得回去）
+  storePositions() {
+    for (const p of this.pets.values()) {
+      if (p.leaving || p.state === 'held') continue;
+      p.mon.pos = { x: +(p.x / this.W).toFixed(4), y: +(p.gy / this.H).toFixed(4) };
+    }
+  }
 
   targetAt(x, y) {
     if (this.hidden) return null;

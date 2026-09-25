@@ -80,10 +80,13 @@ export class Director {
     const outs = this.game.outMons();
     outs.forEach((mon, i) => {
       if (!want.has(mon.uid) || this.stage.pets.has(mon.uid)) return;
-      // 一開始平均分散在螢幕上，不要擠在一起
-      const x = this.stage.W * (0.15 + (0.7 * (i + 0.5)) / outs.length + (Math.random() - 0.5) * 0.06);
+      // 回到上次關掉時的位置；新出來的平均分散在螢幕上，不要擠在一起
+      const st = this.stage;
+      const pos = mon.pos
+        ? { x: mon.pos.x * st.W, gy: mon.pos.y * st.H }
+        : { x: st.W * (0.15 + (0.7 * (i + 0.5)) / outs.length + (Math.random() - 0.5) * 0.06), gy: st.H * (0.45 + Math.random() * 0.45) };
       this.sprites.get(mon.species, mon.shiny).then(() => {
-        if (this.game.mon(mon.uid)?.out && !this.game.state.settings.quiet) this.stage.addPet(mon, { x, fromBall: true });
+        if (this.game.mon(mon.uid)?.out && !this.game.state.settings.quiet) st.addPet(mon, { ...pos, fromBall: true });
       });
     });
     this.stage.hidden = quiet;
@@ -124,7 +127,7 @@ export class Director {
     const prop = new Prop(this.stage, {
       kind: 'cell',
       x: this.stage.W * (0.1 + Math.random() * 0.8),
-      y: this.stage.floorY - (Math.random() < 0.5 ? 0 : (30 + Math.random() * 80) * S),
+      y: this.stage.H * (0.25 + Math.random() * 0.68),
       life: 300,
       onClick: () => {
         prop.life = 0;
@@ -147,8 +150,8 @@ export class Director {
     const prop = new Prop(this.stage, {
       kind: 'lure',
       puff,
-      x: this.stage.W * (0.3 + Math.random() * 0.4),
-      y: this.stage.floorY,
+      x: this.stage.W * (0.2 + Math.random() * 0.6),
+      y: this.stage.H * (0.45 + Math.random() * 0.45),
       life: LURE_MINUTES * 60,
       onClick: () => {
         const left = Math.max(0, Math.ceil((this.lure?.until - Date.now()) / 60000));
@@ -303,6 +306,7 @@ export class Director {
       kind: ball,
       from,
       target: c,
+      floorY: w.groundY,
       result,
       onHit: () => {
         w.set('absorbed');

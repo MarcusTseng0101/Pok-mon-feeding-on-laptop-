@@ -221,3 +221,16 @@ test('存檔 migrate：壞資料會被修好', () => {
   assert.equal(s.starterChosen, true);
   assert.equal(migrate(null, dex, T0).version, 1);
 });
+
+test('存檔 migrate：桌面位置保留下來，壞掉的位置丟掉', () => {
+  const base = { uid: 'a', species: 650, nature: 'hardy' };
+  const s = migrate({
+    mons: [
+      { ...base, uid: 'a', pos: { x: 0.3, y: 0.7 } },
+      { ...base, uid: 'b', pos: { x: 3, y: -1 } },
+      { ...base, uid: 'c', pos: { x: 'left' } },
+      { ...base, uid: 'd' },
+    ],
+  }, dex, T0);
+  assert.deepEqual(s.mons.map(m => m.pos), [{ x: 0.3, y: 0.7 }, { x: 1, y: 0 }, null, null]);
+});

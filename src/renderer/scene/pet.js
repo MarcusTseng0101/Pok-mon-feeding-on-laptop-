@@ -1,43 +1,78 @@
-// 桌面上的夥伴寶可夢：走路、發呆、睡覺、看著游標、被抓起來、掉下來、吃泡芙。
-// 位置 (x, y) = 腳底中心，單位是裝置像素；美術像素 × stage.S = 裝置像素。
+// 桌面上的夥伴寶可夢：在整個桌面上自由走動（俯視的桌面平面，不把工作列當地板），
+// 會發呆、伸懶腰、東張西望、坐下、轉圈、跳舞、打滾、跌倒、跟其他夥伴追著玩、被抓起來丟出去。
+// 位置：(x, gy) = 腳底在桌面平面上的位置（裝置像素）；z = 離地高度（美術像素）；alt = 會飄的寶可夢的飄浮高度。
+// 美術像素 × stage.S = 裝置像素。
 import { blit } from '../gfx/pixel.js';
 import * as art from '../gfx/art.js';
 import { hearts } from '../../core/amie.js';
 
 const WALK_SPEED = 26; // 美術像素／秒
+const RUN_SPEED = 72;
 const GRAVITY = 900; // 美術像素／秒²
+const DROP = 14; // 放開時離地的高度（美術像素）
+
 
 export class Pet {
-  constructor(stage, mon, { x, fromBall = false } = {}) {
+  constructor(stage, mon, { x, gy, fromBall = false } = {}) {
     this.stage = stage;
     this.mon = mon;
     this.uid = mon.uid;
     this.floats = stage.dex.floats(mon.species);
-    this.alt = this.floats ? 40 + Math.random() * 90 : 0; // 飄浮高度（美術像素）
-    this.x = x ?? stage.W * (0.2 + Math.random() * 0.6);
-    this.y = this.restY();
-    this.vx = 0;
+    this.alt = this.floats ? 24 + Math.random() * 40 : 0; // 飄浮高度（美術像素）
+    this.x = x ?? stage.W * (0.15 + Math.random() * 0.7);
+    this.gy = gy ?? stage.H * (0.4 + Math.random() * 0.5);
+    this.z = 0;
+    this.vx = 0; // 桌面平面上的速度（裝置像素／秒）
     this.vy = 0;
+    this.vz = 0; // 垂直速度（美術像素／秒，往上為正）
     this.facing = Math.random() < 0.5 ? -1 : 1; // -1 面向左（原圖方向）
     this.t = Math.random() * 10;
     this.state = fromBall ? 'appear' : 'idle';
     this.stateT = 0;
     this.dur = 1 + Math.random() * 2;
-    this.targetX = this.x;
+    this.target = { x: this.x, y: this.gy };
+    this.partner = null; // 一起玩的夥伴
+    this.onArrive = null;
     this.emote = null;
     this.eating = null;
     this.grab = null;
     this.walkPhase = 0;
     this.upsideDown = false;
+    this.dizzy = false;
+    this.squashT = 0; // 落地時壓扁一下
+    this.rollDir = 1;
     this.alpha = 1;
     this.leaving = false;
     this.evolveView = null; // 進化演出時由外部控制
+    this.clamp();
   }
 
   get asset() { return this.stage.sprites.peek(this.mon.species, this.mon.shiny); }
   get S() { return this.stage.S; }
-  restY() { return this.stage.floorY - this.alt * this.stage.S; }
+  // 圖的腳底在螢幕上的 y（含飄浮與離地高度，不含走路的上下晃動）
+  get y() { return this.gy - (this.alt + this.z) * this.S; }
+  restY() { return this.gy - this.alt * this.S; }
   set(state, dur = 0) { this.state = state; this.stateT = 0; this.dur = dur; }
+
+  // 腳底可以站的範圍：頭不能超出螢幕上緣
+  bounds() {
+    const a = this.asset, S = this.S, st = this.stage;
+    const half = (a.w * S) / 2;
+    return { x0: half, x1: st.W - half, y0: (a.h + this.alt + 6) * S, y1: st.H - 3 * S };
+  }
+  clamp() {
+    const b = this.bounds();
+    this.x = Math.max(b.x0, Math.min(b.x1, this.x));
+    this.gy = Math.max(b.y0, Math.min(b.y1, this.gy));
+  }
+  randomPoint(minDist, maxDist) {
+    const b = this.bounds(), S = this.S;
+    const ang = Math.random() * Math.PI * 2, d = (minDist + Math.random() * (maxDist - minDist)) * S;
+    return {
+      x: Math.max(b.x0 + 8 * S, Math.min(b.x1 - 8 * S, this.x + Math.cos(ang) * d)),
+      y: Math.max(b.y0 + 4 * S, Math.min(b.y1 - 4 * S, this.gy + Math.sin(ang) * d * 0.7)),
+    };
+  }
 
   // 在螢幕上的矩形（裝置像素）
   rect() {
@@ -48,18 +83,65 @@ export class Pet {
   head() { const r = this.rect(); return { x: r.x + r.w / 2, y: r.y }; }
   mouth() { const r = this.rect(); return { x: r.x + r.w * (this.facing < 0 ? 0.35 : 0.65), y: r.y + r.h * 0.4 }; }
 
+  // 動作造成的上下位移（美術像素）
   lift() {
-    if (this.state === 'walk' || this.state === 'follow') return Math.round(Math.abs(Math.sin(this.walkPhase)) * 2);
-    if (this.state === 'hop' || this.state === 'happy') return Math.round(Math.sin(Math.min(1, this.stateT / 0.35) * Math.PI) * 6);
+    const k = this.dur > 0 ? Math.min(1, this.stateT / this.dur) : 0;
+    switch (this.state) {
+      case 'walk': case 'follow': case 'chase': case 'flee': case 'run':
+        return Math.round(Math.abs(Math.sin(this.walkPhase)) * (this.state === 'walk' || this.state === 'follow' ? 2 : 3));
+      case 'hop': case 'happy': case 'greet':
+        return Math.round(Math.sin(Math.min(1, this.stateT / 0.35) * Math.PI) * 6);
+      case 'startle':
+        return Math.round(Math.sin(Math.min(1, this.stateT / 0.3) * Math.PI) * 10);
+      case 'spin':
+        return Math.round(Math.abs(Math.sin(k * Math.PI * 2)) * 5);
+      case 'dance':
+        return Math.round(Math.abs(Math.sin(this.stateT * Math.PI * 2.4)) * 3);
+      case 'roll':
+        return 1;
+      case 'sleep': case 'sit': case 'trip':
+        return 0;
+    }
     if (this.floats && this.state !== 'held' && this.state !== 'fall') return Math.round(Math.sin(this.t * 2) * 2);
-    if (this.state === 'sleep') return 0;
     return Math.floor(this.t * 1.6) % 2; // 呼吸
+  }
+
+  // 畫的時候的變形：sx/sy 伸縮、rot 旋轉、ox 左右位移（美術像素）、pivot 旋轉中心
+  pose() {
+    const k = this.dur > 0 ? Math.min(1, this.stateT / this.dur) : 0;
+    const p = { sx: 1, sy: 1, rot: 0, ox: 0, pivot: 'feet' };
+    switch (this.state) {
+      case 'stretch': {
+        // 先縮再伸長
+        const s = Math.sin(k * Math.PI);
+        if (k < 0.25) { p.sx = 1 + 0.12 * (k / 0.25); p.sy = 1 - 0.1 * (k / 0.25); }
+        else { p.sx = 1 - 0.08 * s; p.sy = 1 + 0.18 * s; }
+        break;
+      }
+      case 'sit': p.sx = 1.08; p.sy = 0.88; break;
+      case 'sleep': p.sx = 1.06; p.sy = 0.9 + Math.sin(this.t * 1.6) * 0.02; break;
+      case 'dance': p.rot = Math.sin(this.stateT * Math.PI * 1.2) * 0.14; break;
+      case 'run': case 'chase': case 'flee': p.rot = -this.facing * 0.08; break;
+      case 'roll': p.rot = this.rollDir * k * Math.PI * 2; p.pivot = 'center'; break;
+      case 'shiver': p.ox = Math.floor(this.stateT * 30) % 2 ? 1 : -1; break;
+      case 'trip': {
+        const fall = Math.min(1, this.stateT / 0.18);
+        const up = this.stateT > this.dur - 0.25 ? (this.dur - this.stateT) / 0.25 : 1;
+        p.rot = this.facing * (Math.PI / 2) * fall * Math.max(0, up);
+        break;
+      }
+      case 'dizzy': p.rot = Math.sin(this.stateT * 9) * 0.16; break;
+      case 'refuse': p.rot = Math.sin(this.stateT * 20) * 0.06; break;
+    }
+    if (this.squashT > 0) { const s = this.squashT / 0.18; p.sx *= 1 + 0.22 * s; p.sy *= 1 - 0.2 * s; }
+    return p;
   }
 
   hit(px, py) {
     if (this.leaving || this.alpha < 0.5) return false;
     const r = this.rect(), S = this.S, a = this.asset;
     if (px < r.x || py < r.y || px >= r.x + r.w || py >= r.y + r.h) return false;
+    if (this.state === 'roll' || this.state === 'trip') return true; // 轉動中用外框判定
     let ax = Math.floor((px - r.x) / S), ay = Math.floor((py - r.y) / S);
     if (this.facing > 0) ax = a.w - 1 - ax;
     if (this.upsideDown) ay = a.h - 1 - ay;
@@ -76,16 +158,20 @@ export class Pet {
     if (img) this.emote = { img, until: this.t + seconds };
   }
 
+  // 可以被其他夥伴找去玩／被打斷的狀態
+  get free() { return ['idle', 'walk', 'sit', 'look', 'stretch'].includes(this.state) && !this.leaving; }
+
   // ---------- 反應 ----------
   onStroke(result) {
     const S = this.S, h = this.head();
-    if (this.state === 'sleep') { this.set('idle', 1); this.showEmote('!', 0.8); }
+    if (this.state === 'sleep' || this.state === 'sit') { this.set('idle', 1); if (this.state === 'sleep') this.showEmote('!', 0.8); }
     if (result?.affectionGain > 0 && Math.random() < 0.45) this.stage.fx.hearts(h.x, h.y, S);
     if (result?.enjoymentFull && Math.random() < 0.3) this.showEmote('♪');
-    if (this.state === 'idle' || this.state === 'walk') this.set('hop', 0.35);
+    if (this.state === 'idle' || this.state === 'walk' || this.state === 'look') this.set('hop', 0.35);
   }
 
   startEat(puffKey) {
+    this.endPlay();
     this.set('eat', 1.4);
     this.eating = { puff: puffKey, bites: 0 };
   }
@@ -99,18 +185,49 @@ export class Pet {
 
   pickUp(px, py) {
     const r = this.rect();
+    this.endPlay();
     this.grab = { dx: px - r.x, dy: py - r.y };
+    this.z = 0;
+    this.vx = this.vy = this.vz = 0;
     this.set('held');
     this.showEmote(hearts(this.mon.affection) >= 3 ? '♪' : '!', 0.8);
     this.upsideDown = this.mon.species === 686; // 好啦魷被抓起來時會倒過來
   }
 
   release(vx, vy) {
-    this.vx = Math.max(-2500, Math.min(2500, vx));
-    this.vy = Math.max(-2500, Math.min(2500, vy));
+    const S = this.S;
+    vx = Math.max(-2500, Math.min(2500, vx));
+    vy = Math.max(-2500, Math.min(2500, vy));
+    const feet = this.y;
+    // 放開的地方就是桌面上的位置；不會飄的寶可夢從手上掉下來一小段
+    this.z = this.floats ? 0 : DROP;
+    this.gy = feet + (this.alt + this.z) * S;
+    this.vx = vx * 0.5;
+    this.vy = vy * (this.floats ? 0.5 : 0.3);
+    this.vz = this.floats ? 0 : Math.max(0, -vy / S) * 0.25; // 往上甩會拋高
+    this.dizzy = Math.hypot(vx, vy) > 1600 * (S / 2);
     this.grab = null;
     this.upsideDown = false;
     this.set('fall');
+  }
+
+  endPlay() {
+    const p = this.partner;
+    this.partner = null;
+    if (p && p.partner === this) { p.partner = null; if (p.state === 'chase' || p.state === 'flee') p.set('idle', 1); }
+  }
+
+  // 往目標移動，到了回傳 true
+  moveTo(tx, ty, speed, dt) {
+    const dx = tx - this.x, dy = ty - this.gy;
+    const d = Math.hypot(dx, dy);
+    if (d < 3 * this.S) return true;
+    const step = Math.min(d, speed * dt);
+    this.x += (dx / d) * step;
+    this.gy += (dy / d) * step;
+    if (Math.abs(dx) > this.S) this.facing = Math.sign(dx);
+    this.walkPhase += step / (this.S * 4);
+    return false;
   }
 
   // ---------- 每一幀 ----------
@@ -118,45 +235,123 @@ export class Pet {
     const st = this.stage, S = this.S;
     this.t += dt;
     this.stateT += dt;
+    this.squashT = Math.max(0, this.squashT - dt);
     if (this.emote && this.t > this.emote.until) this.emote = null;
     const p = st.pointer;
     const near = p.known && Math.abs(p.x - this.x) < 260 * (S / 2) && Math.abs(p.y - this.y) < 300 * (S / 2);
+    const done = this.stateT > this.dur;
 
     switch (this.state) {
       case 'appear':
         if (this.stateT > 0.45) this.set('idle', 1.5);
         break;
       case 'idle':
-        if (near && st.env.userActive) this.facing = p.x > this.x ? 1 : -1;
-        if (this.stateT > this.dur) this.decide();
+        if (near && st.env.userActive) {
+          this.facing = p.x > this.x ? 1 : -1;
+          // 游標很快地衝過來：膽小的會嚇一跳
+          if (hearts(this.mon.affection) < 2 && st.pointerSpeed?.() > 2600 * (S / 2) && Math.random() < dt * 3) {
+            this.set('startle', 0.5);
+            this.showEmote('!', 0.8);
+            break;
+          }
+        }
+        if (done) this.decide();
         break;
       case 'walk':
-      case 'follow': {
-        if (this.state === 'follow') {
-          this.targetX = p.x;
-          if (this.stateT > this.dur) { this.set('idle', 2); break; }
-        }
-        const dx = this.targetX - this.x;
-        const speed = WALK_SPEED * S * (this.state === 'follow' ? 1.8 : 1);
-        if (Math.abs(dx) < 4 * S) {
-          if (this.state === 'walk') this.set('idle', 1.5 + Math.random() * 3);
+      case 'run': {
+        const speed = (this.state === 'run' ? RUN_SPEED : WALK_SPEED) * S;
+        if (this.moveTo(this.target.x, this.target.y, speed, dt)) {
+          if (this.state === 'run' && this.stateT < this.dur) { this.target = this.randomPoint(60, 200); break; } // 暴衝：一直換方向
+          const arrive = this.onArrive;
+          this.onArrive = null;
+          this.set('idle', 1.5 + Math.random() * 3);
+          arrive?.(); // 走到目的地時觸發（打招呼用）
           break;
         }
-        this.facing = Math.sign(dx);
-        const step = Math.sign(dx) * Math.min(Math.abs(dx), speed * dt);
-        this.x += step;
-        this.walkPhase += Math.abs(step) / (S * 4);
+        if (this.state === 'run' && done) { this.set('idle', 1.5); this.showEmote('✦', 1); break; }
+        // 不會飄的偶爾會跌倒
+        if (!this.floats && Math.random() < dt * (this.state === 'run' ? 0.12 : 0.012)) {
+          this.set('trip', 1.3);
+          this.showEmote('@', 1.3);
+          st.audio.sfx('land');
+        }
         break;
       }
+      case 'follow': {
+        if (!p.known || done) { this.set('idle', 2); break; }
+        // 走到游標下方一點點的地方
+        if (this.moveTo(p.x, p.y + 10 * S + this.alt * S, WALK_SPEED * S * 1.8, dt)) this.facing = p.x > this.x ? 1 : -1;
+        break;
+      }
+      case 'chase':
+      case 'flee': {
+        const o = this.partner;
+        if (!o || o.leaving || o.partner !== this) { this.partner = null; this.set('idle', 1); break; }
+        if (this.state === 'chase') {
+          if (this.moveTo(o.x, o.gy, RUN_SPEED * S * 0.95, dt) || done) {
+            // 抓到了（或時間到）：兩個都很開心
+            for (const q of [this, o]) { q.partner = null; q.set('happy', 0.6); q.showEmote('♪', 1.4); }
+            st.fx.hearts((this.x + o.x) / 2, Math.min(this.head().y, o.head().y), S);
+            st.audio.sfx('heart');
+          }
+        } else {
+          const dx = this.x - o.x, dy = this.gy - o.gy, d = Math.hypot(dx, dy) || 1;
+          const b = this.bounds();
+          let tx = this.x + (dx / d) * 80 * S, ty = this.gy + (dy / d) * 80 * S;
+          // 被逼到邊邊就往旁邊溜
+          if (tx < b.x0 || tx > b.x1) { tx = this.x; ty = this.gy + (ty > (b.y0 + b.y1) / 2 ? -1 : 1) * 80 * S; }
+          if (ty < b.y0 || ty > b.y1) { ty = this.gy; tx = this.x + (tx > (b.x0 + b.x1) / 2 ? -1 : 1) * 80 * S; }
+          this.moveTo(tx, ty, RUN_SPEED * S * 0.85, dt);
+        }
+        break;
+      }
+      case 'roll': {
+        const b = this.bounds();
+        this.x += this.rollDir * 60 * S * dt;
+        if (this.x <= b.x0 || this.x >= b.x1) this.rollDir *= -1;
+        if (done) { this.set('idle', 1); if (Math.random() < 0.5) this.showEmote('♪', 1); }
+        break;
+      }
+      case 'look':
+        // 東張西望
+        this.facing = Math.floor(this.stateT / 0.55) % 2 ? 1 : -1;
+        if (done) this.set('idle', 1 + Math.random() * 2);
+        break;
+      case 'spin':
+        this.facing = Math.floor(this.stateT / 0.09) % 2 ? 1 : -1;
+        if (done) { this.set('idle', 1); this.showEmote('♪', 1); }
+        break;
+      case 'dance':
+        if (Math.floor(this.stateT / 0.42) % 2) this.facing = Math.floor(this.stateT / 0.84) % 2 ? 1 : -1;
+        if (!this.emote && Math.random() < dt * 0.8) this.showEmote('♪', 1);
+        if (done) this.set('idle', 1.5);
+        break;
+      case 'sit':
+        if (near && st.env.userActive) this.facing = p.x > this.x ? 1 : -1;
+        if (done) this.set('idle', 1);
+        break;
       case 'sleep':
-        if (!st.env.sleepy) this.set('idle', 1);
+        if (!st.env.sleepy) { this.set('stretch', 1.2); this.showEmote('…', 1); }
         else if (Math.floor(this.t) % 3 === 0 && !this.emote) this.showEmote('Z', 1.2);
         break;
+      case 'shiver':
+        if (done) { this.set('idle', 1); this.showEmote('✦', 0.8); }
+        break;
+      case 'trip':
+        if (done) this.set('idle', 1);
+        break;
+      case 'greet':
+        if (this.partner) this.facing = this.partner.x > this.x ? 1 : -1;
+        if (done) { this.partner = null; this.set('idle', 1.5); }
+        break;
+      case 'dizzy':
+      case 'stretch':
+      case 'startle':
       case 'hop':
       case 'happy':
       case 'refuse':
         if (this.state === 'refuse') this.facing = Math.floor(this.stateT * 8) % 2 ? 1 : -1;
-        if (this.stateT > this.dur) this.set('idle', 1 + Math.random() * 2);
+        if (done) this.set('idle', 1 + Math.random() * 2);
         break;
       case 'eat':
         if (this.eating) {
@@ -168,78 +363,144 @@ export class Pet {
             st.fx.crumbs(m.x, m.y, S, art.FLAVOR_COLORS[this.eating.puff.split('-')[0]].F);
           }
         }
-        if (this.stateT > this.dur) { this.eating = null; this.set('happy', 0.6); }
+        if (done) { this.eating = null; this.set('happy', 0.6); }
         break;
       case 'held':
         if (this.grab && p.known) {
           const a = this.asset;
           this.x = p.x - this.grab.dx + (a.w * S) / 2;
-          this.y = p.y - this.grab.dy + a.h * S;
+          this.gy = p.y - this.grab.dy + a.h * S + this.alt * S;
         }
         break;
-      case 'fall': {
-        const rest = this.restY();
-        if (this.floats) {
-          // 會飄的寶可夢：慢慢回到原本的高度
-          this.vx *= Math.pow(0.02, dt);
-          this.vy = (rest - this.y) * 3;
-          this.x += this.vx * dt;
-          this.y += this.vy * dt;
-          if (Math.abs(rest - this.y) < S && Math.abs(this.vx) < 20) this.set('idle', 1);
-        } else {
-          this.vy += GRAVITY * S * dt;
-          this.x += this.vx * dt;
-          this.y += this.vy * dt;
-          if (this.y >= rest) {
-            this.y = rest;
-            if (this.vy > 700 * S / 2) {
-              this.vy *= -0.35;
-              this.vx *= 0.6;
-              st.audio.sfx('land');
-              if (this.vy < -500) this.showEmote('@', 1.6);
-            } else {
-              this.vy = 0;
-              this.vx = 0;
-              this.set('idle', this.emote ? 1.6 : 1);
-            }
-          }
-        }
+      case 'fall':
+        this.updateFall(dt);
         break;
-      }
       case 'evolving':
         break;
       default:
         this.set('idle', 1);
     }
-    // 不要跑出螢幕
-    const half = (this.asset.w * S) / 2;
+
     if (this.state !== 'held') {
-      if (this.x < half) { this.x = half; this.vx = Math.abs(this.vx) * 0.5; }
-      if (this.x > st.W - half) { this.x = st.W - half; this.vx = -Math.abs(this.vx) * 0.5; }
+      const b = this.bounds();
+      if (this.x < b.x0) { this.x = b.x0; this.vx = Math.abs(this.vx) * 0.5; }
+      if (this.x > b.x1) { this.x = b.x1; this.vx = -Math.abs(this.vx) * 0.5; }
+      if (this.gy < b.y0) { this.gy = b.y0; this.vy = Math.abs(this.vy) * 0.5; }
+      if (this.gy > b.y1) { this.gy = b.y1; this.vy = -Math.abs(this.vy) * 0.5; }
     }
     if (this.leaving) this.alpha = Math.max(0, this.alpha - dt * 3);
   }
 
-  decide() {
-    const st = this.stage;
-    if (st.env.sleepy) { this.set('sleep'); return; }
-    const h = hearts(this.mon.affection);
-    const r = Math.random();
-    if (this.mon.fullness < 30 && r < 0.2) { this.showEmote(art.puff('sweet-basic'), 2); this.set('idle', 2); return; }
-    if (h >= 3 && st.pointer.known && st.env.userActive && r < 0.18) { this.set('follow', 3 + Math.random() * 4); return; }
-    if (r < 0.55) {
-      const S = this.S;
-      const dist = (60 + Math.random() * 280) * S * (Math.random() < 0.5 ? -1 : 1);
-      this.targetX = Math.max(40 * S, Math.min(st.W - 40 * S, this.x + dist));
-      this.set('walk');
+  // 被丟出去：在桌面上滑行，不會飄的會先掉到地上、彈一下
+  updateFall(dt) {
+    const S = this.S;
+    this.x += this.vx * dt;
+    this.gy += this.vy * dt;
+    const airborne = this.z > 0 || this.vz > 0;
+    const friction = Math.pow(airborne ? 0.5 : 0.03, dt);
+    this.vx *= friction;
+    this.vy *= friction;
+    if (this.floats) {
+      if (Math.hypot(this.vx, this.vy) < 20 * S) this.set('idle', 1);
       return;
     }
-    this.set('idle', 2 + Math.random() * 4);
+    this.vz -= GRAVITY * dt;
+    this.z += this.vz * dt;
+    if (this.z > 0) return;
+    this.z = 0;
+    if (this.vz < -150) {
+      // 落地彈一下
+      const impact = -this.vz;
+      this.vz = impact * 0.35;
+      this.squashT = 0.18;
+      this.stage.audio.sfx('land');
+      if (impact > 260) this.dizzy = true;
+      return;
+    }
+    this.vz = 0;
+    if (Math.hypot(this.vx, this.vy) > 30 * S) return; // 還在滑
+    this.vx = this.vy = 0;
+    this.squashT = 0.18;
+    if (this.dizzy) {
+      this.dizzy = false;
+      this.set('dizzy', 1.6);
+      this.showEmote('@', 1.6);
+    } else {
+      this.set('idle', this.emote ? 1.6 : 1);
+    }
+  }
+
+  decide() {
+    const st = this.stage;
+    if (st.env.sleepy) { this.set(Math.random() < 0.3 ? 'stretch' : 'sleep', 1.2); if (this.state === 'stretch') this.showEmote('…', 1); return; }
+    const h = hearts(this.mon.affection);
+    const settings = st.game?.state.settings;
+    const musicOn = settings && !settings.muted && settings.musicVolume > 0.05;
+    if (this.mon.fullness < 30 && Math.random() < 0.2) { this.showEmote(art.puff('sweet-basic'), 2); this.set('idle', 2); return; }
+
+    const others = [...st.pets.values()].filter(o => o !== this && o.free && !o.partner);
+    const choices = [
+      ['walk', 34],
+      ['idle', 16],
+      ['look', 8],
+      ['sit', 8],
+      ['stretch', 5],
+      ['shiver', 2],
+      ['follow', h >= 3 && st.pointer.known && st.env.userActive ? 10 : 0],
+      ['run', this.mon.enjoyment > 120 || h >= 2 ? 5 : 1],
+      ['spin', h >= 2 ? 4 : 0],
+      ['dance', musicOn && h >= 1 ? 5 : 0],
+      ['roll', !this.floats && h >= 1 ? 3 : 0],
+      ['play', others.length && h >= 1 ? 7 : 0],
+      ['greet', others.length ? 3 : 0],
+    ];
+    const total = choices.reduce((s, [, w]) => s + w, 0);
+    let r = Math.random() * total, pick = 'idle';
+    for (const [name, w] of choices) { if ((r -= w) < 0) { pick = name; break; } }
+
+    switch (pick) {
+      case 'walk': this.target = this.randomPoint(50, 320); this.set('walk'); break;
+      case 'run': this.target = this.randomPoint(80, 260); this.set('run', 2.5 + Math.random() * 2); break;
+      case 'follow': this.set('follow', 3 + Math.random() * 4); break;
+      case 'look': this.set('look', 1.6 + Math.random()); if (Math.random() < 0.5) this.showEmote('?', 1.2); break;
+      case 'sit': this.set('sit', 3 + Math.random() * 5); break;
+      case 'stretch': this.set('stretch', 1.2); if (Math.random() < 0.5) this.showEmote('…', 1); break;
+      case 'shiver': this.set('shiver', 0.6); break;
+      case 'spin': this.set('spin', 0.9); break;
+      case 'dance': this.set('dance', 3 + Math.random() * 3); break;
+      case 'roll': this.rollDir = this.facing; this.set('roll', 1); break;
+      case 'play': {
+        const o = others[Math.floor(Math.random() * others.length)];
+        this.partner = o; o.partner = this;
+        this.set('chase', 4 + Math.random() * 2);
+        o.set('flee', this.dur);
+        this.showEmote('!', 0.8);
+        o.showEmote('♪', 0.8);
+        break;
+      }
+      case 'greet': {
+        const o = others.sort((a, b) => Math.hypot(a.x - this.x, a.gy - this.gy) - Math.hypot(b.x - this.x, b.gy - this.gy))[0];
+        // 走到對方旁邊再打招呼
+        const side = o.x > this.x ? -1 : 1;
+        this.target = { x: o.x + side * ((o.asset.w + this.asset.w) / 2 + 4) * this.S, y: o.gy };
+        this.partner = o;
+        this.set('walk');
+        this.onArrive = () => {
+          if (this.partner !== o || o.leaving) { this.partner = null; return; }
+          this.set('greet', 0.9);
+          if (o.free && !o.partner) { o.partner = this; o.set('greet', 0.9); }
+          this.showEmote('♥', 1.2);
+        };
+        return;
+      }
+      default: this.set('idle', 2 + Math.random() * 4);
+    }
+    this.onArrive = null;
   }
 
   draw(ctx) {
     const S = this.S, a = this.asset, r = this.rect();
-    let alpha = this.alpha;
+    const alpha = this.alpha;
     if (this.state === 'appear') {
       // 從球裡出來：白光慢慢變成原本的樣子
       const k = Math.min(1, this.stateT / 0.45);
@@ -248,17 +509,33 @@ export class Pet {
       blit(ctx, k < 0.7 ? a.white : a.canvas, this.x - w / 2, this.y - h, sc, { flipX: this.facing > 0, alpha });
       return;
     }
-    // 腳下的影子（貼地的才畫）
-    if (!this.floats || this.state === 'held') {
-      ctx.fillStyle = 'rgba(20,10,30,0.18)';
-      const sw = Math.round((a.w * S) / 2 / S) * S;
-      ctx.fillRect(Math.round(this.x - sw / 2), Math.round(this.restY()) - S, sw, S);
+    // 桌面上的影子（離地越高越小越淡）
+    if (this.state !== 'held' || !this.floats) {
+      const h = this.alt + this.z;
+      const k = Math.max(0.35, 1 - h / 120);
+      const sw = Math.max(2, Math.round((a.w / 2) * k)) * S;
+      ctx.fillStyle = `rgba(20,10,30,${(0.2 * k).toFixed(3)})`;
+      ctx.fillRect(Math.round(this.x - sw / 2), Math.round(this.gy) - S, sw, S);
+      ctx.fillRect(Math.round(this.x - sw / 2 + S), Math.round(this.gy), sw - 2 * S, S);
     }
-    const img = this.evolveView ?? (this.state === 'sleep' ? a.canvas : a.canvas);
-    blit(ctx, img, r.x, r.y, S, { flipX: this.facing > 0, flipY: this.upsideDown, alpha });
-    if (this.state === 'sleep') {
-      // 睡覺時稍微暗一點
-      blit(ctx, a.dark, r.x, r.y, S, { flipX: this.facing > 0, alpha: 0.18 });
+    const img = this.evolveView ?? a.canvas;
+    const pose = this.pose();
+    if (this.upsideDown || (pose.sx === 1 && pose.sy === 1 && pose.rot === 0)) {
+      blit(ctx, img, r.x + pose.ox * S, r.y, S, { flipX: this.facing > 0, flipY: this.upsideDown, alpha });
+      if (this.state === 'sleep') blit(ctx, a.dark, r.x, r.y, S, { flipX: this.facing > 0, alpha: 0.18 * alpha });
+    } else {
+      const w = a.w * S, h = a.h * S;
+      const feetX = Math.round(this.x + pose.ox * S), feetY = r.y + h;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      if (pose.pivot === 'center') ctx.translate(feetX, feetY - h / 2);
+      else ctx.translate(feetX, feetY);
+      ctx.rotate(pose.rot);
+      ctx.scale(pose.sx * (this.facing > 0 ? -1 : 1), pose.sy);
+      const oy = pose.pivot === 'center' ? -h / 2 : -h;
+      ctx.drawImage(img, -w / 2, oy, w, h);
+      if (this.state === 'sleep') { ctx.globalAlpha = 0.18 * alpha; ctx.drawImage(a.dark, -w / 2, oy, w, h); }
+      ctx.restore();
     }
     if (this.eating && this.eating.bites < 3) {
       const m = this.mouth();

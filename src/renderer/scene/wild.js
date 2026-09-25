@@ -14,12 +14,17 @@ export class Spot {
     this.life = life;
     this.alpha = 0;
     const S = stage.S;
-    this.x = stage.W * (0.12 + Math.random() * 0.62);
-    // 天空的影子在螢幕上半部盤旋；圓環浮在半空；其他貼地
-    this.baseY = this.kind === 'sky' ? stage.H * (0.25 + Math.random() * 0.2)
-      : this.kind === 'ring' ? stage.H * 0.55
-      : this.kind === 'dusk' ? stage.floorY - 18 * S
-      : stage.floorY;
+    // 氣息點會出現在桌面上的任何地方（避開右下角的選單按鈕）
+    this.x = stage.W * (0.08 + Math.random() * 0.84);
+    const groundY = stage.H * (0.3 + Math.random() * 0.62);
+    if (this.x > stage.W - 120 * S && groundY > stage.H - 110 * S) this.x -= 160 * S;
+    // 天空的影子在螢幕上半部盤旋；圓環浮在半空；鬼火飄在離地一點的地方
+    this.baseY = this.kind === 'sky' ? stage.H * (0.15 + Math.random() * 0.25)
+      : this.kind === 'ring' ? stage.H * (0.3 + Math.random() * 0.4)
+      : this.kind === 'dusk' ? groundY - 18 * S
+      : groundY;
+    // 野生寶可夢跳出來後站的位置
+    this.groundY = this.kind === 'sky' || this.kind === 'ring' ? this.baseY + 70 * S : groundY;
     this.y = this.baseY;
     this.nextRustle = 0.5;
     this.gone = false;
@@ -94,6 +99,8 @@ export class WildMon {
     this.alt = this.floats ? 50 : 0;
     const S = stage.S;
     this.fromY = spot.y;
+    const a = this.asset;
+    this.groundY = Math.max((a.h + this.alt + 8) * S, Math.min(stage.H - 3 * S, spot.groundY ?? stage.floorY));
     this.y = this.restY();
     this.t = 0;
     this.state = 'emerge';
@@ -111,7 +118,7 @@ export class WildMon {
   }
 
   get asset() { return this.stage.sprites.peek(this.enc.speciesId, this.enc.shiny); }
-  restY() { return this.stage.floorY - this.alt * this.stage.S; }
+  restY() { return this.groundY - this.alt * this.stage.S; }
   set(state) { this.state = state; this.stateT = 0; }
 
   rect() {
@@ -212,8 +219,8 @@ export class WildMon {
 // ---------- 丟出去的球 ----------
 // 時間軸：飛行 → 命中（寶可夢被吸進去）→ 掉到地上 → 搖 N 下 → 成功（星星）或 破球
 export class ThrownBall {
-  constructor(stage, { kind, from, target, result, onHit, onDone }) {
-    Object.assign(this, { stage, kind, from, target, result, onHit, onDone });
+  constructor(stage, { kind, from, target, floorY, result, onHit, onDone }) {
+    Object.assign(this, { stage, kind, from, target, floorY, result, onHit, onDone });
     this.t = 0;
     this.phase = 'fly';
     this.x = from.x;
@@ -250,7 +257,7 @@ export class ThrownBall {
         if (T > 0.45) { this.phase = 'drop'; this.t = 0; this.dropFrom = this.y; }
         break;
       case 'drop': {
-        const floor = st.floorY - (this.img.height / 2) * S;
+        const floor = (this.floorY ?? st.floorY) - (this.img.height / 2) * S;
         const k = Math.min(1, T / 0.35);
         this.y = this.dropFrom + (floor - this.dropFrom) * k * k;
         if (k >= 1) { this.phase = 'wait'; this.t = 0; st.audio.sfx('land'); }

@@ -60,6 +60,8 @@ export function normalizeMon(m, dex) {
     xp: num(m.xp, 0, 0),
     out: Boolean(m.out),
     tasteKnown: Boolean(m.tasteKnown),
+    // 在桌面上的位置（螢幕比例 0–1），由畫面寫入；沒有就讓畫面自己挑位置
+    pos: m.pos && Number.isFinite(m.pos.x) && Number.isFinite(m.pos.y) ? { x: num(m.pos.x, 0.5, 0, 1), y: num(m.pos.y, 0.8, 0, 1) } : null,
   };
 }
 

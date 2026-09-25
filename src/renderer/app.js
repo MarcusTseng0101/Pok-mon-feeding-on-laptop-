@@ -29,7 +29,7 @@ async function main() {
 
   // ---- 存檔：有變動就在 3 秒內寫入，另外每 30 秒保底一次 ----
   let dirty = false;
-  const save = () => { dirty = false; return api.writeSave(game.state); };
+  const save = () => { dirty = false; stage.storePositions(); return api.writeSave(game.state); };
   game.on('change', () => { dirty = true; });
   setInterval(() => { if (dirty) save(); }, 3000);
   setInterval(save, 30_000);
