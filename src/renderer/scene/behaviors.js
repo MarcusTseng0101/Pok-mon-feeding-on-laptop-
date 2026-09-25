@@ -22,8 +22,8 @@ const NOCTURNAL_IDS = new Set([714, 715]); // 嗡蝠、音波龍
 const DIGGERS = new Set([659, 660]); // 掘掘兔、掘地兔
 
 export function isNocturnal(pet) { return NOCTURNAL_IDS.has(pet.mon.species) || has(pet, 'ghost', 'dark'); }
-function isNight(env) { const h = env.hour ?? 12; return h >= 20 || h < 6; }
-function isDay(env) { const h = env.hour ?? 12; return h >= 7 && h < 17; }
+export function isNight(env) { const h = env.hour ?? 12; return h >= 20 || h < 6; }
+export function isDay(env) { const h = env.hour ?? 12; return h >= 7 && h < 17; }
 
 // 同一條進化線（例如哈力栗和胖胖哈力）
 function familyRoot(dex, id) {

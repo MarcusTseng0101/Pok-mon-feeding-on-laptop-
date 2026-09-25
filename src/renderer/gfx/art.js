@@ -258,3 +258,11 @@ export function fallbackSprite(types, seed = 1) {
     for (const x of [w * 0.28, w * 0.62]) for (let k = 0; k < 3; k++) set(x + k, h - 1, K);
   }));
 }
+
+// ---------- 習性動作用的小道具 ----------
+export const twig = fromMap(['......KK', '..KKKKBK', 'KKBBBBK.', 'KBBKK...', '.KK.....'], { K, B: '#9a6a3a' });
+export const leaf = fromMap(['..KK', '.KGK', 'KGGK', 'KGK.', '.K..'], { K: '#1e4a1e', G: '#6ac84a' });
+export const key = fromMap(['.KKK....', 'KY.YKKKK', 'KY.YYYYK', '.KKKK.KK'], { K: '#6a5a20', Y: '#f8d850' });
+export const diamond = fromMap(['.KKK.', 'KWLLK', 'KLLLK', '.KLK.', '..K..'], { K: '#3a6a9a', W: '#ffffff', L: '#bfe8ff' });
+const FLOWER_COLORS = ['#ff5d8f', '#ffd84a', '#ffffff', '#7ab8ff', '#ff9d3a'];
+export const flowers = FLOWER_COLORS.map(c => fromMap(['.P.P.', 'PPYPP', '.PPP.', '..G..', '.GG..'], { P: c, Y: c === '#ffd84a' ? '#ff9d3a' : '#ffd84a', G: '#4a9a3a' }));

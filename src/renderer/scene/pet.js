@@ -1,12 +1,13 @@
 // 桌面上的夥伴寶可夢：在整個桌面上自由走動（俯視的桌面平面，不把工作列當地板），
 // 會發呆、伸懶腰、東張西望、坐下、轉圈、跳舞、打滾、跌倒、跟其他夥伴追著玩、被抓起來丟出去。
-// 依屬性的生態動作和夥伴之間的互動寫在 behaviors.js。
+// 依屬性的生態動作和夥伴之間的互動寫在 behaviors.js，每一種寶可夢的專屬習性寫在 habits.js。
 // 位置：(x, gy) = 腳底在桌面平面上的位置（裝置像素）；z = 離地高度（美術像素）；alt = 會飄的寶可夢的飄浮高度。
 // 美術像素 × stage.S = 裝置像素。
 import { blit } from '../gfx/pixel.js';
 import * as art from '../gfx/art.js';
 import { hearts } from '../../core/amie.js';
 import { ACTIONS, soloOptions, socialOptions, WALK_SPEED, RUN_SPEED } from './behaviors.js';
+import { HABIT_ACTIONS, habitOptions } from './habits.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
@@ -50,7 +51,7 @@ export class Pet {
   get asset() { return this.stage.sprites.peek(this.mon.species, this.mon.shiny); }
   get S() { return this.stage.S; }
   get types() { return this.stage.dex.get(this.mon.species).types; }
-  get act() { return ACTIONS[this.state]; }
+  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state]; }
   // 圖的腳底在螢幕上的 y（含飄浮與離地高度，不含走路的上下晃動）
   get y() { return this.gy - (this.alt + this.z) * this.S; }
   restY() { return this.gy - this.alt * this.S; }
@@ -192,6 +193,7 @@ export class Pet {
     const r = this.rect();
     this.endPlay();
     this.meet = null;
+    this.habit = null;
     this.watching = null;
     this.faded = false;
     this.grab = { dx: px - r.x, dy: py - r.y };
@@ -485,6 +487,7 @@ export class Pet {
       }],
       ...soloOptions(this),
       ...socialOptions(this, others),
+      ...habitOptions(this, others), // 這一種寶可夢專屬的習性
     ].filter(([, w]) => w > 0);
     const total = choices.reduce((sum, [, w]) => sum + w, 0);
     let r = Math.random() * total;

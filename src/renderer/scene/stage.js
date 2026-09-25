@@ -20,6 +20,7 @@ export class Stage {
     this.wild = null;
     this.balls = [];
     this.props = [];
+    this.decals = []; // 地上的裝飾（花、鑽石、根…），畫在夥伴後面，不能點
     this.pointer = { x: 0, y: 0, known: false };
     this.mode = null; // { type: 'feed', puff, target } | { type: 'aim', ball }
     this.env = { sleepy: false, userActive: true };
@@ -59,6 +60,12 @@ export class Stage {
   toDevice(cx, cy) { return { x: cx * this.dpr, y: cy * this.dpr }; }
   toCss(x, y) { return { x: x / this.dpr, y: y / this.dpr }; }
   markBusy(seconds = 1) { this.busyUntil = Math.max(this.busyUntil, performance.now() + seconds * 1000); }
+
+  // 在地上放一個裝飾（x, y 是底部中央）
+  addDecal(img, x, y, life = 20) {
+    this.decals.push({ img, x, y, t: 0, life });
+    if (this.decals.length > 40) this.decals.shift();
+  }
 
   // ---------- 寶可夢管理 ----------
   addPet(mon, opts) {
@@ -251,6 +258,8 @@ export class Stage {
     this.balls = this.balls.filter(b => !b.gone);
     for (const p of this.props) p.update(dt);
     this.props = this.props.filter(p => !p.gone);
+    for (const d of this.decals) d.t += dt;
+    this.decals = this.decals.filter(d => d.t < d.life);
     this.fx.update(dt);
     this.updateFeeding(dt);
     this.refreshInteractive();
@@ -277,6 +286,10 @@ export class Stage {
     const ctx = this.ctx, S = this.S;
     ctx.clearRect(0, 0, this.W, this.H);
     if (this.hidden) { this.fx.draw(ctx, S); return; }
+    for (const d of this.decals) {
+      const k = d.t / d.life, alpha = Math.min(1, d.t * 3, (1 - k) * 4);
+      blit(ctx, d.img, d.x - (d.img.width * S) / 2, d.y - d.img.height * S, S, { alpha });
+    }
     for (const p of this.props) p.draw(ctx);
     const pets = [...this.pets.values()].sort((a, b) => this.drawOrder(a) - this.drawOrder(b));
     // 地上的夥伴畫在氣息點後面（看起來像站在草叢後），飄浮的畫在前面
