@@ -6,6 +6,7 @@
 import { blit } from '../gfx/pixel.js';
 import * as art from '../gfx/art.js';
 import { hearts } from '../../core/amie.js';
+import { spriteKey } from '../../core/forms.js';
 import { ACTIONS, soloOptions, socialOptions, WALK_SPEED, RUN_SPEED } from './behaviors.js';
 import { HABIT_ACTIONS, habitOptions } from './habits.js';
 import { MOVE_ACTIONS, moveOptions } from './moves.js';
@@ -51,7 +52,9 @@ export class Pet {
     this.clamp();
   }
 
-  get asset() { return this.stage.sprites.peek(this.mon.species, this.mon.shiny); }
+  // 圖片依形態而不同（藍花的花蓓蓓、超級蒂安希…）；battleForm 是對戰中暫時的形態，不存檔
+  get spriteKey() { return spriteKey(this.mon.species, this.battleForm ?? this.mon.form); }
+  get asset() { return this.stage.sprites.peek(this.spriteKey, this.mon.shiny); }
   get S() { return this.stage.S; }
   get types() { return this.stage.dex.get(this.mon.species).types; }
   get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state]; }

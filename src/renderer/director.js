@@ -5,6 +5,7 @@ import { Spot, WildMon, ThrownBall, Prop } from './scene/wild.js';
 import { planSpawn, nextSpawnDelay, shouldDropCell, timeOfDay } from '../core/encounter.js';
 import { ringBonus, catchProbability, BALLS } from '../core/capture.js';
 import { shinyChance } from '../core/shiny.js';
+import { spriteKey, inheritForm } from '../core/forms.js';
 import { puffName, hearts, FLAVOR_ZH, parsePuffKey } from '../core/amie.js';
 import * as art from './gfx/art.js';
 
@@ -92,7 +93,7 @@ export class Director {
       const pos = mon.pos
         ? { x: mon.pos.x * st.W, gy: mon.pos.y * st.H }
         : { x: st.W * (0.15 + (0.7 * (i + 0.5)) / outs.length + (Math.random() - 0.5) * 0.06), gy: st.H * (0.45 + Math.random() * 0.45) };
-      this.sprites.get(mon.species, mon.shiny).then(() => {
+      this.sprites.get(spriteKey(mon.species, mon.form), mon.shiny).then(() => {
         if (this.game.mon(mon.uid)?.out && !this.game.state.settings.quiet) st.addPet(mon, { ...pos, fromBall: true });
       });
     });
@@ -419,7 +420,7 @@ export class Director {
     pet.endPlay();
     const to = status.evo.to;
     const oldAsset = pet.asset;
-    const newAsset = await this.sprites.get(to, pet.mon.shiny);
+    const newAsset = await this.sprites.get(spriteKey(to, inheritForm(pet.mon.species, to, pet.mon.form)), pet.mon.shiny);
     this.ui?.closeBubble();
     pet.set('evolving');
     pet.showEmote('!', 1);

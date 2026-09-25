@@ -4,7 +4,8 @@
 import * as amie from './amie.js';
 import { BALLS, catchProbability, rollCatch, fleeChance } from './capture.js';
 import { checkEvolution } from './evolution.js';
-import { MAX_OUT } from './save.js';
+import { MAX_OUT, normalizeTraining } from './save.js';
+import { canonicalForm, inheritForm } from './forms.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain } from './shiny.js';
 
 // 夥伴之間的感情（0–255），到這些門檻時通知畫面
@@ -253,7 +254,7 @@ export class Game {
     return { mon, isNewSpecies, rewards };
   }
 
-  createMon(species, { shiny = false, nature, ball = 'poke' } = {}) {
+  createMon(species, { shiny = false, nature, ball = 'poke', form = null } = {}) {
     return {
       uid: `${this.now().toString(36)}${Math.floor(this.rng() * 1e9).toString(36)}`,
       species,
@@ -268,6 +269,9 @@ export class Game {
       xp: 0,
       out: false,
       tasteKnown: false,
+      form: canonicalForm(species, form),
+      trimAt: null,
+      training: normalizeTraining(null),
     };
   }
 
@@ -343,6 +347,7 @@ export class Game {
     if (!mon || !status?.ready) return null;
     const from = mon.species;
     mon.species = status.evo.to;
+    mon.form = inheritForm(from, mon.species, mon.form); // 藍花的花蓓蓓進化後還是藍花
     const d = (this.state.dex[mon.species] ??= { seen: 0, caught: 0, firstSeenAt: this.now(), firstCaughtAt: null });
     const isNewSpecies = d.caught === 0;
     d.seen++;
