@@ -1,8 +1,9 @@
-// 遭遇：野生寶可夢會從桌面底部的「氣息點」冒出來（草叢、水窪、天空的影子……）。
+// 遭遇：野生寶可夢會從桌面上的「氣息點」冒出來（草叢、水窪、天空的影子……）。
 // 出現哪一隻取決於現實的時間、你的電腦狀態，以及你放在桌面上的泡芙誘餌。
 // 流程：planSpawn() 決定這次是誰、從哪種氣息點出來 → 畫面生成氣息點 → 點擊後遭遇。
 
 import { hearts } from './amie.js';
+import { shinyChance, chainSpawnMult } from './shiny.js';
 
 export const FLAVOR_TYPES = {
   sweet: ['fairy', 'normal'],
@@ -30,7 +31,7 @@ const SPOT_BIAS = {
   night: { grass: 0.8, puddle: 1, sky: 0.7, rock: 1, dusk: 2 },
 };
 
-// ctx: { hour, weekday(0=日), cpuHot, justPluggedIn, returnedFromIdle, lure: flavor|null }
+// ctx: { hour, weekday(0=日), cpuHot, justPluggedIn, returnedFromIdle, lure: flavor|null, lureTier }
 // 回傳目前生效的「氣息」，UI 會把 zh 列出來讓玩家知道現在容易遇到什麼。
 export function activeModifiers(ctx, dex) {
   const mods = [];
@@ -59,6 +60,7 @@ export function speciesWeights(ctx, state, dex) {
       let w = Math.pow(s.captureRate, 0.7) * STAGE_MULT[Math.min(3, dex.stage(id))];
       w *= bias[dex.habitat(id)] ?? 1;
       for (const m of mods) w *= m.mult(id);
+      w *= chainSpawnMult(state, id);
       return { id, w };
     });
 }
@@ -85,10 +87,6 @@ export function rollSpecial(ctx, state, rng) {
 
 const SPECIAL_SPOT = { 716: 'rock', 717: 'sky', 718: 'rock', 719: 'rock', 720: 'ring', 721: 'puddle' };
 
-export function shinyOdds(state) {
-  return caughtCount(state) >= 60 ? 1 / 256 : 1 / 512;
-}
-
 // 決定下一次生成：{ spot, speciesId, shiny, nature, special }
 export function planSpawn(ctx, state, dex, rng) {
   const special = rollSpecial(ctx, state, rng);
@@ -96,7 +94,7 @@ export function planSpawn(ctx, state, dex, rng) {
   return {
     speciesId,
     spot: SPECIAL_SPOT[speciesId] ?? dex.habitat(speciesId),
-    shiny: rng.chance(shinyOdds(state)),
+    shiny: rng.chance(shinyChance(state, speciesId, ctx)),
     nature: rng.pick(dex.natures).slug,
     special: special !== null,
   };

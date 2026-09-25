@@ -264,3 +264,9 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .starter .card { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 14px; background: #fff; }
 
 .fatal { position: fixed; left: 10px; top: 10px; background: #fff; color: #c00; padding: 10px; max-width: 80vw; white-space: pre-wrap; }
+
+/* 色違 */
+.dex .cell .shiny { position: absolute; right: 3px; top: 1px; font-style: normal; font-size: 10px; color: #e0a000; text-shadow: 0 0 2px #fff6c0; }
+.dex .summary .charm { color: #c08800; }
+.shinytag { color: #c08800; text-shadow: 0 0 3px #fff6c0; }
+.badge.chain { background: #7a5cd6; color: #fff; }

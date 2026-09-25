@@ -234,3 +234,95 @@ test('存檔 migrate：桌面位置保留下來，壞掉的位置丟掉', () => 
   }, dex, T0);
   assert.deepEqual(s.mons.map(m => m.pos), [{ x: 0.3, y: 0.7 }, { x: 1, y: 0 }, null, null]);
 });
+
+// ---------- 色違與連鎖 ----------
+import { shinyChance, shinyRolls, chainRolls, BASE_ODDS, CHARM_AT } from '../src/core/shiny.js';
+import { bondLevel } from '../src/core/game.js';
+
+// 一定抓得到的捕獲（反覆丟到抓到為止）
+function catchOne(g, speciesId, shiny = false) {
+  for (let i = 0; i < 200; i++) {
+    const wild = g.startEncounter({ speciesId, spot: 'grass', shiny, nature: 'hardy' });
+    g.state.bag.balls.ultra += 1;
+    const saved = { ...g.state.chain };
+    const r = g.throwBall(wild, 'ultra', 1.7);
+    if (r.caught) return r;
+    g.state.chain = saved; // 測試只關心抓到的結果，逃走不算
+  }
+  throw new Error('抓不到');
+}
+
+test('色違：基本 1/512，護符、連鎖、豪華泡芙誘餌會提高', () => {
+  const s = defaultSave(T0);
+  assert.ok(Math.abs(shinyChance(s, 659) - 1 / BASE_ODDS) < 1e-12);
+  s.shinyCharm = true;
+  assert.equal(shinyRolls(s, 659), 3);
+  s.chain = { species: 659, count: 30 };
+  assert.equal(shinyRolls(s, 659), 3 + chainRolls(30));
+  assert.equal(shinyRolls(s, 661), 3, '連鎖只對同一種有效');
+  assert.equal(shinyRolls(s, 661, { lureTier: 'deluxe' }), 5);
+  assert.ok(shinyChance(s, 659) > 10 / BASE_ODDS);
+});
+
+test('連鎖：同種連續捕獲會累積、抓別種重新計算、連鎖中的那一種逃走就中斷', () => {
+  const g = newGame(5);
+  g.catchUp();
+  const events = [];
+  g.on('chain', e => events.push(e.count));
+  g.on('chainBroken', e => events.push(-e.count));
+  for (let i = 0; i < 5; i++) catchOne(g, 659);
+  assert.deepEqual(g.state.chain, { species: 659, count: 5 });
+  assert.ok(events.includes(5));
+  // 連鎖中的物種比較常出現
+  const w = speciesWeights(ctxAt(14), g.state, dex);
+  const base = speciesWeights(ctxAt(14), defaultSave(T0), dex);
+  assert.ok(w.find(x => x.id === 659).w > base.find(x => x.id === 659).w * 1.5);
+  // 別種逃走不影響
+  g.wildGone(g.startEncounter({ speciesId: 661, spot: 'sky', shiny: false, nature: 'hardy' }));
+  assert.equal(g.state.chain.count, 5);
+  // 同種逃走：中斷
+  g.wildGone(g.startEncounter({ speciesId: 659, spot: 'grass', shiny: false, nature: 'hardy' }));
+  assert.equal(g.state.chain.count, 0);
+  assert.ok(events.includes(-5));
+  catchOne(g, 659);
+  catchOne(g, 661);
+  assert.deepEqual(g.state.chain, { species: 661, count: 1 });
+});
+
+test('色違：抓到會記在圖鑑；進化後新的形態也算色違；捕獲 60 種拿到閃耀護符', () => {
+  const g = newGame(9);
+  g.catchUp();
+  const r = catchOne(g, 656, true);
+  assert.equal(r.mon.shiny, true);
+  assert.equal(g.state.dex[656].shiny, 1);
+  assert.equal(g.state.stats.shinies, 1);
+  r.mon.xp = 999;
+  g.evolve(r.mon.uid);
+  assert.equal(g.state.dex[657].shiny, 1);
+  assert.equal(g.shinySpeciesCount(), 2);
+  let charm = 0;
+  g.on('charm', () => charm++);
+  for (const id of dex.ids.slice(0, CHARM_AT)) g.state.dex[id] = { seen: 1, caught: 1, shiny: 0 };
+  catchOne(g, 659);
+  assert.equal(g.state.shinyCharm, true);
+  assert.equal(charm, 1);
+});
+
+test('夥伴感情：累積、升級通知、找出最好的朋友、存檔清掉不存在的夥伴', () => {
+  const g = newGame(3);
+  g.catchUp();
+  const a = g.chooseStarter(650);
+  const b = catchOne(g, 659).mon, c = catchOne(g, 661).mon;
+  const ups = [];
+  g.on('bondUp', e => ups.push(e.level));
+  for (let i = 0; i < 35; i++) g.bond(a.uid, b.uid);
+  g.bond(c.uid, a.uid, 10);
+  assert.equal(g.bondOf(b.uid, a.uid), 35);
+  assert.deepEqual(ups, [1]);
+  assert.equal(g.bestFriend(a.uid).uid, b.uid);
+  assert.equal(bondLevel(120), 2);
+  assert.equal(g.bond(a.uid, a.uid), null);
+  const s = migrate({ ...g.state, bonds: { ...g.state.bonds, 'x|y': 50, [`${a.uid}|${b.uid}`]: 999 } }, dex, T0);
+  assert.equal(Object.keys(s.bonds).length, 2);
+  assert.equal(Object.values(s.bonds).sort((x, y) => y - x)[0], 255);
+});

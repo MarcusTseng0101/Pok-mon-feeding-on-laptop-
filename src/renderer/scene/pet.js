@@ -1,13 +1,13 @@
 // 桌面上的夥伴寶可夢：在整個桌面上自由走動（俯視的桌面平面，不把工作列當地板），
 // 會發呆、伸懶腰、東張西望、坐下、轉圈、跳舞、打滾、跌倒、跟其他夥伴追著玩、被抓起來丟出去。
+// 依屬性的生態動作和夥伴之間的互動寫在 behaviors.js。
 // 位置：(x, gy) = 腳底在桌面平面上的位置（裝置像素）；z = 離地高度（美術像素）；alt = 會飄的寶可夢的飄浮高度。
 // 美術像素 × stage.S = 裝置像素。
 import { blit } from '../gfx/pixel.js';
 import * as art from '../gfx/art.js';
 import { hearts } from '../../core/amie.js';
+import { ACTIONS, soloOptions, socialOptions, WALK_SPEED, RUN_SPEED } from './behaviors.js';
 
-const WALK_SPEED = 26; // 美術像素／秒
-const RUN_SPEED = 72;
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
 
@@ -49,6 +49,8 @@ export class Pet {
 
   get asset() { return this.stage.sprites.peek(this.mon.species, this.mon.shiny); }
   get S() { return this.stage.S; }
+  get types() { return this.stage.dex.get(this.mon.species).types; }
+  get act() { return ACTIONS[this.state]; }
   // 圖的腳底在螢幕上的 y（含飄浮與離地高度，不含走路的上下晃動）
   get y() { return this.gy - (this.alt + this.z) * this.S; }
   restY() { return this.gy - this.alt * this.S; }
@@ -86,6 +88,7 @@ export class Pet {
   // 動作造成的上下位移（美術像素）
   lift() {
     const k = this.dur > 0 ? Math.min(1, this.stateT / this.dur) : 0;
+    if (this.act?.lift) return this.act.lift(this, k);
     switch (this.state) {
       case 'walk': case 'follow': case 'chase': case 'flee': case 'run':
         return Math.round(Math.abs(Math.sin(this.walkPhase)) * (this.state === 'walk' || this.state === 'follow' ? 2 : 3));
@@ -133,6 +136,7 @@ export class Pet {
       case 'dizzy': p.rot = Math.sin(this.stateT * 9) * 0.16; break;
       case 'refuse': p.rot = Math.sin(this.stateT * 20) * 0.06; break;
     }
+    this.act?.pose?.(this, p, k);
     if (this.squashT > 0) { const s = this.squashT / 0.18; p.sx *= 1 + 0.22 * s; p.sy *= 1 - 0.2 * s; }
     return p;
   }
@@ -141,6 +145,7 @@ export class Pet {
     if (this.leaving || this.alpha < 0.5) return false;
     const r = this.rect(), S = this.S, a = this.asset;
     if (px < r.x || py < r.y || px >= r.x + r.w || py >= r.y + r.h) return false;
+    if (this.act?.intangible?.(this)) return false;
     if (this.state === 'roll' || this.state === 'trip') return true; // 轉動中用外框判定
     let ax = Math.floor((px - r.x) / S), ay = Math.floor((py - r.y) / S);
     if (this.facing > 0) ax = a.w - 1 - ax;
@@ -186,6 +191,9 @@ export class Pet {
   pickUp(px, py) {
     const r = this.rect();
     this.endPlay();
+    this.meet = null;
+    this.watching = null;
+    this.faded = false;
     this.grab = { dx: px - r.x, dy: py - r.y };
     this.z = 0;
     this.vx = this.vy = this.vz = 0;
@@ -378,7 +386,13 @@ export class Pet {
       case 'evolving':
         break;
       default:
-        this.set('idle', 1);
+        if (this.act) this.act.update(this, dt, done);
+        else this.set('idle', 1);
+    }
+    // 色違的夥伴身上偶爾會閃一下
+    if (this.mon.shiny && this.state !== 'held' && Math.random() < dt * 0.25) {
+      const r = this.rect();
+      st.fx.sparkles(r.x + r.w * (0.2 + Math.random() * 0.6), r.y + r.h * (0.2 + Math.random() * 0.5), S, 1, 2);
     }
 
     if (this.state !== 'held') {
@@ -432,75 +446,57 @@ export class Pet {
 
   decide() {
     const st = this.stage;
-    if (st.env.sleepy) { this.set(Math.random() < 0.3 ? 'stretch' : 'sleep', 1.2); if (this.state === 'stretch') this.showEmote('…', 1); return; }
+    this.onArrive = null;
+    const others = [...st.pets.values()].filter(o => o !== this && o.free && !o.partner);
+    if (st.env.sleepy) {
+      // 想睡了：有其他夥伴在睡的話靠過去一起睡
+      const cuddle = socialOptions(this, others).find(([n]) => n === 'cuddle');
+      if (cuddle && Math.random() < 0.6) { cuddle[2](); return; }
+      this.set(Math.random() < 0.3 ? 'stretch' : 'sleep', 1.2);
+      if (this.state === 'stretch') this.showEmote('…', 1);
+      return;
+    }
     const h = hearts(this.mon.affection);
     const settings = st.game?.state.settings;
     const musicOn = settings && !settings.muted && settings.musicVolume > 0.05;
     if (this.mon.fullness < 30 && Math.random() < 0.2) { this.showEmote(art.puff('sweet-basic'), 2); this.set('idle', 2); return; }
 
-    const others = [...st.pets.values()].filter(o => o !== this && o.free && !o.partner);
+    const rp = (a, b) => a + Math.random() * (b - a);
     const choices = [
-      ['walk', 34],
-      ['idle', 16],
-      ['look', 8],
-      ['sit', 8],
-      ['stretch', 5],
-      ['shiver', 2],
-      ['follow', h >= 3 && st.pointer.known && st.env.userActive ? 10 : 0],
-      ['run', this.mon.enjoyment > 120 || h >= 2 ? 5 : 1],
-      ['spin', h >= 2 ? 4 : 0],
-      ['dance', musicOn && h >= 1 ? 5 : 0],
-      ['roll', !this.floats && h >= 1 ? 3 : 0],
-      ['play', others.length && h >= 1 ? 7 : 0],
-      ['greet', others.length ? 3 : 0],
-    ];
-    const total = choices.reduce((s, [, w]) => s + w, 0);
-    let r = Math.random() * total, pick = 'idle';
-    for (const [name, w] of choices) { if ((r -= w) < 0) { pick = name; break; } }
-
-    switch (pick) {
-      case 'walk': this.target = this.randomPoint(50, 320); this.set('walk'); break;
-      case 'run': this.target = this.randomPoint(80, 260); this.set('run', 2.5 + Math.random() * 2); break;
-      case 'follow': this.set('follow', 3 + Math.random() * 4); break;
-      case 'look': this.set('look', 1.6 + Math.random()); if (Math.random() < 0.5) this.showEmote('?', 1.2); break;
-      case 'sit': this.set('sit', 3 + Math.random() * 5); break;
-      case 'stretch': this.set('stretch', 1.2); if (Math.random() < 0.5) this.showEmote('…', 1); break;
-      case 'shiver': this.set('shiver', 0.6); break;
-      case 'spin': this.set('spin', 0.9); break;
-      case 'dance': this.set('dance', 3 + Math.random() * 3); break;
-      case 'roll': this.rollDir = this.facing; this.set('roll', 1); break;
-      case 'play': {
+      ['walk', 30, () => { this.target = this.randomPoint(50, 320); this.set('walk'); }],
+      ['idle', 14, () => this.set('idle', rp(2, 6))],
+      ['look', 7, () => { this.set('look', rp(1.6, 2.6)); if (Math.random() < 0.5) this.showEmote('?', 1.2); }],
+      ['sit', 7, () => this.set('sit', rp(3, 8))],
+      ['stretch', 4, () => { this.set('stretch', 1.2); if (Math.random() < 0.5) this.showEmote('…', 1); }],
+      ['shiver', 2, () => this.set('shiver', 0.6)],
+      ['follow', h >= 3 && st.pointer.known && st.env.userActive ? 9 : 0, () => this.set('follow', rp(3, 7))],
+      ['run', this.mon.enjoyment > 120 || h >= 2 ? 4 : 1, () => { this.target = this.randomPoint(80, 260); this.set('run', rp(2.5, 4.5)); }],
+      ['spin', h >= 2 ? 3 : 0, () => this.set('spin', 0.9)],
+      ['dance', musicOn && h >= 1 ? 4 : 0, () => this.set('dance', rp(3, 6))],
+      ['roll', !this.floats && h >= 1 ? 3 : 0, () => { this.rollDir = this.facing; this.set('roll', 1); }],
+      ['play', others.length && h >= 1 ? 6 : 0, () => {
         const o = others[Math.floor(Math.random() * others.length)];
         this.partner = o; o.partner = this;
-        this.set('chase', 4 + Math.random() * 2);
+        this.set('chase', rp(4, 6));
         o.set('flee', this.dur);
         this.showEmote('!', 0.8);
         o.showEmote('♪', 0.8);
-        break;
-      }
-      case 'greet': {
-        const o = others.sort((a, b) => Math.hypot(a.x - this.x, a.gy - this.gy) - Math.hypot(b.x - this.x, b.gy - this.gy))[0];
-        // 走到對方旁邊再打招呼
-        const side = o.x > this.x ? -1 : 1;
-        this.target = { x: o.x + side * ((o.asset.w + this.asset.w) / 2 + 4) * this.S, y: o.gy };
-        this.partner = o;
-        this.set('walk');
-        this.onArrive = () => {
-          if (this.partner !== o || o.leaving) { this.partner = null; return; }
-          this.set('greet', 0.9);
-          if (o.free && !o.partner) { o.partner = this; o.set('greet', 0.9); }
-          this.showEmote('♥', 1.2);
-        };
-        return;
-      }
-      default: this.set('idle', 2 + Math.random() * 4);
-    }
-    this.onArrive = null;
+        st.fire('bond', this, o, 2);
+      }],
+      ...soloOptions(this),
+      ...socialOptions(this, others),
+    ].filter(([, w]) => w > 0);
+    const total = choices.reduce((sum, [, w]) => sum + w, 0);
+    let r = Math.random() * total;
+    const pick = choices.find(([, w]) => (r -= w) < 0) ?? choices[0];
+    pick[2]();
   }
 
   draw(ctx) {
-    const S = this.S, a = this.asset, r = this.rect();
-    const alpha = this.alpha;
+    const S = this.S, a = this.asset, r = this.rect(), act = this.act;
+    const alpha = this.alpha * (act?.alpha?.(this) ?? 1);
+    const sink = act?.sink?.(this) ?? 0; // 挖洞：身體有多少在地面下
+    const sleepy = this.state === 'sleep' || act?.dark;
     if (this.state === 'appear') {
       // 從球裡出來：白光慢慢變成原本的樣子
       const k = Math.min(1, this.stateT / 0.45);
@@ -510,19 +506,27 @@ export class Pet {
       return;
     }
     // 桌面上的影子（離地越高越小越淡）
-    if (this.state !== 'held' || !this.floats) {
+    if ((this.state !== 'held' || !this.floats) && sink < 0.9) {
       const h = this.alt + this.z;
       const k = Math.max(0.35, 1 - h / 120);
       const sw = Math.max(2, Math.round((a.w / 2) * k)) * S;
-      ctx.fillStyle = `rgba(20,10,30,${(0.2 * k).toFixed(3)})`;
+      ctx.fillStyle = `rgba(20,10,30,${(0.2 * k * Math.min(1, alpha * 1.5)).toFixed(3)})`;
       ctx.fillRect(Math.round(this.x - sw / 2), Math.round(this.gy) - S, sw, S);
       ctx.fillRect(Math.round(this.x - sw / 2 + S), Math.round(this.gy), sw - 2 * S, S);
     }
     const img = this.evolveView ?? a.canvas;
     const pose = this.pose();
+    if (sink > 0) {
+      // 只畫地面以上的部分，身體往下沉
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, this.stage.W, Math.round(this.gy));
+      ctx.clip();
+      ctx.translate(0, Math.round(sink * a.h) * S);
+    }
     if (this.upsideDown || (pose.sx === 1 && pose.sy === 1 && pose.rot === 0)) {
       blit(ctx, img, r.x + pose.ox * S, r.y, S, { flipX: this.facing > 0, flipY: this.upsideDown, alpha });
-      if (this.state === 'sleep') blit(ctx, a.dark, r.x, r.y, S, { flipX: this.facing > 0, alpha: 0.18 * alpha });
+      if (sleepy) blit(ctx, a.dark, r.x, r.y, S, { flipX: this.facing > 0, alpha: 0.18 * alpha });
     } else {
       const w = a.w * S, h = a.h * S;
       const feetX = Math.round(this.x + pose.ox * S), feetY = r.y + h;
@@ -534,15 +538,17 @@ export class Pet {
       ctx.scale(pose.sx * (this.facing > 0 ? -1 : 1), pose.sy);
       const oy = pose.pivot === 'center' ? -h / 2 : -h;
       ctx.drawImage(img, -w / 2, oy, w, h);
-      if (this.state === 'sleep') { ctx.globalAlpha = 0.18 * alpha; ctx.drawImage(a.dark, -w / 2, oy, w, h); }
+      if (sleepy) { ctx.globalAlpha = 0.18 * alpha; ctx.drawImage(a.dark, -w / 2, oy, w, h); }
       ctx.restore();
     }
+    if (sink > 0) ctx.restore();
+    act?.drawOver?.(this, ctx);
     if (this.eating && this.eating.bites < 3) {
       const m = this.mouth();
       const img2 = art.bittenPuff(this.eating.puff, this.eating.bites);
       blit(ctx, img2, m.x - (img2.width * S) / 2, m.y - (img2.height * S) / 2, S);
     }
-    if (this.emote) {
+    if (this.emote && alpha > 0.3) {
       const e = this.emote.img, h = this.head();
       const bob = Math.floor(this.t * 3) % 2 ? 0 : S;
       blit(ctx, e, h.x - (e.width * S) / 2 + (this.facing > 0 ? 6 : -6) * S, h.y - (e.height + 4) * S - bob, S);

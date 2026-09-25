@@ -1,8 +1,10 @@
 // 導演：把遊戲規則（core/）和舞台演出（scene/）、介面（ui/）串起來。
 import { Pet } from './scene/pet.js';
+import { watchEating } from './scene/behaviors.js';
 import { Spot, WildMon, ThrownBall, Prop } from './scene/wild.js';
 import { planSpawn, nextSpawnDelay, shouldDropCell, timeOfDay } from '../core/encounter.js';
 import { ringBonus, catchProbability, BALLS } from '../core/capture.js';
+import { shinyChance } from '../core/shiny.js';
 import { puffName, hearts, FLAVOR_ZH, parsePuffKey } from '../core/amie.js';
 import * as art from './gfx/art.js';
 
@@ -31,6 +33,7 @@ export class Director {
       justPluggedIn: this.signals.justPluggedIn,
       returnedFromIdle: this.signals.returnedFromIdle,
       lure: this.lure && Date.now() < this.lure.until ? this.lure.flavor : null,
+      lureTier: this.lure && Date.now() < this.lure.until ? parsePuffKey(this.lure.puff).tier : null,
     };
   }
 
@@ -45,8 +48,12 @@ export class Director {
   updateEnv() {
     const h = new Date().getHours();
     const idle = this.signals.idleSeconds ?? 0;
-    this.stage.env.sleepy = (h >= 1 && h < 6) || idle > 5 * 60;
-    this.stage.env.userActive = idle < 60;
+    const env = this.stage.env;
+    env.sleepy = (h >= 1 && h < 6) || idle > 5 * 60;
+    env.userActive = idle < 60;
+    env.hour = h;
+    env.plugged = this.signals.justPluggedIn;
+    env.lure = this.lure ? { x: this.lure.prop.x, y: this.lure.prop.y } : null;
   }
 
   ambientSong() {
@@ -101,6 +108,7 @@ export class Director {
     if (this.lure && now > this.lure.until) {
       this.lure.prop.life = 0;
       this.lure = null;
+      this.updateEnv();
       this.ui?.toast('誘餌泡芙的香味散掉了');
     }
     if (this.evolution) this.updateEvolution(dt);
@@ -160,6 +168,7 @@ export class Director {
     });
     this.stage.props.push(prop);
     this.lure = { puff, flavor, until: Date.now() + LURE_MINUTES * 60_000, prop };
+    this.updateEnv();
     this.audio.sfx('open');
     this.ui?.toast(`放好${FLAVOR_ZH[flavor]}泡芙了，喜歡這個香味的寶可夢會比較快出現`);
     if (!this.enc && !this.stage.spot) this.scheduleNext();
@@ -203,6 +212,7 @@ export class Director {
       }
     });
     st.on('spotGone', () => { if (!this.enc) this.scheduleNext(); });
+    st.on('bond', (a, b, n) => this.game.bond(a.uid, b.uid, n));
   }
 
   setMode(mode) {
@@ -241,6 +251,7 @@ export class Director {
       return;
     }
     pet.startEat(puff);
+    watchEating(pet);
     this.setMode(null);
     st.markBusy(2);
     setTimeout(() => {
@@ -271,8 +282,25 @@ export class Director {
     this.enc = { wild, entity, deadline: Date.now() + (legendary ? 240_000 : 120_000), throwing: false };
     this.audio.sfx('appear');
     setTimeout(() => this.refreshMusic(), 350);
-    if (wild.shiny) setTimeout(() => this.audio.sfx('sparkle'), 300);
+    if (wild.shiny) {
+      setTimeout(() => this.audio.sfx('sparkle'), 300);
+      setTimeout(() => this.audio.sfx('sparkle'), 650);
+      this.ui?.toast(`哇！是色違的${this.dex.name(wild.speciesId)}！`, { icon: art.sparkle, kind: 'dex' });
+    }
+    this.petsReact(entity, wild.shiny ? '✦' : '!');
     this.ui?.showEncounter(this.enc);
+  }
+
+  // 夥伴們看向野生寶可夢／替捕獲歡呼／看牠離開
+  petsReact(target, emote, state = null) {
+    for (const pet of this.stage.pets.values()) {
+      if (!pet.free || pet.partner) continue;
+      if (Math.random() < 0.3) continue;
+      pet.facing = target.x > pet.x ? 1 : -1;
+      if (state) pet.set(state, state === 'cheer' ? 1.1 : 1.5);
+      else pet.set('idle', 2 + Math.random() * 2);
+      setTimeout(() => pet.showEmote(emote, 1.4), Math.random() * 400);
+    }
   }
 
   catchChance(ball) {
@@ -324,7 +352,8 @@ export class Director {
     if (r.caught) {
       w.set('caught');
       this.audio.jingle('caught', { resumeWith: this.ambientSong() });
-      this.ui?.toast(`抓到${name}了！`, { icon: art.balls[ballEntity.kind] });
+      this.ui?.toast(`抓到${enc.wild.shiny ? '色違的' : ''}${name}了！`, { icon: art.balls[ballEntity.kind] });
+      setTimeout(() => this.petsReact(ballEntity, '♪', 'cheer'), 600);
       const mon = r.mon;
       setTimeout(() => {
         if (r.isNewSpecies) {
@@ -335,7 +364,10 @@ export class Director {
         for (const [k, n] of Object.entries(r.rewards.balls)) gifts.push(`${BALLS[k].zh}×${n}`);
         for (const p of r.rewards.puffs) gifts.push(puffName(p));
         if (gifts.length) this.ui?.toast(`獲得：${gifts.join('、')}`);
-        if (mon.out && !this.game.state.settings.quiet) this.stage.addPet(mon, { x: ballEntity.x, fromBall: true });
+        if (mon.out && !this.game.state.settings.quiet) {
+          const pet = this.stage.addPet(mon, { x: ballEntity.x, gy: ballEntity.floorY, fromBall: true });
+          if (mon.shiny) this.stage.fx.stars(pet.x, pet.y - (pet.asset.h * this.stage.S) / 2, this.stage.S, 10);
+        }
         else this.ui?.toast(`${name}待在夥伴盒裡（桌面上已經有 6 隻了）`);
         this.ui?.refresh();
       }, 1900);
@@ -359,6 +391,8 @@ export class Director {
   wildLeaves(reason) {
     if (!this.enc) return;
     const w = this.enc.entity;
+    this.game.wildGone(this.enc.wild);
+    this.petsReact(w, '…');
     w.set('flee');
     this.audio.sfx('flee');
     this.ui?.toast(`${this.dex.name(this.enc.wild.speciesId)}${reason}`);
@@ -382,6 +416,7 @@ export class Director {
   async startEvolution(pet, extra = {}) {
     const status = this.game.evolutionStatus(pet.uid, extra);
     if (!status?.ready || this.evolution) return;
+    pet.endPlay();
     const to = status.evo.to;
     const oldAsset = pet.asset;
     const newAsset = await this.sprites.get(to, pet.mon.shiny);
@@ -449,6 +484,24 @@ export class Director {
       }, 1500);
     });
     g.on('party', () => this.syncPets());
+    g.on('chain', ({ speciesId, count }) => {
+      const odds = Math.round(1 / shinyChance(g.state, speciesId));
+      this.ui?.toast(`${this.dex.name(speciesId)}連鎖 ×${count}！牠會更常出現，色違機率約 1/${odds}`, { icon: art.sparkle });
+    });
+    g.on('chainBroken', ({ speciesId, count }) => {
+      if (count >= 3) this.ui?.toast(`${this.dex.name(speciesId)}的連鎖（×${count}）中斷了…`);
+    });
+    g.on('charm', () => {
+      this.audio.jingle('newEntry', { resumeWith: this.ambientSong() });
+      this.ui?.toast('圖鑑捕獲 60 種！獲得了「閃耀護符」，色違更容易出現了', { icon: art.sparkle, kind: 'dex' });
+    });
+    g.on('bondUp', ({ a, b, level, zh }) => {
+      if (level < 2) return;
+      const pa = this.stage.pets.get(a), pb = this.stage.pets.get(b);
+      for (const p of [pa, pb]) if (p) this.stage.fx.hearts(p.head().x, p.head().y, this.stage.S, 3);
+      this.audio.sfx('heart');
+      this.ui?.toast(`${g.displayName(g.mon(a))}和${g.displayName(g.mon(b))}變成${zh}了！`);
+    });
   }
 
   // 開發用：立刻生成一個氣息點

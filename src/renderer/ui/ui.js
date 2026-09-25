@@ -7,7 +7,8 @@ import { BALLS, BALL_ORDER } from '../../core/capture.js';
 import { activeModifiers, FLAVOR_TYPES, RATES } from '../../core/encounter.js';
 import { requirement } from '../../core/evolution.js';
 import { SPOTS } from '../../core/dex.js';
-import { STARTERS } from '../../core/game.js';
+import { STARTERS, BOND_LEVELS, bondLevel } from '../../core/game.js';
+import { shinyChance, chainRolls, BASE_ODDS, CHARM_AT } from '../../core/shiny.js';
 import { MAX_OUT } from '../../core/save.js';
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -245,7 +246,8 @@ export class UI {
       <div class="head"><div class="big"></div>
         <div><label class="nick">暱稱 <input maxlength="12" data-uid="${m.uid}" value="${esc(m.nickname ?? '')}" placeholder="${esc(sp.name.zh)}"></label>
         <div>No.${sp.id} ${esc(sp.name.zh)} ${this.typeChips(sp.types)}</div>
-        <div>性格：${esc(nature.zh)}</div><div>口味：${esc(taste)}</div></div></div>
+        <div>性格：${esc(nature.zh)}</div><div>口味：${esc(taste)}</div>
+        <div>${this.friendLine(m)}</div></div></div>
       <div class="stats">
         <div class="stat"><span>好感</span>${this.heartsHtml(m.affection)}</div>
         ${this.bar('飽足感', m.fullness, MAX, 'full')}
@@ -261,6 +263,14 @@ export class UI {
     return root;
   }
 
+  // 跟哪一隻夥伴感情最好
+  friendLine(m) {
+    const best = this.game.bestFriend(m.uid);
+    if (!best || bondLevel(best.points) < 1) return '夥伴：還沒有特別要好的';
+    const lv = bondLevel(best.points);
+    return `${esc(BOND_LEVELS[lv].zh)}：${esc(this.game.displayName(this.game.mon(best.uid)))} ${'♥'.repeat(lv)}`;
+  }
+
   flavorOf(taste) {
     const f = FLAVORS.find(fl => ({ sweet: 'sweet', mint: 'dry', citrus: 'sour', mocha: 'bitter', spice: 'spicy' })[fl] === taste);
     return `${FLAVOR_ZH[f]}泡芙`;
@@ -269,12 +279,12 @@ export class UI {
   // ---------- 圖鑑 ----------
   render_dex() {
     const g = this.game;
-    const root = h(`<div class="dex"><div class="summary">已見 ${g.seenCount()}・已捕獲 ${g.caughtCount()}／${this.dex.all.length}</div>
+    const root = h(`<div class="dex"><div class="summary">已見 ${g.seenCount()}・已捕獲 ${g.caughtCount()}／${this.dex.all.length}・色違 ${g.shinySpeciesCount()} 種${g.state.shinyCharm ? '・<span class="charm">✦ 閃耀護符</span>' : ''}</div>
       <div class="grid scroll"></div><div class="entry"></div></div>`);
     const grid = root.querySelector('.grid');
     for (const s of this.dex.all) {
       const d = g.state.dex[s.id];
-      const cell = h(`<button class="cell ${this.selectedDex === s.id ? 'sel' : ''} ${d?.caught ? 'caught' : d?.seen ? 'seen' : 'unseen'}" data-dex="${s.id}"><small>${s.id}</small></button>`);
+      const cell = h(`<button class="cell ${this.selectedDex === s.id ? 'sel' : ''} ${d?.caught ? 'caught' : d?.seen ? 'seen' : 'unseen'}" data-dex="${s.id}"><small>${s.id}</small>${d?.shiny ? '<i class="shiny" title="抓過色違">✦</i>' : ''}</button>`);
       if (d?.seen) cell.prepend(this.thumb(s.id, { size: 40, variant: d.caught ? 'color' : 'dark' }));
       else cell.prepend(h('<span class="q">?</span>'));
       grid.append(cell);
@@ -288,6 +298,7 @@ export class UI {
     }
     const s = this.dex.get(id);
     const known = d.caught > 0;
+    const shinyView = this.dexShiny && d.shiny > 0;
     entry.innerHTML = `
       <div class="big"></div>
       <h3>No.${s.id} ${esc(s.name.zh)}</h3>
@@ -296,8 +307,9 @@ export class UI {
       ${known ? `<div>身高 ${s.height} m・體重 ${s.weight} kg</div>
         <p class="flavor">${esc(s.flavor)}${s.flavorOfficial ? '' : '<br><small>（非官方翻譯）</small>'}</p>` : '<p class="hint">抓到之後就能看到更多資料。</p>'}
       <div class="hint">出沒：${esc(SPOTS[this.habitatOf(id)].zh)}</div>
-      <div class="hint">遇見 ${d.seen} 次・捕獲 ${d.caught} 次</div>`;
-    entry.querySelector('.big').append(this.thumb(id, { size: 96, variant: known ? 'color' : 'dark' }));
+      <div class="hint">遇見 ${d.seen} 次・捕獲 ${d.caught} 次${d.shiny ? `・色違 ${d.shiny} 次` : ''}</div>
+      ${d.shiny ? `<button data-act="shinyview" class="${shinyView ? 'sel' : ''}">✦ ${shinyView ? '看一般的樣子' : '看色違的樣子'}</button>` : known ? '<div class="hint">色違：還沒遇過</div>' : ''}`;
+    entry.querySelector('.big').append(this.thumb(id, { size: 96, variant: known ? 'color' : 'dark', shiny: shinyView }));
     return root;
   }
 
@@ -353,11 +365,26 @@ export class UI {
       <h4>現在的氣息</h4>
       <ul>${mods.map(m => `<li>${esc(m.zh)}</li>`).join('') || '<li>沒有特別的氣息。</li>'}</ul>
       <h4>寶可夢從哪裡來？</h4>
-      <p class="hint">野生寶可夢會從桌面下緣的「氣息點」冒出來：${Object.entries(SPOTS).filter(([k]) => k !== 'ring').map(([, v]) => esc(v.zh)).join('、')}。點一下氣息點就會遇到牠。</p>
+      <p class="hint">野生寶可夢會從桌面上的「氣息點」冒出來：${Object.entries(SPOTS).filter(([k]) => k !== 'ring').map(([, v]) => esc(v.zh)).join('、')}。點一下氣息點就會遇到牠。</p>
       <p class="hint">出現的寶可夢會受到現實時間、星期、你的電腦（很燙？剛插上電源？剛從離開回來？）影響。這些只讀取系統狀態，不會讀取你的鍵盤或視窗內容。</p>
       <h4>泡芙誘餌吸引的屬性</h4><ul>${flavorLines}</ul>
+      ${this.shinyHtml()}
       <p class="hint">據說好感滿點的夥伴、集齊的核心、特別的時刻，會引來卡洛斯的傳說…</p>
     </div>`);
+  }
+
+  shinyHtml() {
+    const st = this.game.state, c = st.chain, ctx = this.director.ctx();
+    const odds = id => `1/${Math.round(1 / shinyChance(st, id, ctx))}`;
+    const chainLine = c.count > 0
+      ? `<li>連鎖中：<b>${esc(this.dex.name(c.species))} ×${c.count}</b>（牠比較常出現；牠的色違機率 ${odds(c.species)}${chainRolls(c.count) ? '' : '，連鎖 5 以上開始提高'}）</li>`
+      : '<li>連鎖：連續抓同一種寶可夢會形成連鎖，越長越容易遇到牠的色違</li>';
+    return `<h4>色違</h4><ul>
+      <li>現在的色違機率：約 ${odds(-1)}（基本 1/${BASE_ODDS}）</li>
+      ${chainLine}
+      <li>閃耀護符：${st.shinyCharm ? '✦ 已獲得（色違機率 ×3）' : `圖鑑捕獲 ${CHARM_AT} 種可以拿到（目前 ${this.game.caughtCount()} 種）`}</li>
+      <li>華麗、豪華泡芙當誘餌時，色違也會比較容易出現${ctx.lureTier === 'fancy' || ctx.lureTier === 'deluxe' ? '（生效中）' : ''}</li>
+    </ul><p class="hint">連鎖中的寶可夢逃走或放牠離開，連鎖就會中斷。色違的氣息點偶爾會閃一下。</p>`;
   }
 
   // ---------- 設定 ----------
@@ -412,6 +439,7 @@ export class UI {
         break;
       }
       case 'spawn': this.director.spawnNow(); break;
+      case 'shinyview': this.dexShiny = !this.dexShiny; this.audio.sfx('click'); this.renderPanel(); return;
       case 'devfill':
         for (const k of Object.keys(this.game.state.bag.puffs)) this.game.state.bag.puffs[k] += 5;
         for (const k of BALL_ORDER) this.game.state.bag.balls[k] += 20;
@@ -522,7 +550,9 @@ export class UI {
     const caughtBefore = (this.game.state.dex[s.id]?.caught ?? 0) > 0;
     const busy = enc.throwing;
     const aiming = this.stage.mode?.type === 'aim' ? this.stage.mode.ball : null;
-    this.encBar.innerHTML = `<div class="name">${enc.wild.shiny ? '✦ ' : ''}野生的${esc(s.name.zh)}${caughtBefore ? ' <span class="badge">已捕獲</span>' : ''}</div>
+    const chain = this.game.state.chain;
+    const chainTag = chain.species === s.id && chain.count ? ` <span class="badge chain">連鎖 ×${chain.count}</span>` : '';
+    this.encBar.innerHTML = `<div class="name">${enc.wild.shiny ? '<span class="shinytag">✦ 色違</span> ' : ''}野生的${esc(s.name.zh)}${caughtBefore ? ' <span class="badge">已捕獲</span>' : ''}${chainTag}</div>
       <div class="btns">${BALL_ORDER.map(b => `<button data-ball="${b}" class="${aiming === b ? 'sel' : ''}" ${busy || !bag[b] ? 'disabled' : ''} title="${BALLS[b].zh}">×${bag[b]}</button>`).join('')}
       <button data-act="puff" ${busy || enc.wild.puff !== 'none' ? 'disabled' : ''}>給泡芙</button><button data-act="run" ${busy ? 'disabled' : ''}>離開</button></div>
       <div class="hint">${aiming ? '在圈圈最小的時候點牠！' : enc.wild.puff !== 'none' ? '牠吃了泡芙，變得比較安心了' : '選一顆球，或先給牠泡芙'}</div>`;

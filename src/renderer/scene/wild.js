@@ -71,6 +71,11 @@ export class Spot {
       this.nextRustle = this.t + 3;
       if (this.t < 10) this.stage.audio.sfx('rustle'); // 只在剛出現時出聲，不吵
     }
+    // 色違：氣息點偶爾會閃一下（眼尖的人會發現）
+    if (this.plan.shiny && this.alpha >= 1 && Math.random() < dt * 0.6) {
+      const r = this.rect();
+      this.stage.fx.sparkles(r.x + Math.random() * r.w, r.y + Math.random() * r.h, S, 1, 2);
+    }
     if (this.t > this.life) {
       this.alpha -= dt * 2;
       if (this.alpha <= 0) this.gone = true;
@@ -114,7 +119,7 @@ export class WildMon {
     this.eating = null;
     this.gone = false;
     this.alpha = 1;
-    if (encounter.shiny) stage.fx.sparkles(this.x, this.y - 30 * S, S, 12, 40);
+    if (encounter.shiny) { stage.fx.sparkles(this.x, this.y - 30 * S, S, 16, 40); stage.fx.stars(this.x, this.y - 30 * S, S, 8); }
   }
 
   get asset() { return this.stage.sprites.peek(this.enc.speciesId, this.enc.shiny); }
@@ -146,6 +151,10 @@ export class WildMon {
     this.stateT += dt;
     this.ringT += dt;
     if (this.emote && this.t > this.emote.until) this.emote = null;
+    if (this.enc.shiny && this.visible && Math.random() < dt * 1.2) {
+      const r = this.rect();
+      st.fx.sparkles(r.x + Math.random() * r.w, r.y + Math.random() * r.h, S, 1, 3);
+    }
     switch (this.state) {
       case 'emerge': {
         // 從氣息點跳出來

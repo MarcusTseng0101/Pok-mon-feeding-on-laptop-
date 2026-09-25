@@ -30,6 +30,14 @@ export class Fx {
       this.add({ rect: color, size: S, x, y, vx: (Math.random() - 0.5) * 60 * S, vy: -Math.random() * 40 * S, g: 160 * S, life: 0.6 });
     }
   }
+  // 一小撮方塊粒子（水花、火花、落葉、泥土…）。dir：往哪個方向噴（弧度），spread：散開角度
+  burst(x, y, S, color, { n = 6, speed = 50, dir = -Math.PI / 2, spread = Math.PI, g = 120, life = 0.6, size = S / 2, wobble = false } = {}) {
+    const colors = Array.isArray(color) ? color : [color];
+    for (let i = 0; i < n; i++) {
+      const a = dir + (Math.random() - 0.5) * spread, v = speed * (0.5 + Math.random() * 0.7) * S;
+      this.add({ rect: colors[i % colors.length], size, x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g: g * S, life: life * (0.7 + Math.random() * 0.6), wobble });
+    }
+  }
   ring(x, y, S, color = '#ffffff', maxR = 40) { this.add({ ring: color, x, y, maxR: maxR * S, S, life: 0.5 }); }
   text(x, y, str, S, color = '#ffffff') { this.add({ text: str, color, x, y, vy: -20 * S, life: 1.2, S }); }
 

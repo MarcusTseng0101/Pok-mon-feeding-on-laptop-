@@ -36,9 +36,12 @@ export function defaultSave(now) {
     dex: {}, // [speciesId]: { seen, caught, firstSeenAt, firstCaughtAt }
     mons: [],
     zygardeCells: 0,
+    shinyCharm: false,
+    chain: { species: null, count: 0 }, // 同種連鎖捕獲
+    bonds: {}, // 夥伴之間的感情 { 'uidA|uidB': 0–255 }
     regenMinutes: 0,
     nextPartnerGiftAt: now + 30 * 60 * 1000,
-    stats: { encounters: 0, throws: 0, catches: 0, puffsFed: 0, strokes: 0, evolutions: 0 },
+    stats: { encounters: 0, throws: 0, catches: 0, puffsFed: 0, strokes: 0, evolutions: 0, shinies: 0 },
   };
 }
 
@@ -83,10 +86,18 @@ export function migrate(raw, dex, now) {
   for (const m of s.mons) if (m.out && ++out > MAX_OUT) m.out = false;
   s.dex = {};
   for (const [id, d] of Object.entries(raw.dex ?? {})) {
-    if (dex.has(Number(id))) s.dex[id] = { seen: num(d.seen, 0, 0), caught: num(d.caught, 0, 0), firstSeenAt: d.firstSeenAt ?? null, firstCaughtAt: d.firstCaughtAt ?? null };
+    if (dex.has(Number(id))) s.dex[id] = { seen: num(d.seen, 0, 0), caught: num(d.caught, 0, 0), shiny: num(d.shiny, 0, 0), firstSeenAt: d.firstSeenAt ?? null, firstCaughtAt: d.firstCaughtAt ?? null };
   }
   s.stats = { ...base.stats, ...(raw.stats ?? {}) };
   s.zygardeCells = num(raw.zygardeCells, 0, 0, 10);
+  s.shinyCharm = Boolean(raw.shinyCharm);
+  s.chain = dex.has(raw.chain?.species) ? { species: raw.chain.species, count: num(raw.chain.count, 0, 0, 999) } : { species: null, count: 0 };
+  const uids = new Set(s.mons.map(m => m.uid));
+  s.bonds = {};
+  for (const [k, v] of Object.entries(raw.bonds ?? {})) {
+    const [a, b] = k.split('|');
+    if (uids.has(a) && uids.has(b) && a !== b) s.bonds[a < b ? `${a}|${b}` : `${b}|${a}`] = num(v, 0, 0, 255);
+  }
   s.starterChosen = Boolean(raw.starterChosen) || s.mons.length > 0;
   return s;
 }

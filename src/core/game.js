@@ -5,6 +5,17 @@ import * as amie from './amie.js';
 import { BALLS, catchProbability, rollCatch, fleeChance } from './capture.js';
 import { checkEvolution } from './evolution.js';
 import { MAX_OUT } from './save.js';
+import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain } from './shiny.js';
+
+// 夥伴之間的感情（0–255），到這些門檻時通知畫面
+export const BOND_LEVELS = [
+  { at: 0, zh: '還不熟' },
+  { at: 30, zh: '認識了' },
+  { at: 100, zh: '好朋友' },
+  { at: 200, zh: '最好的朋友' },
+];
+export const bondLevel = points => BOND_LEVELS.reduce((lv, l, i) => (points >= l.at ? i : lv), 0);
+export const bondKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
 const MIN = 60 * 1000;
 const localDate = t => {
@@ -191,10 +202,20 @@ export class Game {
     } else {
       wild.failedThrows++;
       result.fled = this.rng.chance(fleeChance(species, { puffed: wild.puff !== 'none', failedThrows: wild.failedThrows }));
-      if (result.fled) wild.done = true;
+      if (result.fled) this.wildGone(wild);
     }
     this.emit('bag');
     return result;
+  }
+
+  // 野生寶可夢沒被抓到就離開（逃走、等太久、放牠走）：連鎖中斷
+  wildGone(wild) {
+    if (wild.gone) return 0;
+    wild.done = true;
+    wild.gone = true;
+    const lost = breakChain(this.state, wild.speciesId);
+    if (lost) this.emit('chainBroken', { speciesId: wild.speciesId, count: lost });
+    return lost;
   }
 
   registerCatch(wild, ball) {
@@ -210,6 +231,13 @@ export class Game {
     if (this.outMons().length < MAX_OUT) mon.out = true;
     this.state.mons.push(mon);
     this.state.stats.catches++;
+    if (wild.shiny) {
+      d.shiny = (d.shiny ?? 0) + 1;
+      this.state.stats.shinies++;
+    }
+    const chain = advanceChain(this.state, wild.speciesId);
+    if (CHAIN_STEPS.includes(chain)) this.emit('chain', { speciesId: wild.speciesId, count: chain });
+    this.checkCharm();
     if (wild.speciesId === 718) this.state.zygardeCells = 0;
 
     const rewards = { balls: {}, puffs: [] };
@@ -255,6 +283,37 @@ export class Game {
     return mon;
   }
 
+  // 捕獲 60 種：獲得閃耀護符
+  checkCharm() {
+    if (this.state.shinyCharm || this.caughtCount() < CHARM_AT) return;
+    this.state.shinyCharm = true;
+    this.emit('charm');
+  }
+  shinySpeciesCount() { return Object.values(this.state.dex).filter(d => d.shiny > 0).length; }
+
+  // ---- 夥伴之間 ----
+  bond(uidA, uidB, amount = 1) {
+    if (uidA === uidB || !this.mon(uidA) || !this.mon(uidB)) return null;
+    const k = bondKey(uidA, uidB);
+    const before = this.state.bonds[k] ?? 0;
+    const after = Math.min(255, before + amount);
+    this.state.bonds[k] = after;
+    const lv = bondLevel(after);
+    if (lv > bondLevel(before)) this.emit('bondUp', { a: uidA, b: uidB, level: lv, zh: BOND_LEVELS[lv].zh });
+    return after;
+  }
+  bondOf(uidA, uidB) { return this.state.bonds[bondKey(uidA, uidB)] ?? 0; }
+  bestFriend(uid) {
+    let best = null;
+    for (const [k, v] of Object.entries(this.state.bonds)) {
+      const [a, b] = k.split('|');
+      if (a !== uid && b !== uid) continue;
+      const other = a === uid ? b : a;
+      if (this.mon(other) && (!best || v > best.points)) best = { uid: other, points: v };
+    }
+    return best;
+  }
+
   addZygardeCell() {
     this.state.zygardeCells = Math.min(10, this.state.zygardeCells + 1);
     this.emit('cell', { cells: this.state.zygardeCells });
@@ -289,7 +348,9 @@ export class Game {
     d.seen++;
     d.caught++;
     d.firstCaughtAt ??= this.now();
+    if (mon.shiny) d.shiny = (d.shiny ?? 0) + 1;
     this.state.stats.evolutions++;
+    this.checkCharm();
     this.emit('evolved', { uid, from, to: mon.species, isNewSpecies });
     return { from, to: mon.species, isNewSpecies };
   }
