@@ -10,6 +10,7 @@ import { SPOTS } from '../../core/dex.js';
 import { STARTERS, BOND_LEVELS, bondLevel } from '../../core/game.js';
 import { shinyChance, chainRolls, BASE_ODDS, CHARM_AT } from '../../core/shiny.js';
 import { MAX_OUT } from '../../core/save.js';
+import { habitNames } from '../scene/habits.js';
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
@@ -247,7 +248,8 @@ export class UI {
         <div><label class="nick">暱稱 <input maxlength="12" data-uid="${m.uid}" value="${esc(m.nickname ?? '')}" placeholder="${esc(sp.name.zh)}"></label>
         <div>No.${sp.id} ${esc(sp.name.zh)} ${this.typeChips(sp.types)}</div>
         <div>性格：${esc(nature.zh)}</div><div>口味：${esc(taste)}</div>
-        <div>${this.friendLine(m)}</div></div></div>
+        <div>${this.friendLine(m)}</div>
+        <div class="habits">習性：${habitNames(m.species).map(esc).join('、') || '—'}</div></div></div>
       <div class="stats">
         <div class="stat"><span>好感</span>${this.heartsHtml(m.affection)}</div>
         ${this.bar('飽足感', m.fullness, MAX, 'full')}
@@ -305,7 +307,8 @@ export class UI {
       <div class="sub">${esc(s.name.ja)}・${esc(s.name.en)}</div>
       <div>${esc(s.genus ?? '')} ${this.typeChips(s.types)}</div>
       ${known ? `<div>身高 ${s.height} m・體重 ${s.weight} kg</div>
-        <p class="flavor">${esc(s.flavor)}${s.flavorOfficial ? '' : '<br><small>（非官方翻譯）</small>'}</p>` : '<p class="hint">抓到之後就能看到更多資料。</p>'}
+        <p class="flavor">${esc(s.flavor)}${s.flavorOfficial ? '' : '<br><small>（非官方翻譯）</small>'}</p>
+        <div class="hint">習性：${habitNames(id).map(esc).join('、')}</div>` : '<p class="hint">抓到之後就能看到更多資料。</p>'}
       <div class="hint">出沒：${esc(SPOTS[this.habitatOf(id)].zh)}</div>
       <div class="hint">遇見 ${d.seen} 次・捕獲 ${d.caught} 次${d.shiny ? `・色違 ${d.shiny} 次` : ''}</div>
       ${d.shiny ? `<button data-act="shinyview" class="${shinyView ? 'sel' : ''}">✦ ${shinyView ? '看一般的樣子' : '看色違的樣子'}</button>` : known ? '<div class="hint">色違：還沒遇過</div>' : ''}`;
