@@ -1,0 +1,2215 @@
+{
+ "source": "PokeAPI api-data",
+ "generatedAt": "2026-09-25T14:08:20.791Z",
+ "typeNames": {
+  "normal": "一般",
+  "fighting": "格鬥",
+  "flying": "飛行",
+  "poison": "毒",
+  "ground": "地面",
+  "rock": "岩石",
+  "bug": "蟲",
+  "ghost": "幽靈",
+  "steel": "鋼",
+  "fire": "火",
+  "water": "水",
+  "grass": "草",
+  "electric": "電",
+  "psychic": "超能力",
+  "ice": "冰",
+  "dragon": "龍",
+  "dark": "惡",
+  "fairy": "妖精"
+ },
+ "natures": [
+  {
+   "slug": "hardy",
+   "zh": "勤奮",
+   "likes": null,
+   "hates": null
+  },
+  {
+   "slug": "bold",
+   "zh": "大膽",
+   "likes": "sour",
+   "hates": "spicy"
+  },
+  {
+   "slug": "modest",
+   "zh": "內斂",
+   "likes": "dry",
+   "hates": "spicy"
+  },
+  {
+   "slug": "calm",
+   "zh": "溫和",
+   "likes": "bitter",
+   "hates": "spicy"
+  },
+  {
+   "slug": "timid",
+   "zh": "膽小",
+   "likes": "sweet",
+   "hates": "spicy"
+  },
+  {
+   "slug": "lonely",
+   "zh": "怕寂寞",
+   "likes": "spicy",
+   "hates": "sour"
+  },
+  {
+   "slug": "docile",
+   "zh": "坦率",
+   "likes": null,
+   "hates": null
+  },
+  {
+   "slug": "mild",
+   "zh": "慢吞吞",
+   "likes": "dry",
+   "hates": "sour"
+  },
+  {
+   "slug": "gentle",
+   "zh": "溫順",
+   "likes": "bitter",
+   "hates": "sour"
+  },
+  {
+   "slug": "hasty",
+   "zh": "急躁",
+   "likes": "sweet",
+   "hates": "sour"
+  },
+  {
+   "slug": "adamant",
+   "zh": "固執",
+   "likes": "spicy",
+   "hates": "dry"
+  },
+  {
+   "slug": "impish",
+   "zh": "淘氣",
+   "likes": "sour",
+   "hates": "dry"
+  },
+  {
+   "slug": "bashful",
+   "zh": "害羞",
+   "likes": null,
+   "hates": null
+  },
+  {
+   "slug": "careful",
+   "zh": "慎重",
+   "likes": "bitter",
+   "hates": "dry"
+  },
+  {
+   "slug": "rash",
+   "zh": "馬虎",
+   "likes": "dry",
+   "hates": "bitter"
+  },
+  {
+   "slug": "jolly",
+   "zh": "爽朗",
+   "likes": "sweet",
+   "hates": "dry"
+  },
+  {
+   "slug": "naughty",
+   "zh": "頑皮",
+   "likes": "spicy",
+   "hates": "bitter"
+  },
+  {
+   "slug": "lax",
+   "zh": "樂天",
+   "likes": "sour",
+   "hates": "bitter"
+  },
+  {
+   "slug": "quirky",
+   "zh": "浮躁",
+   "likes": null,
+   "hates": null
+  },
+  {
+   "slug": "naive",
+   "zh": "天真",
+   "likes": "sweet",
+   "hates": "bitter"
+  },
+  {
+   "slug": "brave",
+   "zh": "勇敢",
+   "likes": "spicy",
+   "hates": "sweet"
+  },
+  {
+   "slug": "relaxed",
+   "zh": "悠閒",
+   "likes": "sour",
+   "hates": "sweet"
+  },
+  {
+   "slug": "quiet",
+   "zh": "冷靜",
+   "likes": "dry",
+   "hates": "sweet"
+  },
+  {
+   "slug": "sassy",
+   "zh": "自大",
+   "likes": "bitter",
+   "hates": "sweet"
+  },
+  {
+   "slug": "serious",
+   "zh": "認真",
+   "likes": null,
+   "hates": null
+  }
+ ],
+ "species": [
+  {
+   "id": 650,
+   "slug": "chespin",
+   "name": {
+    "zh": "哈力栗",
+    "ja": "ハリマロン",
+    "en": "Chespin"
+   },
+   "genus": "刺栗寶可夢",
+   "flavor": "頭部和背部覆蓋著厚厚的木質外殼，就算被卡車正面撞上也不痛不癢。",
+   "flavorOfficial": false,
+   "types": [
+    "grass"
+   ],
+   "height": 0.4,
+   "weight": 9,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 651,
+     "trigger": "level-up",
+     "minLevel": 16,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 651,
+   "slug": "quilladin",
+   "name": {
+    "zh": "胖胖哈力",
+    "ja": "ハリボーグ",
+    "en": "Quilladin"
+   },
+   "genus": "刺鎧寶可夢",
+   "flavor": "會互相衝撞來鍛鍊下半身。個性非常溫柔，不會主動挑起爭鬥。",
+   "flavorOfficial": false,
+   "types": [
+    "grass"
+   ],
+   "height": 0.7,
+   "weight": 29,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 650,
+   "evolutions": [
+    {
+     "to": 652,
+     "trigger": "level-up",
+     "minLevel": 36,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 652,
+   "slug": "chesnaught",
+   "name": {
+    "zh": "布里卡隆",
+    "ja": "ブリガロン",
+    "en": "Chesnaught"
+   },
+   "genus": "刺鎧寶可夢",
+   "flavor": "用拳頭護住臉擺出防禦姿勢時，連炸彈的爆炸都擋得住。",
+   "flavorOfficial": false,
+   "types": [
+    "grass",
+    "fighting"
+   ],
+   "height": 1.6,
+   "weight": 90,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 651,
+   "evolutions": []
+  },
+  {
+   "id": 653,
+   "slug": "fennekin",
+   "name": {
+    "zh": "火狐狸",
+    "ja": "フォッコ",
+    "en": "Fennekin"
+   },
+   "genus": "狐狸寶可夢",
+   "flavor": "走路時會把樹枝當零食咬著。會從耳朵噴出熱氣來威嚇對手。",
+   "flavorOfficial": false,
+   "types": [
+    "fire"
+   ],
+   "height": 0.4,
+   "weight": 9.4,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 654,
+     "trigger": "level-up",
+     "minLevel": 16,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 654,
+   "slug": "braixen",
+   "name": {
+    "zh": "長尾火狐",
+    "ja": "テールナー",
+    "en": "Braixen"
+   },
+   "genus": "狐狸寶可夢",
+   "flavor": "從尾巴拔出樹枝時，摩擦會讓樹枝點燃。牠會用那團火焰向同伴打信號。",
+   "flavorOfficial": false,
+   "types": [
+    "fire"
+   ],
+   "height": 1,
+   "weight": 14.5,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 653,
+   "evolutions": [
+    {
+     "to": 655,
+     "trigger": "level-up",
+     "minLevel": 36,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 655,
+   "slug": "delphox",
+   "name": {
+    "zh": "妖火紅狐",
+    "ja": "マフォクシー",
+    "en": "Delphox"
+   },
+   "genus": "狐狸寶可夢",
+   "flavor": "用超能力製造出攝氏約3000度的火焰漩渦，把捲入其中的敵人燒成灰燼。",
+   "flavorOfficial": false,
+   "types": [
+    "fire",
+    "psychic"
+   ],
+   "height": 1.5,
+   "weight": 39,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 654,
+   "evolutions": []
+  },
+  {
+   "id": 656,
+   "slug": "froakie",
+   "name": {
+    "zh": "呱呱泡蛙",
+    "ja": "ケロマツ",
+    "en": "Froakie"
+   },
+   "genus": "泡蛙寶可夢",
+   "flavor": "用細緻的泡泡包覆全身來保護皮膚。看似無憂無慮，其實一直留意著周遭的動靜。",
+   "flavorOfficial": false,
+   "types": [
+    "water"
+   ],
+   "height": 0.3,
+   "weight": 7,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 657,
+     "trigger": "level-up",
+     "minLevel": 16,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 657,
+   "slug": "frogadier",
+   "name": {
+    "zh": "呱頭蛙",
+    "ja": "ゲコガシラ",
+    "en": "Frogadier"
+   },
+   "genus": "泡蛙寶可夢",
+   "flavor": "速度無與倫比，一分鐘內就能爬上超過600公尺高的高塔。",
+   "flavorOfficial": false,
+   "types": [
+    "water"
+   ],
+   "height": 0.6,
+   "weight": 10.9,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 656,
+   "evolutions": [
+    {
+     "to": 658,
+     "trigger": "level-up",
+     "minLevel": 36,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 658,
+   "slug": "greninja",
+   "name": {
+    "zh": "甲賀忍蛙",
+    "ja": "ゲッコウガ",
+    "en": "Greninja"
+   },
+   "genus": "忍者寶可夢",
+   "flavor": "像忍者一樣神出鬼沒。以迅捷的動作戲弄敵人，再用鋒利的水手裏劍將對手斬開。",
+   "flavorOfficial": false,
+   "types": [
+    "water",
+    "dark"
+   ],
+   "height": 1.5,
+   "weight": 40,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 657,
+   "evolutions": []
+  },
+  {
+   "id": 659,
+   "slug": "bunnelby",
+   "name": {
+    "zh": "掘掘兔",
+    "ja": "ホルビー",
+    "en": "Bunnelby"
+   },
+   "genus": "挖洞寶可夢",
+   "flavor": "對危險很敏感。只要聽到鋼鎧鴉拍打翅膀的聲音，就會馬上挖洞鑽進地下藏身。",
+   "flavorOfficial": true,
+   "types": [
+    "normal"
+   ],
+   "height": 0.4,
+   "weight": 5,
+   "captureRate": 255,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 660,
+     "trigger": "level-up",
+     "minLevel": 20,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 660,
+   "slug": "diggersby",
+   "name": {
+    "zh": "掘地兔",
+    "ja": "ホルード",
+    "en": "Diggersby"
+   },
+   "genus": "挖洞寶可夢",
+   "flavor": "肚子上的體毛保溫性能優秀。在過去，人們會用牠掉落的毛來製作保暖服裝。",
+   "flavorOfficial": true,
+   "types": [
+    "normal",
+    "ground"
+   ],
+   "height": 1,
+   "weight": 42.4,
+   "captureRate": 127,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 659,
+   "evolutions": []
+  },
+  {
+   "id": 661,
+   "slug": "fletchling",
+   "name": {
+    "zh": "小箭雀",
+    "ja": "ヤヤコマ",
+    "en": "Fletchling"
+   },
+   "genus": "知更鳥寶可夢",
+   "flavor": "一旦興奮體溫就會急速上升。赤手去摸牠有時甚至會被灼傷。",
+   "flavorOfficial": true,
+   "types": [
+    "normal",
+    "flying"
+   ],
+   "height": 0.3,
+   "weight": 1.7,
+   "captureRate": 255,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 662,
+     "trigger": "level-up",
+     "minLevel": 17,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 662,
+   "slug": "fletchinder",
+   "name": {
+    "zh": "火箭雀",
+    "ja": "ヒノヤコマ",
+    "en": "Fletchinder"
+   },
+   "genus": "火花寶可夢",
+   "flavor": "地盤意識很強，且性情好戰。火箭雀彼此之間也會為了爭奪覓食的地方而戰鬥。",
+   "flavorOfficial": true,
+   "types": [
+    "fire",
+    "flying"
+   ],
+   "height": 0.7,
+   "weight": 16,
+   "captureRate": 120,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 661,
+   "evolutions": [
+    {
+     "to": 663,
+     "trigger": "level-up",
+     "minLevel": 35,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 663,
+   "slug": "talonflame",
+   "name": {
+    "zh": "烈箭鷹",
+    "ja": "ファイアロー",
+    "en": "Talonflame"
+   },
+   "genus": "烈火寶可夢",
+   "flavor": "會以時速５００公里的速度進行突擊。對手連逃跑都來不及就被牠猛烈的腳踢給解決了。",
+   "flavorOfficial": true,
+   "types": [
+    "fire",
+    "flying"
+   ],
+   "height": 1.2,
+   "weight": 24.5,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 662,
+   "evolutions": []
+  },
+  {
+   "id": 664,
+   "slug": "scatterbug",
+   "name": {
+    "zh": "粉蝶蟲",
+    "ja": "コフキムシ",
+    "en": "Scatterbug"
+   },
+   "genus": "噴粉寶可夢",
+   "flavor": "覆蓋全身的粉末能調節體溫，因此不論什麼地區或氣候都能生存。",
+   "flavorOfficial": false,
+   "types": [
+    "bug"
+   ],
+   "height": 0.3,
+   "weight": 2.5,
+   "captureRate": 255,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 665,
+     "trigger": "level-up",
+     "minLevel": 9,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 665,
+   "slug": "spewpa",
+   "name": {
+    "zh": "粉蝶蛹",
+    "ja": "コフーライ",
+    "en": "Spewpa"
+   },
+   "genus": "噴粉寶可夢",
+   "flavor": "鳥寶可夢的喙根本刮不動牠堅硬的身體。為了保護自己，牠會噴出粉末。",
+   "flavorOfficial": false,
+   "types": [
+    "bug"
+   ],
+   "height": 0.3,
+   "weight": 8.4,
+   "captureRate": 120,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 664,
+   "evolutions": [
+    {
+     "to": 666,
+     "trigger": "level-up",
+     "minLevel": 12,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 666,
+   "slug": "vivillon",
+   "name": {
+    "zh": "彩粉蝶",
+    "ja": "ビビヨン",
+    "en": "Vivillon"
+   },
+   "genus": "鱗粉寶可夢",
+   "flavor": "翅膀的花紋會隨棲息地的氣候和地形而不同。會灑下色彩繽紛的鱗粉。",
+   "flavorOfficial": false,
+   "types": [
+    "bug",
+    "flying"
+   ],
+   "height": 1.2,
+   "weight": 17,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 665,
+   "evolutions": []
+  },
+  {
+   "id": 667,
+   "slug": "litleo",
+   "name": {
+    "zh": "小獅獅",
+    "ja": "シシコ",
+    "en": "Litleo"
+   },
+   "genus": "幼獅寶可夢",
+   "flavor": "血氣方剛且好奇心旺盛。當牠生氣或是開始戰鬥時，短短的鬃毛就會變熱。",
+   "flavorOfficial": true,
+   "types": [
+    "fire",
+    "normal"
+   ],
+   "height": 0.6,
+   "weight": 13.5,
+   "captureRate": 220,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 668,
+     "trigger": "level-up",
+     "minLevel": 35,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 668,
+   "slug": "pyroar",
+   "name": {
+    "zh": "火炎獅",
+    "ja": "カエンジシ",
+    "en": "Pyroar"
+   },
+   "genus": "王者寶可夢",
+   "flavor": "能吐出攝氏６０００度的氣息，但不會用在獵物身上，因為牠比較喜歡吃生肉。",
+   "flavorOfficial": true,
+   "types": [
+    "fire",
+    "normal"
+   ],
+   "height": 1.5,
+   "weight": 81.5,
+   "captureRate": 65,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 667,
+   "evolutions": []
+  },
+  {
+   "id": 669,
+   "slug": "flabebe",
+   "name": {
+    "zh": "花蓓蓓",
+    "ja": "フラベベ",
+    "en": "Flabébé"
+   },
+   "genus": "單朵寶可夢",
+   "flavor": "頭上的冠是收集花粉製成的，蘊藏著治癒的效果。",
+   "flavorOfficial": true,
+   "types": [
+    "fairy"
+   ],
+   "height": 0.1,
+   "weight": 0.1,
+   "captureRate": 225,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 670,
+     "trigger": "level-up",
+     "minLevel": 19,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 670,
+   "slug": "floette",
+   "name": {
+    "zh": "花葉蒂",
+    "ja": "フラエッテ",
+    "en": "Floette"
+   },
+   "genus": "單朵寶可夢",
+   "flavor": "會把自己的力量分給花，用心地加以照料。絕不會原諒破壞花壇的傢伙。",
+   "flavorOfficial": true,
+   "types": [
+    "fairy"
+   ],
+   "height": 0.2,
+   "weight": 0.9,
+   "captureRate": 120,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 669,
+   "evolutions": [
+    {
+     "to": 671,
+     "trigger": "use-item",
+     "minLevel": null,
+     "item": "shiny-stone",
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 671,
+   "slug": "florges",
+   "name": {
+    "zh": "花潔夫人",
+    "ja": "フラージェス",
+    "en": "Florges"
+   },
+   "genus": "花園寶可夢",
+   "flavor": "擁有數百年的壽命。據說牠終其一生都會不斷守護著庭園。",
+   "flavorOfficial": true,
+   "types": [
+    "fairy"
+   ],
+   "height": 1.1,
+   "weight": 10,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 670,
+   "evolutions": []
+  },
+  {
+   "id": 672,
+   "slug": "skiddo",
+   "name": {
+    "zh": "坐騎小羊",
+    "ja": "メェークル",
+    "en": "Skiddo"
+   },
+   "genus": "坐騎寶可夢",
+   "flavor": "只要有陽光和水就不需要進食，因為背上的葉子能製造能量。",
+   "flavorOfficial": false,
+   "types": [
+    "grass"
+   ],
+   "height": 0.9,
+   "weight": 31,
+   "captureRate": 200,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 673,
+     "trigger": "level-up",
+     "minLevel": 32,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 673,
+   "slug": "gogoat",
+   "name": {
+    "zh": "坐騎山羊",
+    "ja": "ゴーゴート",
+    "en": "Gogoat"
+   },
+   "genus": "坐騎寶可夢",
+   "flavor": "棲息在山岳地帶。族群的首領由犄角互撞的對決來決定。",
+   "flavorOfficial": false,
+   "types": [
+    "grass"
+   ],
+   "height": 1.7,
+   "weight": 91,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 672,
+   "evolutions": []
+  },
+  {
+   "id": 674,
+   "slug": "pancham",
+   "name": {
+    "zh": "頑皮熊貓",
+    "ja": "ヤンチャム",
+    "en": "Pancham"
+   },
+   "genus": "頑皮寶可夢",
+   "flavor": "為了不被小看而一直瞪著對手，然而繃緊的神經一旦稍有放鬆，牠就會在無意中露出笑臉。",
+   "flavorOfficial": true,
+   "types": [
+    "fighting"
+   ],
+   "height": 0.6,
+   "weight": 8,
+   "captureRate": 220,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 675,
+     "trigger": "level-up",
+     "minLevel": 32,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": "dark",
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 675,
+   "slug": "pangoro",
+   "name": {
+    "zh": "流氓熊貓",
+    "ja": "ゴロンダ",
+    "en": "Pangoro"
+   },
+   "genus": "惡顏寶可夢",
+   "flavor": "透過葉子來洞悉敵人的動向。只要使出一記拳擊就能讓大型砂石車變成廢鐵。",
+   "flavorOfficial": true,
+   "types": [
+    "fighting",
+    "dark"
+   ],
+   "height": 2.1,
+   "weight": 136,
+   "captureRate": 65,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 674,
+   "evolutions": []
+  },
+  {
+   "id": 676,
+   "slug": "furfrou",
+   "name": {
+    "zh": "多麗米亞",
+    "ja": "トリミアン",
+    "en": "Furfrou"
+   },
+   "genus": "貴賓犬寶可夢",
+   "flavor": "如果放著不管，體毛就會不斷變長，但牠只允許信賴的人幫自己修剪。",
+   "flavorOfficial": true,
+   "types": [
+    "normal"
+   ],
+   "height": 1.2,
+   "weight": 28,
+   "captureRate": 160,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": []
+  },
+  {
+   "id": 677,
+   "slug": "espurr",
+   "name": {
+    "zh": "妙喵",
+    "ja": "ニャスパー",
+    "en": "Espurr"
+   },
+   "genus": "自制寶可夢",
+   "flavor": "雖然擁有可以彈飛職業摔角選手的精神力量，卻因無法好好控制而感到煩惱。",
+   "flavorOfficial": true,
+   "types": [
+    "psychic"
+   ],
+   "height": 0.3,
+   "weight": 3.5,
+   "captureRate": 190,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 678,
+     "trigger": "level-up",
+     "minLevel": 25,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 678,
+   "slug": "meowstic",
+   "name": {
+    "zh": "超能妙喵",
+    "ja": "ニャオニクス",
+    "en": "Meowstic"
+   },
+   "genus": "抑制寶可夢",
+   "flavor": "雄性的防衛本能很強，在保護自己和夥伴時能發揮最大的威力。",
+   "flavorOfficial": true,
+   "types": [
+    "psychic"
+   ],
+   "height": 0.6,
+   "weight": 8.5,
+   "captureRate": 75,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 677,
+   "evolutions": []
+  },
+  {
+   "id": 679,
+   "slug": "honedge",
+   "name": {
+    "zh": "獨劍鞘",
+    "ja": "ヒトツキ",
+    "en": "Honedge"
+   },
+   "genus": "刀劍寶可夢",
+   "flavor": "獨劍鞘護手上的藍色眼珠是牠的本體。會用陳舊的布吸取人類的精氣。",
+   "flavorOfficial": true,
+   "types": [
+    "steel",
+    "ghost"
+   ],
+   "height": 0.8,
+   "weight": 2,
+   "captureRate": 180,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 680,
+     "trigger": "level-up",
+     "minLevel": 35,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 680,
+   "slug": "doublade",
+   "name": {
+    "zh": "雙劍鞘",
+    "ja": "ニダンギル",
+    "en": "Doublade"
+   },
+   "genus": "刀劍寶可夢",
+   "flavor": "２把劍會用令人眼花繚亂的速度不斷交替攻擊和防禦，藉以制服獵物。",
+   "flavorOfficial": true,
+   "types": [
+    "steel",
+    "ghost"
+   ],
+   "height": 0.8,
+   "weight": 4.5,
+   "captureRate": 90,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 679,
+   "evolutions": [
+    {
+     "to": 681,
+     "trigger": "use-item",
+     "minLevel": null,
+     "item": "dusk-stone",
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 681,
+   "slug": "aegislash",
+   "name": {
+    "zh": "堅盾劍怪",
+    "ja": "ギルガルド",
+    "en": "Aegislash"
+   },
+   "genus": "王劍寶可夢",
+   "flavor": "堅盾劍怪曾經用強大的靈力控制人和寶可夢，建立了適合自己生活的國家。",
+   "flavorOfficial": true,
+   "types": [
+    "steel",
+    "ghost"
+   ],
+   "height": 1.7,
+   "weight": 53,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 680,
+   "evolutions": []
+  },
+  {
+   "id": 682,
+   "slug": "spritzee",
+   "name": {
+    "zh": "粉香香",
+    "ja": "シュシュプ",
+    "en": "Spritzee"
+   },
+   "genus": "香水寶可夢",
+   "flavor": "身上飄出的香氣能讓人們神魂顛倒。貴婦們對牠鍾愛萬分。",
+   "flavorOfficial": true,
+   "types": [
+    "fairy"
+   ],
+   "height": 0.2,
+   "weight": 0.5,
+   "captureRate": 200,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 683,
+     "trigger": "trade",
+     "minLevel": null,
+     "item": "sachet",
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 683,
+   "slug": "aromatisse",
+   "name": {
+    "zh": "芳香精",
+    "ja": "フレフワン",
+    "en": "Aromatisse"
+   },
+   "genus": "芳香寶可夢",
+   "flavor": "會發出惡臭讓敵人喪失戰意，或者發出芳香的味道來幫助自己的夥伴。",
+   "flavorOfficial": true,
+   "types": [
+    "fairy"
+   ],
+   "height": 0.8,
+   "weight": 15.5,
+   "captureRate": 140,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 682,
+   "evolutions": []
+  },
+  {
+   "id": 684,
+   "slug": "swirlix",
+   "name": {
+    "zh": "綿綿泡芙",
+    "ja": "ペロッパフ",
+    "en": "Swirlix"
+   },
+   "genus": "棉花糖寶可夢",
+   "flavor": "蓬鬆的體毛聞起來就像棉花糖一樣甜甜的。會放出黏答答的絲纏住敵人。",
+   "flavorOfficial": true,
+   "types": [
+    "fairy"
+   ],
+   "height": 0.4,
+   "weight": 3.5,
+   "captureRate": 200,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 685,
+     "trigger": "trade",
+     "minLevel": null,
+     "item": "whipped-dream",
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 685,
+   "slug": "slurpuff",
+   "name": {
+    "zh": "胖甜妮",
+    "ja": "ペロリーム",
+    "en": "Slurpuff"
+   },
+   "genus": "泡沫奶油寶可夢",
+   "flavor": "因為體毛裡富含空氣，所以摸起來十分柔軟，重量也比看起來要輕。",
+   "flavorOfficial": true,
+   "types": [
+    "fairy"
+   ],
+   "height": 0.8,
+   "weight": 5,
+   "captureRate": 140,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 684,
+   "evolutions": []
+  },
+  {
+   "id": 686,
+   "slug": "inkay",
+   "name": {
+    "zh": "好啦魷",
+    "ja": "マーイーカ",
+    "en": "Inkay"
+   },
+   "genus": "回轉寶可夢",
+   "flavor": "會讓敵人看到自己閃爍的發光體來讓對方喪失戰意，然後趁機逃之夭夭。",
+   "flavorOfficial": true,
+   "types": [
+    "dark",
+    "psychic"
+   ],
+   "height": 0.4,
+   "weight": 3.5,
+   "captureRate": 190,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 687,
+     "trigger": "level-up",
+     "minLevel": 30,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": true
+    }
+   ]
+  },
+  {
+   "id": 687,
+   "slug": "malamar",
+   "name": {
+    "zh": "烏賊王",
+    "ja": "カラマネロ",
+    "en": "Malamar"
+   },
+   "genus": "倒轉寶可夢",
+   "flavor": "據說那些能夠改變歷史的重大事件其實都和烏賊王的催眠能力有關。",
+   "flavorOfficial": true,
+   "types": [
+    "dark",
+    "psychic"
+   ],
+   "height": 1.5,
+   "weight": 47,
+   "captureRate": 80,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 686,
+   "evolutions": []
+  },
+  {
+   "id": 688,
+   "slug": "binacle",
+   "name": {
+    "zh": "龜腳腳",
+    "ja": "カメテテ",
+    "en": "Binacle"
+   },
+   "genus": "雙手寶可夢",
+   "flavor": "如果２隻龜腳腳配合得不好，不但無法有效地攻擊和防禦，甚至沒辦法生存下去。",
+   "flavorOfficial": true,
+   "types": [
+    "rock",
+    "water"
+   ],
+   "height": 0.5,
+   "weight": 31,
+   "captureRate": 120,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 689,
+     "trigger": "level-up",
+     "minLevel": 39,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 689,
+   "slug": "barbaracle",
+   "name": {
+    "zh": "龜足巨鎧",
+    "ja": "ガメノデス",
+    "en": "Barbaracle"
+   },
+   "genus": "集合寶可夢",
+   "flavor": "用手掌上的眼珠來觀察前後左右的狀況。遇上危機時手腳會自己動起來打倒對手。",
+   "flavorOfficial": true,
+   "types": [
+    "rock",
+    "water"
+   ],
+   "height": 1.3,
+   "weight": 96,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 688,
+   "evolutions": []
+  },
+  {
+   "id": 690,
+   "slug": "skrelp",
+   "name": {
+    "zh": "垃垃藻",
+    "ja": "クズモー",
+    "en": "Skrelp"
+   },
+   "genus": "似草寶可夢",
+   "flavor": "看起來像是腐爛的海藻，因此會躲在海裡漂浮的藻屑裡混淆敵人的耳目。",
+   "flavorOfficial": true,
+   "types": [
+    "poison",
+    "water"
+   ],
+   "height": 0.5,
+   "weight": 7.3,
+   "captureRate": 225,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 691,
+     "trigger": "level-up",
+     "minLevel": 48,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 691,
+   "slug": "dragalge",
+   "name": {
+    "zh": "毒藻龍",
+    "ja": "ドラミドロ",
+    "en": "Dragalge"
+   },
+   "genus": "似草寶可夢",
+   "flavor": "透過讓頭頂類似帽子的部分浮出海面吸收陽光，就能夠製造龍之能量。",
+   "flavorOfficial": true,
+   "types": [
+    "poison",
+    "dragon"
+   ],
+   "height": 1.8,
+   "weight": 81.5,
+   "captureRate": 55,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 690,
+   "evolutions": []
+  },
+  {
+   "id": 692,
+   "slug": "clauncher",
+   "name": {
+    "zh": "鐵臂槍蝦",
+    "ja": "ウデッポウ",
+    "en": "Clauncher"
+   },
+   "genus": "水槍寶可夢",
+   "flavor": "右臂的鉗子能夠累積氣體，並且利用氣體爆炸噴射出像子彈般的水來打倒敵人。",
+   "flavorOfficial": true,
+   "types": [
+    "water"
+   ],
+   "height": 0.5,
+   "weight": 8.3,
+   "captureRate": 225,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 693,
+     "trigger": "level-up",
+     "minLevel": 37,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 693,
+   "slug": "clawitzer",
+   "name": {
+    "zh": "鋼炮臂蝦",
+    "ja": "ブロスター",
+    "en": "Clawitzer"
+   },
+   "genus": "發射器寶可夢",
+   "flavor": "右臂是能夠發射海水砲彈的大砲。威力之強，甚至能夠擊沉油輪。",
+   "flavorOfficial": true,
+   "types": [
+    "water"
+   ],
+   "height": 1.3,
+   "weight": 35.3,
+   "captureRate": 55,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 692,
+   "evolutions": []
+  },
+  {
+   "id": 694,
+   "slug": "helioptile",
+   "name": {
+    "zh": "傘電蜥",
+    "ja": "エリキテル",
+    "en": "Helioptile"
+   },
+   "genus": "發電寶可夢",
+   "flavor": "擁有太陽能發電的結構。如果有人打擾牠發電，牠就會因心理壓力而衰弱。",
+   "flavorOfficial": true,
+   "types": [
+    "electric",
+    "normal"
+   ],
+   "height": 0.5,
+   "weight": 6,
+   "captureRate": 190,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 695,
+     "trigger": "use-item",
+     "minLevel": null,
+     "item": "sun-stone",
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 695,
+   "slug": "heliolisk",
+   "name": {
+    "zh": "光電傘蜥",
+    "ja": "エレザード",
+    "en": "Heliolisk"
+   },
+   "genus": "發電寶可夢",
+   "flavor": "如果展開頸傘沐浴陽光，單憑１隻光電傘蜥就能製造出大城市所需的電力。",
+   "flavorOfficial": true,
+   "types": [
+    "electric",
+    "normal"
+   ],
+   "height": 1,
+   "weight": 21,
+   "captureRate": 75,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 694,
+   "evolutions": []
+  },
+  {
+   "id": 696,
+   "slug": "tyrunt",
+   "name": {
+    "zh": "寶寶暴龍",
+    "ja": "チゴラス",
+    "en": "Tyrunt"
+   },
+   "genus": "幼君寶可夢",
+   "flavor": "任性且愛撒嬌。即使牠只是鬧著玩，也會讓訓練家受到重傷。",
+   "flavorOfficial": true,
+   "types": [
+    "rock",
+    "dragon"
+   ],
+   "height": 0.8,
+   "weight": 26,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 697,
+     "trigger": "level-up",
+     "minLevel": 39,
+     "item": null,
+     "timeOfDay": "day",
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 697,
+   "slug": "tyrantrum",
+   "name": {
+    "zh": "怪顎龍",
+    "ja": "ガチゴラス",
+    "en": "Tyrantrum"
+   },
+   "genus": "暴君寶可夢",
+   "flavor": "只要牠的大顎一咬，就連汽車也會被粉碎。是古代世界的王者。",
+   "flavorOfficial": true,
+   "types": [
+    "rock",
+    "dragon"
+   ],
+   "height": 2.5,
+   "weight": 270,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 696,
+   "evolutions": []
+  },
+  {
+   "id": 698,
+   "slug": "amaura",
+   "name": {
+    "zh": "冰雪龍",
+    "ja": "アマルス",
+    "en": "Amaura"
+   },
+   "genus": "凍原寶可夢",
+   "flavor": "已經滅絕的古代寶可夢。有時候還會以冰封狀態被發現喔。",
+   "flavorOfficial": true,
+   "types": [
+    "rock",
+    "ice"
+   ],
+   "height": 1.3,
+   "weight": 25.2,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 699,
+     "trigger": "level-up",
+     "minLevel": 39,
+     "item": null,
+     "timeOfDay": "night",
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 699,
+   "slug": "aurorus",
+   "name": {
+    "zh": "冰雪巨龍",
+    "ja": "アマルルガ",
+    "en": "Aurorus"
+   },
+   "genus": "凍原寶可夢",
+   "flavor": "當牠大大地被激怒時，就會噴出猛烈的冰氣讓周圍一帶全被冰封。",
+   "flavorOfficial": true,
+   "types": [
+    "rock",
+    "ice"
+   ],
+   "height": 2.7,
+   "weight": 225,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 698,
+   "evolutions": []
+  },
+  {
+   "id": 700,
+   "slug": "sylveon",
+   "name": {
+    "zh": "仙子伊布",
+    "ja": "ニンフィア",
+    "en": "Sylveon"
+   },
+   "genus": "連結寶可夢",
+   "flavor": "伽勒爾地區的童話中有著美麗的仙子伊布擊退了可怕的龍寶可夢的故事。",
+   "flavorOfficial": true,
+   "types": [
+    "fairy"
+   ],
+   "height": 1,
+   "weight": 23.5,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 133,
+   "evolutions": []
+  },
+  {
+   "id": 701,
+   "slug": "hawlucha",
+   "name": {
+    "zh": "摔角鷹人",
+    "ja": "ルチャブル",
+    "en": "Hawlucha"
+   },
+   "genus": "摔角寶可夢",
+   "flavor": "在使出致命的絕招之前一定要先擺出華麗的姿勢。有時也會在這一刻遭到反擊。",
+   "flavorOfficial": true,
+   "types": [
+    "fighting",
+    "flying"
+   ],
+   "height": 0.8,
+   "weight": 21.5,
+   "captureRate": 100,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": []
+  },
+  {
+   "id": 702,
+   "slug": "dedenne",
+   "name": {
+    "zh": "咚咚鼠",
+    "ja": "デデンネ",
+    "en": "Dedenne"
+   },
+   "genus": "天線寶可夢",
+   "flavor": "由於發電的能力不強，因此會從插座或其他的電氣寶可夢那裡偷電。",
+   "flavorOfficial": true,
+   "types": [
+    "electric",
+    "fairy"
+   ],
+   "height": 0.2,
+   "weight": 2.2,
+   "captureRate": 180,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": []
+  },
+  {
+   "id": 703,
+   "slug": "carbink",
+   "name": {
+    "zh": "小碎鑽",
+    "ja": "メレシー",
+    "en": "Carbink"
+   },
+   "genus": "寶石寶可夢",
+   "flavor": "據說在世界的某處，有個沉睡著許多小碎鑽的礦床，群體的女王也在那裡。",
+   "flavorOfficial": true,
+   "types": [
+    "rock",
+    "fairy"
+   ],
+   "height": 0.3,
+   "weight": 5.7,
+   "captureRate": 60,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": []
+  },
+  {
+   "id": 704,
+   "slug": "goomy",
+   "name": {
+    "zh": "黏黏寶",
+    "ja": "ヌメラ",
+    "en": "Goomy"
+   },
+   "genus": "軟體生物寶可夢",
+   "flavor": "牠的觸角是優秀的感覺器官。只要感覺到有敵人就會立刻躲起來，以此存活到了現在。",
+   "flavorOfficial": true,
+   "types": [
+    "dragon"
+   ],
+   "height": 0.3,
+   "weight": 2.8,
+   "captureRate": 45,
+   "baseHappiness": 35,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 705,
+     "trigger": "level-up",
+     "minLevel": 40,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 705,
+   "slug": "sliggoo",
+   "name": {
+    "zh": "黏美兒",
+    "ja": "ヌメイル",
+    "en": "Sliggoo"
+   },
+   "genus": "軟體生物寶可夢",
+   "flavor": "背上的突起物裡裝著牠小小的腦子，裡面只想著吃飯和逃離敵人這兩件事。",
+   "flavorOfficial": true,
+   "types": [
+    "dragon"
+   ],
+   "height": 0.8,
+   "weight": 17.5,
+   "captureRate": 45,
+   "baseHappiness": 35,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 704,
+   "evolutions": [
+    {
+     "to": 706,
+     "trigger": "level-up",
+     "minLevel": 50,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 706,
+   "slug": "goodra",
+   "name": {
+    "zh": "黏美龍",
+    "ja": "ヌメルゴン",
+    "en": "Goodra"
+   },
+   "genus": "龍寶可夢",
+   "flavor": "用伸長角產生的力道來攻擊對手，產生的威力比重量級拳擊手的拳擊還強１００倍。",
+   "flavorOfficial": true,
+   "types": [
+    "dragon"
+   ],
+   "height": 2,
+   "weight": 150.5,
+   "captureRate": 45,
+   "baseHappiness": 35,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 705,
+   "evolutions": []
+  },
+  {
+   "id": 707,
+   "slug": "klefki",
+   "name": {
+    "zh": "鑰圈兒",
+    "ja": "クレッフィ",
+    "en": "Klefki"
+   },
+   "genus": "鑰匙串寶可夢",
+   "flavor": "會用頭的前端吸取金屬離子。據說是因為愛鑰匙成癡，因此擬態成鑰匙的樣子。",
+   "flavorOfficial": true,
+   "types": [
+    "steel",
+    "fairy"
+   ],
+   "height": 0.2,
+   "weight": 3,
+   "captureRate": 75,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": []
+  },
+  {
+   "id": 708,
+   "slug": "phantump",
+   "name": {
+    "zh": "小木靈",
+    "ja": "ボクレー",
+    "en": "Phantump"
+   },
+   "genus": "樹樁寶可夢",
+   "flavor": "用類似人類小孩的聲音鳴叫，把大人引到森林的深處，讓他們在其中迷失方向。",
+   "flavorOfficial": true,
+   "types": [
+    "ghost",
+    "grass"
+   ],
+   "height": 0.4,
+   "weight": 7,
+   "captureRate": 120,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 709,
+     "trigger": "trade",
+     "minLevel": null,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 709,
+   "slug": "trevenant",
+   "name": {
+    "zh": "朽木妖",
+    "ja": "オーロット",
+    "en": "Trevenant"
+   },
+   "genus": "老樹寶可夢",
+   "flavor": "腳尖伸出來的根鬚能連結森林中的樹木，並且自由自在地加以操縱。",
+   "flavorOfficial": true,
+   "types": [
+    "ghost",
+    "grass"
+   ],
+   "height": 1.5,
+   "weight": 71,
+   "captureRate": 60,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 708,
+   "evolutions": []
+  },
+  {
+   "id": 710,
+   "slug": "pumpkaboo",
+   "name": {
+    "zh": "南瓜精",
+    "ja": "バケッチャ",
+    "en": "Pumpkaboo"
+   },
+   "genus": "南瓜寶可夢",
+   "flavor": "南瓜的洞裡發出的光會催眠並控制看到牠的人和寶可夢。",
+   "flavorOfficial": true,
+   "types": [
+    "ghost",
+    "grass"
+   ],
+   "height": 0.4,
+   "weight": 5,
+   "captureRate": 120,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 711,
+     "trigger": "trade",
+     "minLevel": null,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 711,
+   "slug": "gourgeist",
+   "name": {
+    "zh": "南瓜怪人",
+    "ja": "パンプジン",
+    "en": "Gourgeist"
+   },
+   "genus": "南瓜寶可夢",
+   "flavor": "南瓜怪人會在朔月的夜裡去別人家門口敲門。開了門的人會被牠帶往另一個世界。",
+   "flavorOfficial": true,
+   "types": [
+    "ghost",
+    "grass"
+   ],
+   "height": 0.9,
+   "weight": 12.5,
+   "captureRate": 60,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 710,
+   "evolutions": []
+  },
+  {
+   "id": 712,
+   "slug": "bergmite",
+   "name": {
+    "zh": "冰寶",
+    "ja": "カチコール",
+    "en": "Bergmite"
+   },
+   "genus": "冰塊寶可夢",
+   "flavor": "棲息在極其寒冷的地域。會把自己的腳凍在冰岩怪的背上固定起來。",
+   "flavorOfficial": true,
+   "types": [
+    "ice"
+   ],
+   "height": 1,
+   "weight": 99.5,
+   "captureRate": 190,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 713,
+     "trigger": "level-up",
+     "minLevel": 37,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 713,
+   "slug": "avalugg",
+   "name": {
+    "zh": "冰岩怪",
+    "ja": "クレベース",
+    "en": "Avalugg"
+   },
+   "genus": "冰山寶可夢",
+   "flavor": "雖然身體的裂縫會因白天的活動而變大，但只要一晚就能全部長好。",
+   "flavorOfficial": true,
+   "types": [
+    "ice"
+   ],
+   "height": 2,
+   "weight": 505,
+   "captureRate": 55,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 712,
+   "evolutions": []
+  },
+  {
+   "id": 714,
+   "slug": "noibat",
+   "name": {
+    "zh": "嗡蝠",
+    "ja": "オンバット",
+    "en": "Noibat"
+   },
+   "genus": "音波寶可夢",
+   "flavor": "可以控制所有頻率的音波。就算是體型巨大的寶可夢，也對牠的超音波束手無策。",
+   "flavorOfficial": true,
+   "types": [
+    "flying",
+    "dragon"
+   ],
+   "height": 0.5,
+   "weight": 8,
+   "captureRate": 190,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": [
+    {
+     "to": 715,
+     "trigger": "level-up",
+     "minLevel": 48,
+     "item": null,
+     "timeOfDay": null,
+     "partyType": null,
+     "upsideDown": false
+    }
+   ]
+  },
+  {
+   "id": 715,
+   "slug": "noivern",
+   "name": {
+    "zh": "音波龍",
+    "ja": "オンバーン",
+    "en": "Noivern"
+   },
+   "genus": "音波寶可夢",
+   "flavor": "在黑暗中一邊飛行一邊發出能粉碎岩石的超音波痛擊敵人，然後用利齒給予致命的一擊。",
+   "flavorOfficial": true,
+   "types": [
+    "flying",
+    "dragon"
+   ],
+   "height": 1.5,
+   "weight": 85,
+   "captureRate": 45,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": false,
+   "evolvesFrom": 714,
+   "evolutions": []
+  },
+  {
+   "id": 716,
+   "slug": "xerneas",
+   "name": {
+    "zh": "哲爾尼亞斯",
+    "ja": "ゼルネアス",
+    "en": "Xerneas"
+   },
+   "genus": "生命寶可夢",
+   "flavor": "據說當頭上的角閃耀出七種顏色時，就是在分享永恆的生命。",
+   "flavorOfficial": false,
+   "types": [
+    "fairy"
+   ],
+   "height": 3,
+   "weight": 215,
+   "captureRate": 45,
+   "baseHappiness": 0,
+   "legendary": true,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": []
+  },
+  {
+   "id": 717,
+   "slug": "yveltal",
+   "name": {
+    "zh": "伊裴爾塔爾",
+    "ja": "イベルタル",
+    "en": "Yveltal"
+   },
+   "genus": "破壞寶可夢",
+   "flavor": "生命走到盡頭時，會吸取所有生物的生命能量，再次變回繭的模樣。",
+   "flavorOfficial": false,
+   "types": [
+    "dark",
+    "flying"
+   ],
+   "height": 5.8,
+   "weight": 203,
+   "captureRate": 45,
+   "baseHappiness": 0,
+   "legendary": true,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": []
+  },
+  {
+   "id": 718,
+   "slug": "zygarde",
+   "name": {
+    "zh": "基格爾德",
+    "ja": "ジガルデ",
+    "en": "Zygarde"
+   },
+   "genus": "秩序寶可夢",
+   "flavor": "據說當牠與威脅到生態系統的對手戰鬥時，會變化成更強大的樣子。",
+   "flavorOfficial": true,
+   "types": [
+    "dragon",
+    "ground"
+   ],
+   "height": 5,
+   "weight": 305,
+   "captureRate": 3,
+   "baseHappiness": 0,
+   "legendary": true,
+   "mythical": false,
+   "evolvesFrom": null,
+   "evolutions": []
+  },
+  {
+   "id": 719,
+   "slug": "diancie",
+   "name": {
+    "zh": "蒂安希",
+    "ja": "ディアンシー",
+    "en": "Diancie"
+   },
+   "genus": "寶石寶可夢",
+   "flavor": "能在雙手之間壓縮空氣中的碳，瞬間製造出大量鑽石。",
+   "flavorOfficial": false,
+   "types": [
+    "rock",
+    "fairy"
+   ],
+   "height": 0.7,
+   "weight": 8.8,
+   "captureRate": 3,
+   "baseHappiness": 70,
+   "legendary": false,
+   "mythical": true,
+   "evolvesFrom": null,
+   "evolutions": []
+  },
+  {
+   "id": 720,
+   "slug": "hoopa",
+   "name": {
+    "zh": "胡帕",
+    "ja": "フーパ",
+    "en": "Hoopa"
+   },
+   "genus": "頑童寶可夢",
+   "flavor": "據說能用六個圓環和六隻巨大的手臂奪取任何想要的東西。力量被封印時會變成小得多的樣子。",
+   "flavorOfficial": false,
+   "types": [
+    "psychic",
+    "ghost"
+   ],
+   "height": 0.5,
+   "weight": 9,
+   "captureRate": 3,
+   "baseHappiness": 100,
+   "legendary": false,
+   "mythical": true,
+   "evolvesFrom": null,
+   "evolutions": []
+  },
+  {
+   "id": 721,
+   "slug": "volcanion",
+   "name": {
+    "zh": "波爾凱尼恩",
+    "ja": "ボルケニオン",
+    "en": "Volcanion"
+   },
+   "genus": "蒸汽寶可夢",
+   "flavor": "從背上的手臂噴出體內的蒸氣。擁有足以把一座山吹飛的力量。",
+   "flavorOfficial": false,
+   "types": [
+    "fire",
+    "water"
+   ],
+   "height": 1.7,
+   "weight": 195,
+   "captureRate": 3,
+   "baseHappiness": 100,
+   "legendary": false,
+   "mythical": true,
+   "evolvesFrom": null,
+   "evolutions": []
+  }
+ ]
+}

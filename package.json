@@ -1,0 +1,45 @@
+{
+  "name": "kalos-amie",
+  "version": "0.1.0",
+  "description": "卡洛斯桌面夥伴：在桌面上餵寶可夢泡芙、撫摸、捕獲與收集圖鑑的像素風桌寵",
+  "main": "src/main/main.js",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env KALOS_DEV=1 electron .",
+    "test": "node --test test/*.test.js",
+    "build:dex": "node scripts/build-dex.mjs",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "dev.kalos.amie",
+    "productName": "Kalos Amie",
+    "files": [
+      "src/**",
+      "data/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    }
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "^38.8.6",
+    "electron-builder": "^26.15.3"
+  }
+}
