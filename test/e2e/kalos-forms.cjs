@@ -85,6 +85,7 @@ run('kalos-forms', async ({ page, shot }, check) => {
     while (stage.pets.size < 2 && Date.now() - t0 < 10000) await new Promise(r => setTimeout(r, 50));
     const dp = stage.pets.get(d.uid), fp = stage.pets.get(f.uid);
     for (const p of [dp, fp]) p.set('idle', 99);
+    dp.alt = 28; // 飄浮高度本來是隨機的（24–64）；固定在跟坐騎山羊重疊的高度，這樣才真的在測碰撞
     fp.x = dp.x; fp.gy = dp.gy;
     const before = { w: dp.asset.w, h: dp.asset.h };
     const noStone = await T.transform(dp, 'mega') && false; // 還沒有進化石也可以直接呼叫；UI 會擋

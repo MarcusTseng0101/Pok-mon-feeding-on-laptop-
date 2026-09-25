@@ -94,6 +94,8 @@ async function run(name, fn) {
     console.log(problems.length ? `FAIL ${name}: ${problems.join('; ')}` : `PASS ${name}`);
     process.exitCode = problems.length ? 1 : 0;
   } catch (err) {
+    // 失敗時把當下的畫面存起來（.cache 不進 repo）
+    try { fs.mkdirSync(path.join(ROOT, '.cache'), { recursive: true }); await ctx?.page.screenshot({ path: path.join(ROOT, '.cache', `fail-${name}.png`) }); } catch { /* 瀏覽器已經關了 */ }
     console.log(`FAIL ${name}: ${err.stack ?? err}`);
     process.exitCode = 1;
   } finally {

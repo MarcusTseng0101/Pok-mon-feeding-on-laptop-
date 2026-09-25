@@ -105,7 +105,8 @@ export class Director {
   update(dt) {
     const now = Date.now();
     const quiet = this.game.state.settings.quiet;
-    if (!quiet && !this.stage.spot && !this.enc && now >= this.nextSpawnAt && this.game.state.starterChosen) this.spawn();
+    const playing = Boolean(this.ui?.minigames.active); // 玩小遊戲的時候不會有野生寶可夢來打擾
+    if (!quiet && !playing && !this.stage.spot && !this.enc && now >= this.nextSpawnAt && this.game.state.starterChosen) this.spawn();
     if (this.enc && !this.enc.throwing && now > this.enc.deadline) this.wildLeaves('等不及，自己跑走了…');
     if (this.lure && now > this.lure.until) {
       this.lure.prop.life = 0;
@@ -198,6 +199,8 @@ export class Director {
       if (m?.type === 'aim') {
         if (target instanceof WildMon && target.state === 'idle') this.throwBall(m.ball);
         else this.setMode(null);
+      } else if (m?.type === 'minigame') {
+        m.host.click(st.pointer.x, st.pointer.y);
       } else if (m?.type === 'feed') {
         const ok = m.target === 'wild' ? target instanceof WildMon : target instanceof Pet;
         if (ok) st.fire('feed', target, m.puff);
@@ -206,7 +209,11 @@ export class Director {
     });
     st.on('feed', (target, puff) => this.feed(target, puff));
     st.on('cancelMode', () => this.setMode(null));
-    st.on('escape', () => { if (st.mode) this.setMode(null); else this.ui?.closeAll(); });
+    st.on('escape', () => {
+      if (this.ui?.minigames.active) this.ui.minigames.closeMinigame('esc');
+      else if (st.mode) this.setMode(null);
+      else this.ui?.closeAll();
+    });
     st.on('petPicked', () => this.ui?.closeBubble());
     st.on('petReleased', (pet, { wasUpsideDown }) => {
       if (wasUpsideDown && this.game.evolutionStatus(pet.uid, { heldUpsideDown: true })?.ready) {
@@ -225,8 +232,11 @@ export class Director {
   }
 
   setMode(mode) {
+    const prev = this.stage.mode;
     this.stage.mode = mode;
     this.ui?.onModeChange(mode);
+    // 桌面小遊戲的模式被別的東西取消了（右鍵、開始餵泡芙…）：遊戲也要結束，不然會玩到一半沒有滑鼠
+    if (prev?.type === 'minigame' && mode?.type !== 'minigame') prev.host.onModeLost();
   }
 
   feedMode(puff, target = 'pet') {

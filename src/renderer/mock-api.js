@@ -25,7 +25,8 @@ export function createMockApi() {
       } catch { return null; }
     },
     async getSignals() { return { idleSeconds: 0, cpu: 0.1, cpuHot: false, justPluggedIn: false, returnedFromIdle: false, returnedAt: 0 }; },
-    setInteractive() {},
+    interactiveCalls: [], // 測試用：檢查小遊戲結束後有沒有把滑鼠還給桌面
+    setInteractive(on) { this.interactiveCalls.push(on); },
     focus() {},
     async setLoginItem() { return false; },
     updateTray() {},

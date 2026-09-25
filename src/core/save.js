@@ -52,6 +52,7 @@ export function defaultSave(now) {
     focus: { sessions: 0, totalMinutes: 0, streakDays: 0, lastDay: null }, // 番茄鐘
     weather: null, // { city, lat, lon, enabled }
     sync: null, // { folder, deviceId, rev, lastSyncedRev }
+    minigames: { day: null, baked: 0, deluxe: 0 }, // 今天做了幾個泡芙（每天有上限）
     stats: {
       encounters: 0, throws: 0, catches: 0, puffsFed: 0, strokes: 0, evolutions: 0, shinies: 0,
       berriesPicked: 0, puffsBaked: 0, eggsHatched: 0, focusSessions: 0, perches: 0,
@@ -169,6 +170,12 @@ export function migrate(raw, dex, now) {
   s.weather = w && Number.isFinite(w.lat) && Number.isFinite(w.lon) && Math.abs(w.lat) <= 90 && Math.abs(w.lon) <= 180
     ? { city: str(w.city, 40) ?? '', lat: w.lat, lon: w.lon, enabled: Boolean(w.enabled) }
     : null;
+  const mg = raw.minigames ?? {};
+  s.minigames = {
+    day: typeof mg.day === 'string' && DAY_RE.test(mg.day) ? mg.day : null,
+    baked: Math.floor(num(mg.baked, 0, 0, 99)),
+    deluxe: Math.floor(num(mg.deluxe, 0, 0, 99)),
+  };
   const y = raw.sync;
   s.sync = y && str(y.folder, 500) && str(y.deviceId, 40)
     ? { folder: y.folder.slice(0, 500), deviceId: y.deviceId.slice(0, 40), rev: Math.floor(num(y.rev, 0, 0)), lastSyncedRev: Math.floor(num(y.lastSyncedRev, 0, 0)) }

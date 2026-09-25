@@ -266,3 +266,73 @@ export const key = fromMap(['.KKK....', 'KY.YKKKK', 'KY.YYYYK', '.KKKK.KK'], { K
 export const diamond = fromMap(['.KKK.', 'KWLLK', 'KLLLK', '.KLK.', '..K..'], { K: '#3a6a9a', W: '#ffffff', L: '#bfe8ff' });
 const FLOWER_COLORS = ['#ff5d8f', '#ffd84a', '#ffffff', '#7ab8ff', '#ff9d3a'];
 export const flowers = FLOWER_COLORS.map(c => fromMap(['.P.P.', 'PPYPP', '.PPP.', '..G..', '.GG..'], { P: c, Y: c === '#ffd84a' ? '#ff9d3a' : '#ffd84a', G: '#4a9a3a' }));
+
+// ---------- 小遊戲 ----------
+// 樹果（顏色依原作：桃桃果粉紅、零餘果紫、利木果黃、莓莓果藍綠、櫻子果紅）
+export const BERRY_COLORS = {
+  pecha: { B: '#ff9ec7', H: '#ffd6e8', D: '#d86a9a' },
+  chesto: { B: '#7a5cd6', H: '#b8a4ff', D: '#4c3aa0' },
+  aspear: { B: '#ffd84a', H: '#fff2b0', D: '#d8a820' },
+  rawst: { B: '#4ac0a8', H: '#a8f0e0', D: '#2a8a78' },
+  cheri: { B: '#e8404a', H: '#ffa8a8', D: '#a82030' },
+};
+const BERRY_ROWS = [
+  '...GG...',
+  '..KGGK..',
+  '.KBBBBK.',
+  'KBHHBBBK',
+  'KBHBBBBK',
+  'KBBBBBDK',
+  '.KBBBDK.',
+  '..KKKK..',
+];
+export const berries = Object.fromEntries(Object.entries(BERRY_COLORS).map(([k, p]) => [k, fromMap(BERRY_ROWS, { K, G: '#4a9a3a', ...p })]));
+
+// 樹果樹：shake 讓樹葉晃一下（0–1）
+export function berryTree(shake = 0) {
+  const w = 44, h = 56;
+  return paint(w, h, set => {
+    const dx = Math.round(Math.sin(shake * Math.PI * 4) * 2 * shake);
+    // 樹幹
+    for (let y = 30; y < h; y++) for (let x = 19; x < 25; x++) set(x, y, x === 19 || x === 24 ? K : y % 5 === 0 ? '#7a4a24' : '#9a6a3a');
+    for (let x = 16; x < 28; x++) set(x, h - 1, K);
+    // 樹冠：幾個圓疊在一起
+    const blobs = [[22, 16, 15], [11, 22, 10], [33, 22, 10], [22, 26, 11]];
+    const inside = (x, y) => blobs.some(([cx, cy, r]) => (x - cx) ** 2 + (y - cy) ** 2 <= r * r);
+    for (let y = 0; y < 38; y++) for (let x = 0; x < w; x++) {
+      const sx = x - dx;
+      if (!inside(sx, y)) continue;
+      const edge = !inside(sx - 1, y) || !inside(sx + 1, y) || !inside(sx, y - 1) || !inside(sx, y + 1);
+      const light = (sx + y) % 7 === 0 || (sx * 3 + y * 5) % 11 === 0;
+      set(x, y, edge ? '#1e4a1e' : light ? '#8adc6a' : y < 14 ? '#6ac84a' : '#4aa83a');
+    }
+  });
+}
+
+// 氣球（超級特訓）：顏色依能力
+export const STAT_COLORS = { hp: '#6fdc6f', atk: '#ff6b4a', def: '#ffd84a', spa: '#5ab8ff', spd: '#b88aff', spe: '#ff9ec7' };
+export const balloons = Object.fromEntries(Object.entries(STAT_COLORS).map(([k, c]) => [k, fromMap([
+  '..KKKK..',
+  '.KBBBBK.',
+  'KBWBBBBK',
+  'KBWBBBBK',
+  'KBBBBBBK',
+  '.KBBBBK.',
+  '..KBBK..',
+  '...KK...',
+  '....K...',
+  '...K....',
+  '....K...',
+], { K, B: c, W: '#ffffff' })]));
+
+// 頭球用的球
+export const playBall = fromMap([
+  '..KKKK..',
+  '.KWWRWK.',
+  'KWRRRWWK',
+  'KWWRWWRK',
+  'KRWWWRRK',
+  'KWWRWWWK',
+  '.KWWWWK.',
+  '..KKKK..',
+], { K, W: '#f8f4f0', R: '#3a78e0' });

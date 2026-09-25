@@ -946,7 +946,16 @@ export const HABITS = {
       // 輕輕跳到冰岩怪旁邊
       const av = pet.hd.on;
       pet.z = 0;
-      if (av) pet.x = av.x + (av.asset.w / 2 + pet.asset.w / 2 + 2) * pet.S * (Math.random() < 0.5 ? -1 : 1);
+      if (av) {
+        // 往有空間的那一邊跳：跳向螢幕邊緣的話會被夾回來，正好疊在冰岩怪身上
+        const gap = (av.asset.w / 2 + pet.asset.w / 2 + 4) * pet.S;
+        const b = pet.bounds();
+        const room = s => (s < 0 ? av.x - gap >= b.x0 : av.x + gap <= b.x1);
+        let side = Math.random() < 0.5 ? -1 : 1;
+        if (!room(side)) side = -side;
+        pet.x = av.x + gap * side;
+        if (!room(side)) pet.gy = av.gy + (av.gy > (b.y0 + b.y1) / 2 ? -1 : 1) * av.asset.h * 0.6 * pet.S; // 兩邊都沒空間（很窄的螢幕）：往前或往後跳
+      }
       pet.clamp();
       pet.squashT = 0.18;
       pet.set('hop', 0.35);

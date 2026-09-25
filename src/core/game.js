@@ -4,7 +4,8 @@
 import * as amie from './amie.js';
 import { BALLS, catchProbability, rollCatch, fleeChance } from './capture.js';
 import { checkEvolution } from './evolution.js';
-import { MAX_OUT, normalizeTraining } from './save.js';
+import { MAX_OUT, normalizeTraining, TRAINING_STATS, TRAINING_MAX, TRAINING_TOTAL } from './save.js';
+import * as mg from './minigames.js';
 import { canonicalForm, inheritForm, defaultForm, FORMS } from './forms.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain } from './shiny.js';
 
@@ -208,6 +209,84 @@ export class Game {
       mon.trimAt = null;
       this.emit('trimExpired', { uid: mon.uid });
     }
+  }
+
+  // ---- 小遊戲（計分規則在 minigames.js） ----
+  // 摘樹果：counts = { pecha: 2, ... }
+  addBerries(counts) {
+    let total = 0;
+    for (const [b, n] of Object.entries(counts)) {
+      if (!(b in this.state.bag.berries) || !(n > 0)) continue;
+      const add = Math.min(n, mg.MAX_BERRIES_PER_GAME - total);
+      if (add <= 0) break;
+      this.state.bag.berries[b] = Math.min(999, this.state.bag.berries[b] + add);
+      total += add;
+    }
+    this.state.stats.berriesPicked += total;
+    this.emit('bag');
+    return total;
+  }
+
+  // 還可以做幾個泡芙（今天）
+  bakesLeft() {
+    return Math.max(0, mg.DAILY_BAKES - mg.todayCounters(this.state, localDate(this.now())).baked);
+  }
+
+  // 做泡芙：berries 是 3 個樹果名稱，score 0–100（攪拌＋烘烤＋裝飾）
+  bakePuff(berries, score) {
+    if (berries.length !== mg.BERRIES_PER_PUFF) return { ok: false, reason: 'berries' };
+    const need = {};
+    for (const b of berries) need[b] = (need[b] ?? 0) + 1;
+    for (const [b, n] of Object.entries(need)) if (!(this.state.bag.berries[b] >= n)) return { ok: false, reason: 'no-berry' };
+    const today = mg.todayCounters(this.state, localDate(this.now()));
+    if (today.baked >= mg.DAILY_BAKES) return { ok: false, reason: 'daily' };
+    for (const [b, n] of Object.entries(need)) this.state.bag.berries[b] -= n;
+    const wanted = mg.bakeTier(Math.max(0, Math.min(100, score)));
+    const tier = mg.cappedTier(wanted, today);
+    const puff = amie.puffKey(mg.puffFlavor(berries), tier);
+    today.baked++;
+    if (tier === 'deluxe') today.deluxe++;
+    this.state.bag.puffs[puff]++;
+    this.state.stats.puffsBaked++;
+    this.emit('baked', { puff, tier, capped: tier !== wanted });
+    this.emit('bag');
+    return { ok: true, puff, tier, capped: tier !== wanted };
+  }
+
+  // 頭球：連續頂到幾次
+  headIt(uid, streak) {
+    const mon = this.mon(uid);
+    if (!mon) return null;
+    const before = amie.hearts(mon.affection);
+    const gain = amie.addAffection(mon, mg.headItAffection(streak));
+    mon.enjoyment = Math.min(amie.MAX, mon.enjoyment + streak * 2);
+    this.afterAffection(mon, before);
+    this.emit('party', { uid });
+    return { affection: gain };
+  }
+
+  // 拼圖拼完
+  puzzleDone(uid) {
+    const mon = this.mon(uid);
+    if (!mon) return null;
+    mon.enjoyment = Math.min(amie.MAX, mon.enjoyment + mg.PUZZLE_ENJOYMENT);
+    this.emit('party', { uid });
+    return { enjoyment: mg.PUZZLE_ENJOYMENT };
+  }
+
+  // 超級特訓：打破 pops 個氣球。回傳實際加了多少（碰到上限會變少）
+  train(uid, stat, pops) {
+    const mon = this.mon(uid);
+    if (!mon || !TRAINING_STATS.includes(stat)) return null;
+    const before = mon.training[stat];
+    // 只能用剩下的空間，不能把別的能力擠掉（normalizeTraining 是依固定順序分配，不能拿來做這件事）
+    const room = TRAINING_TOTAL - mg.trainingTotal(mon.training);
+    const add = Math.min(Math.max(0, pops) * mg.TRAINING_PER_POP, TRAINING_MAX - before, room);
+    mon.training = { ...mon.training, [stat]: before + Math.max(0, add) };
+    const gained = mon.training[stat] - before;
+    this.emit('trained', { uid, stat, gained });
+    this.emit('party', { uid });
+    return { gained, value: mon.training[stat] };
   }
 
   // ---- 背包 ----

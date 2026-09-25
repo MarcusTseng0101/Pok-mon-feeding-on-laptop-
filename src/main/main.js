@@ -112,6 +112,7 @@ function buildTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '夥伴', click: () => send('party') },
     { label: '圖鑑', click: () => send('dex') },
+    { label: '一起玩', click: () => send('play') },
     { label: '背包', click: () => send('bag') },
     { label: '氣息', click: () => send('aura') },
     { label: '設定', click: () => send('settings') },
