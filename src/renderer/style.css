@@ -319,3 +319,10 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .puzzle .moves { text-align: center; margin: 4px 0 0; }
 .training .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .training .stats button { display: flex; flex-direction: column; align-items: center; border-width: 3px; border-style: solid; }
+
+/* 專注番茄鐘：畫面左下角的剩餘時間（不攔截滑鼠） */
+.focus-hud { position: fixed; left: 12px; bottom: 12px; padding: 4px 10px; font-size: 13px; background: var(--panel); opacity: 0.9; pointer-events: none; }
+.focus-hud::before { content: '●'; color: #e8404a; margin-right: 6px; }
+.bag .egg { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 6px; align-items: center; }
+.bag .egg canvas { grid-row: span 2; }
+.bag .egg .bar { height: 6px; }

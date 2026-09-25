@@ -336,3 +336,26 @@ export const playBall = fromMap([
   '.KWWWWK.',
   '..KKKK..',
 ], { K, W: '#f8f4f0', R: '#3a78e0' });
+
+// 蛋：底色＋屬性顏色的斑點；cracks 0–3 是裂痕
+export function egg(spot = '#7ac86a', cracks = 0) {
+  const rows = [
+    '....KKKK....',
+    '...KWWWWK...',
+    '..KWWWSSWK..',
+    '.KWWWWSSWWK.',
+    '.KWSSWWWWWK.',
+    'KWWSSWWWWWWK',
+    'KWWWWWWSSWWK',
+    'KWWWWWWSSWWK',
+    'KWSSWWWWWWDK',
+    'KWSSWWWWWWDK',
+    '.KWWWWWWWDK.',
+    '.KWWWWWWDDK.',
+    '..KKDDDDKK..',
+    '....KKKK....',
+  ].map(r => r.split(''));
+  const CR = [[[5, 3], [6, 4], [5, 5]], [[6, 6], [7, 7], [6, 8], [7, 9]], [[3, 7], [4, 8], [3, 9], [8, 4], [9, 5]]];
+  for (let i = 0; i < Math.min(3, cracks); i++) for (const [x, y] of CR[i]) rows[y][x] = 'K';
+  return fromMap(rows.map(r => r.join('')), { K, W: '#fbf6ea', D: '#e0d6c0', S: spot });
+}

@@ -38,9 +38,10 @@ test('存檔 v2：v1 的每一個欄位原封不動保留下來', () => {
   const s = migrate(structuredClone(V1), dex, T0 + 1);
   assert.equal(s.version, SAVE_VERSION);
   assert.equal(SAVE_VERSION, 2);
-  for (const k of ['createdAt', 'lastSeenAt', 'lastDailyGift', 'starterChosen', 'settings', 'zygardeCells', 'shinyCharm', 'chain', 'bonds', 'regenMinutes', 'nextPartnerGiftAt']) {
+  for (const k of ['createdAt', 'lastSeenAt', 'lastDailyGift', 'starterChosen', 'zygardeCells', 'shinyCharm', 'chain', 'bonds', 'regenMinutes', 'nextPartnerGiftAt']) {
     assert.deepEqual(s[k], V1[k], k);
   }
+  for (const [k, v] of Object.entries(V1.settings)) assert.deepEqual(s.settings[k], v, `settings.${k}`); // 新版多出來的設定用預設值
   assert.deepEqual(s.bag.balls, V1.bag.balls);
   for (const [k, v] of Object.entries(V1.bag.puffs)) assert.equal(s.bag.puffs[k], v, k);
   for (const [id, d] of Object.entries(V1.dex)) assert.deepEqual(s.dex[id], d, `dex ${id}`);
@@ -60,7 +61,7 @@ test('存檔 v2：新欄位都有預設值', () => {
   assert.deepEqual(s.bag.items, { diancite: false });
   assert.deepEqual(s.eggs, []);
   assert.deepEqual(s.achievements, {});
-  assert.deepEqual(s.focus, { sessions: 0, totalMinutes: 0, streakDays: 0, lastDay: null });
+  assert.deepEqual(s.focus, { sessions: 0, totalMinutes: 0, streakDays: 0, lastDay: null, active: null });
   assert.equal(s.weather, null);
   assert.equal(s.sync, null);
   for (const k of ['berriesPicked', 'puffsBaked', 'eggsHatched', 'focusSessions', 'perches']) assert.equal(s.stats[k], 0, k);
@@ -114,7 +115,7 @@ test('存檔 v2：壞掉的值會被夾回合法範圍', () => {
   assert.equal(s.eggs[0].form, 'white');
   assert.deepEqual(s.dex[669].forms, { blue: { seen: 1, caught: 1 }, red: { seen: 0, caught: 0 } });
   assert.deepEqual(s.achievements, { 'dex-10': T0 });
-  assert.deepEqual(s.focus, { sessions: 0, totalMinutes: 0, streakDays: 0, lastDay: null });
+  assert.deepEqual(s.focus, { sessions: 0, totalMinutes: 0, streakDays: 0, lastDay: null, active: null });
   assert.deepEqual(s.weather, { city: '中壢', lat: 24.95, lon: 121.22, enabled: true });
   assert.equal(s.sync, null);
   assert.equal(s.stats.catches, 0);

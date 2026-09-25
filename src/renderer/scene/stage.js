@@ -5,6 +5,7 @@
 import { Fx } from './fx.js';
 import { Pet } from './pet.js';
 import { resolveCollisions } from './physics.js';
+import { applyWindows } from './perching.js';
 import { blit } from '../gfx/pixel.js';
 import * as art from '../gfx/art.js';
 
@@ -22,6 +23,8 @@ export class Stage {
     this.balls = [];
     this.props = [];
     this.decals = []; // 地上的裝飾（花、鑽石、根…），畫在夥伴後面，不能點
+    this.windows = []; // 其他視窗的位置（裝置像素，由上到下），只有位置和大小
+    this.ledges = []; // 看得到、可以站的視窗頂邊
     this.pointer = { x: 0, y: 0, known: false };
     this.mode = null; // { type: 'feed', puff, target } | { type: 'aim', ball }
     this.env = { sleepy: false, userActive: true };
@@ -43,6 +46,8 @@ export class Stage {
   }
 
   on(name, fn) { this.handlers[name] = fn; }
+  setWindows(list) { applyWindows(this, list); }
+  takeCursorTravel() { const d = this.cursorTravel ?? 0; this.cursorTravel = 0; return d; }
   fire(name, ...args) { return this.handlers[name]?.(...args); }
 
   resize() {
@@ -156,6 +161,8 @@ export class Stage {
     const { x, y } = this.toDevice(cx, cy);
     const prev = { x: this.pointer.x, y: this.pointer.y };
     if (x === prev.x && y === prev.y && inside === this.pointer.known) return;
+    // 游標移動的距離（CSS 像素）→ 孵蛋的步數；只算距離，不記位置
+    if (this.pointer.known && inside) this.cursorTravel = (this.cursorTravel ?? 0) + Math.min(400, Math.hypot(x - prev.x, y - prev.y) / this.dpr);
     this.pointer.x = x;
     this.pointer.y = y;
     this.pointer.known = inside;

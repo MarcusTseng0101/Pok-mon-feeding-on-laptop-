@@ -4,10 +4,12 @@
 import * as amie from './amie.js';
 import { BALLS, catchProbability, rollCatch, fleeChance } from './capture.js';
 import { checkEvolution } from './evolution.js';
-import { MAX_OUT, normalizeTraining, TRAINING_STATS, TRAINING_MAX, TRAINING_TOTAL } from './save.js';
+import { MAX_OUT, MAX_EGGS, normalizeTraining, TRAINING_STATS, TRAINING_MAX, TRAINING_TOTAL } from './save.js';
 import * as mg from './minigames.js';
+import * as focus from './focus.js';
+import * as eggs from './eggs.js';
 import { canonicalForm, inheritForm, defaultForm, FORMS } from './forms.js';
-import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain } from './shiny.js';
+import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
 
 // 夥伴之間的感情（0–255），到這些門檻時通知畫面
 export const BOND_LEVELS = [
@@ -97,6 +99,7 @@ export class Game {
     this.maybePartnerGift(t);
     this.expireTrims();
     this.checkItems(); // 陪伴也會加好感
+    this.maybeFindEgg();
     this.emit('tick');
   }
 
@@ -287,6 +290,116 @@ export class Game {
     this.emit('trained', { uid, stat, gained });
     this.emit('party', { uid });
     return { gained, value: mon.training[stat] };
+  }
+
+  // ---- 專注番茄鐘（規則在 focus.js） ----
+  startFocus(minutes = this.state.settings.focusMinutes) {
+    if (this.state.focus.active) return false;
+    this.state.focus.active = { startedAt: this.now(), minutes: focus.clampMinutes(minutes) };
+    this.emit('focus', { active: true });
+    return true;
+  }
+  focusRemaining() { return focus.remainingMs(this.state.focus.active, this.now()); }
+  cancelFocus() {
+    if (!this.state.focus.active) return false;
+    this.state.focus.active = null;
+    this.emit('focus', { active: false, done: false });
+    return true;
+  }
+  // 時間到了：給獎勵（由畫面每一幀檢查 focusRemaining() 之後呼叫）
+  finishFocus() {
+    const f = this.state.focus, a = f.active;
+    if (!a || this.focusRemaining() > 0) return null;
+    const today = localDate(this.now()), yesterday = localDate(this.now() - DAY);
+    const firstToday = f.lastDay !== today;
+    f.streakDays = focus.nextStreak(f, today, yesterday);
+    f.lastDay = today;
+    f.sessions++;
+    f.totalMinutes += a.minutes;
+    f.active = null;
+    this.state.stats.focusSessions++;
+    const puff = amie.puffKey(this.rng.pick(amie.FLAVORS), focus.rewardTier(f.streakDays, firstToday));
+    this.state.bag.puffs[puff]++;
+    for (const m of this.outMons()) {
+      const before = amie.hearts(m.affection);
+      amie.addAffection(m, focus.FOCUS_AFFECTION);
+      this.afterAffection(m, before);
+    }
+    const r = { puff, minutes: a.minutes, streak: f.streakDays };
+    this.emit('focus', { active: false, done: true, ...r });
+    this.emit('bag');
+    return r;
+  }
+
+  // ---- 孵蛋（規則在 eggs.js） ----
+  // 每天一次機會：最好的朋友（感情 200 以上）兩隻都在桌面上時
+  maybeFindEgg() {
+    const today = localDate(this.now());
+    if (this.state.eggDay === today) return null;
+    const out = this.outMons();
+    const pairs = [];
+    for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) {
+      if (this.bondOf(out[i].uid, out[j].uid) >= BOND_LEVELS[3].at) pairs.push([out[i], out[j]]);
+    }
+    if (!pairs.length) return null; // 還沒有這樣的一對：今天的機會先留著
+    this.state.eggDay = today;
+    if (this.state.eggs.length >= MAX_EGGS || !this.rng.chance(eggs.EGG_CHANCE)) return null;
+    const parents = this.rng.pick(pairs);
+    const e = eggs.eggFrom(this.dex, parents, this.rng);
+    if (!e) return null;
+    // 色違機率跟野生的一樣，但連鎖加成不算（連鎖是野生遭遇的機制）
+    const noChain = { ...this.state, chain: { species: null, count: 0 } };
+    const egg = {
+      uid: `egg${this.now().toString(36)}${Math.floor(this.rng() * 1e6).toString(36)}`,
+      species: e.species,
+      form: e.form,
+      shiny: this.rng.chance(shinyChance(noChain, e.species, {})),
+      steps: 0,
+      need: eggs.eggNeed(e.species),
+      receivedAt: this.now(),
+    };
+    this.state.eggs.push(egg);
+    this.emit('eggFound', { egg, parents: parents.map(m => m.uid) });
+    this.emit('bag');
+    return egg;
+  }
+
+  // 游標移動的距離（CSS 像素）＋在電腦前的秒數 → 步數
+  addEggSteps(px, activeSeconds) {
+    const add = eggs.stepsFrom(px, activeSeconds);
+    if (!add) return;
+    for (const egg of this.state.eggs) {
+      const was = egg.steps;
+      egg.steps = Math.min(egg.need, egg.steps + add);
+      if (was < egg.need && egg.steps >= egg.need) this.emit('eggReady', { uid: egg.uid });
+    }
+  }
+
+  readyEggs() { return this.state.eggs.filter(e => e.steps >= e.need); }
+
+  // pos：從哪裡出來（螢幕比例，畫面用）；要在通知畫面之前設好
+  hatchEgg(uid, { pos = null } = {}) {
+    const i = this.state.eggs.findIndex(e => e.uid === uid && e.steps >= e.need);
+    if (i < 0) return null;
+    const [egg] = this.state.eggs.splice(i, 1);
+    const mon = this.createMon(egg.species, { shiny: egg.shiny, form: egg.form, ball: 'poke' });
+    mon.affection = eggs.HATCH_AFFECTION;
+    if (pos) mon.pos = pos;
+    const t = this.now();
+    const d = (this.state.dex[egg.species] ??= { seen: 0, caught: 0, firstSeenAt: t, firstCaughtAt: null });
+    const isNewSpecies = d.caught === 0;
+    d.seen++;
+    d.caught++;
+    d.firstCaughtAt ??= t;
+    if (egg.shiny) { d.shiny = (d.shiny ?? 0) + 1; this.state.stats.shinies++; }
+    this.recordForm(egg.species, egg.form, 'caught');
+    if (this.outMons().length < MAX_OUT) mon.out = true;
+    this.state.mons.push(mon);
+    this.state.stats.eggsHatched++;
+    this.checkCharm();
+    this.emit('hatched', { mon, isNewSpecies });
+    this.emit('party', { uid: mon.uid });
+    return mon;
   }
 
   // ---- 背包 ----

@@ -44,11 +44,13 @@ async function main() {
   // ---- 音量與系統匣 ----
   const applyAudio = () => {
     const s = game.state.settings;
-    audio.setVolumes({ music: s.musicVolume, sfx: s.sfxVolume, muted: s.muted });
-    api.updateTray({ muted: s.muted, quiet: s.quiet });
+    const focusing = Boolean(game.state.focus.active); // 專注中：沒有音效、音樂小聲
+    audio.setVolumes({ music: s.musicVolume * (focusing ? 0.3 : 1), sfx: focusing ? 0 : s.sfxVolume, muted: s.muted });
+    api.updateTray({ muted: s.muted, quiet: s.quiet, focus: focusing, focusMinutes: s.focusMinutes });
   };
   ui.onSettings = applyAudio;
   game.on('settings', applyAudio);
+  game.on('focus', applyAudio);
   applyAudio();
 
   api.on('command', cmd => {
@@ -56,12 +58,15 @@ async function main() {
     else if (['party', 'dex', 'play', 'bag', 'aura', 'settings'].includes(cmd)) ui.open(cmd);
     else if (cmd === 'toggleMute') { game.setSetting('muted', !game.state.settings.muted); }
     else if (cmd === 'toggleQuiet') ui.toggleQuiet();
+    else if (cmd === 'focusStart') ui.startFocus();
+    else if (cmd === 'focusStop') ui.stopFocus();
   });
 
   // ---- 電腦狀態 → 氣息 ----
   director.setSignals(await api.getSignals());
   api.on('signals', s => director.setSignals(s));
   api.on('display', () => stage.resize());
+  api.on('windows', list => stage.setWindows(list)); // 其他視窗的位置（寶可夢可以站在標題列上）
 
   // ---- 開始 ----
   const away = game.catchUp();
@@ -79,10 +84,12 @@ async function main() {
   } else {
     director.syncPets();
     if (away > 60) ui.toast('好久不見！夥伴們都在等你');
+    setTimeout(() => director.showReadyEggs(), 2000); // 上次關掉時已經可以孵的蛋
   }
   sprites.prefetchAll();
 
   setInterval(() => {
+    director.tickEggs(10);
     game.tick();
     director.updateEnv();
     director.refreshMusic();

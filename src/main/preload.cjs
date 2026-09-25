@@ -1,10 +1,11 @@
 // renderer 只能透過這個窄窄的介面跟 main process 溝通
 const { contextBridge, ipcRenderer } = require('electron');
 
-const CHANNELS = ['cursor', 'signals', 'command', 'flush', 'display'];
+const CHANNELS = ['cursor', 'signals', 'command', 'flush', 'display', 'windows'];
 
 contextBridge.exposeInMainWorld('kalos', {
   platform: process.platform,
+  // 其他視窗只給位置和大小（見 src/main/windows.js）
   loadDexData: () => ipcRenderer.invoke('data:dex'),
   loadSave: () => ipcRenderer.invoke('save:load'),
   writeSave: data => ipcRenderer.invoke('save:write', data),
