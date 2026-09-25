@@ -928,7 +928,8 @@ export const HABITS = {
     w: pet => ([...pet.stage.pets.values()].some(o => o.mon.species === 713 && !o.leaving) ? 14 : 0),
     dur: () => rnd(15, 25),
     start(pet) {
-      const av = [...pet.stage.pets.values()].find(o => o.mon.species === 713 && !o.leaving);
+      // 冰寶找冰岩怪；其他情況（好朋友背著）由呼叫的人指定 hd.on
+      const av = pet.hd.on ?? [...pet.stage.pets.values()].find(o => o.mon.species === 713 && !o.leaving);
       pet.hd.on = av;
       if (av) { pet.showEmote('♥', 1.2); pet.stage.fx.burst(pet.x, pet.gy, pet.S, ['#ffffff', '#d8f4ff'], { n: 6, speed: 30, spread: 6.3, g: 0, life: 0.5 }); }
     },
