@@ -7,11 +7,13 @@ import { BALLS, BALL_ORDER } from '../../core/capture.js';
 import { activeModifiers, FLAVOR_TYPES, RATES } from '../../core/encounter.js';
 import { requirement } from '../../core/evolution.js';
 import { SPOTS } from '../../core/dex.js';
-import { STARTERS, BOND_LEVELS, bondLevel } from '../../core/game.js';
+import { STARTERS, BOND_LEVELS, bondLevel, TRIM_DAYS } from '../../core/game.js';
 import { shinyChance, chainRolls, BASE_ODDS, CHARM_AT } from '../../core/shiny.js';
 import { MAX_OUT } from '../../core/save.js';
+import { FORMS, spriteKey, formName, formsOf, defaultForm } from '../../core/forms.js';
 import { habitNames } from '../scene/habits.js';
 import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
+import { transform as transformForm, revert as revertForm } from '../scene/battleforms.js';
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
@@ -185,7 +187,7 @@ export class UI {
   }
 
   // 寶可夢小圖（先放替代圖，載好再換）
-  thumb(speciesId, { shiny = false, size = 40, variant = 'color' } = {}) {
+  thumb(speciesId, { shiny = false, size = 40, variant = 'color', form = null } = {}) {
     const wrap = document.createElement('span');
     wrap.className = 'thumb';
     wrap.style.width = wrap.style.height = `${size}px`;
@@ -194,8 +196,9 @@ export class UI {
       const scale = Math.min(2, size / Math.max(asset.w, asset.h));
       wrap.replaceChildren(pixelImg(img, scale));
     };
-    paint(this.sprites.peek(speciesId, shiny));
-    this.sprites.get(speciesId, shiny).then(paint);
+    const key = spriteKey(speciesId, form);
+    paint(this.sprites.peek(key, shiny));
+    this.sprites.get(key, shiny).then(paint);
     return wrap;
   }
 
@@ -227,7 +230,7 @@ export class UI {
         <span class="name">${esc(this.game.displayName(m))}${m.shiny ? ' ✦' : ''}</span>
         <span class="hearts">${'♥'.repeat(hearts(m.affection))}</span>
         ${m.out ? '<span class="badge">桌面</span>' : ''}</button>`);
-      row.prepend(this.thumb(m.species, { shiny: m.shiny, size: 36 }));
+      row.prepend(this.thumb(m.species, { shiny: m.shiny, size: 36, form: m.form }));
       list.append(row);
     }
     const m = this.game.mon(this.selectedUid);
@@ -248,6 +251,7 @@ export class UI {
       <div class="head"><div class="big"></div>
         <div><label class="nick">暱稱 <input maxlength="12" data-uid="${m.uid}" value="${esc(m.nickname ?? '')}" placeholder="${esc(sp.name.zh)}"></label>
         <div>No.${sp.id} ${esc(sp.name.zh)} ${this.typeChips(sp.types)}</div>
+        ${this.formLine(m)}
         <div>性格：${esc(nature.zh)}</div><div>口味：${esc(taste)}</div>
         <div>${this.friendLine(m)}</div>
         <div class="habits">習性：${habitNames(m.species).map(esc).join('、') || '—'}</div>
@@ -261,10 +265,42 @@ export class UI {
       <div class="actions">
         ${m.out ? '<button data-act="recall">收回</button><button data-act="feed">餵泡芙</button>'
           : `<button data-act="sendout" ${out >= MAX_OUT ? 'disabled title="桌面上最多 6 隻"' : ''}>叫出來</button>`}
+        ${m.species === 676 ? `<button data-act="trim" class="${this.trimOpen ? 'sel' : ''}">✂ 修剪</button>` : ''}
       </div>
+      ${m.species === 676 && this.trimOpen ? this.trimHtml(m) : ''}
       <p class="meta">${new Date(m.caughtAt).toLocaleDateString('zh-TW')} 用${BALLS[m.ball].zh}收服</p>`;
-    d.querySelector('.big').append(this.thumb(m.species, { shiny: m.shiny, size: 96 }));
+    d.querySelector('.big').append(this.thumb(m.species, { shiny: m.shiny, size: 96, form: m.form }));
+    d.querySelectorAll('[data-style]').forEach(b => b.prepend(this.thumb(676, { shiny: m.shiny, size: 40, form: b.dataset.style })));
     return root;
+  }
+
+  // 形態、超級進化、牽絆變身的說明
+  formLine(m) {
+    const lines = [];
+    const f = FORMS[m.species];
+    if (f?.family === 'vivillon' && !f.visible) lines.push(`花紋：${esc(formName(m.species, m.form))}（進化成彩粉蝶才看得到）`);
+    else if (f?.family === 'furfrou') {
+      const left = m.trimAt ? Math.max(0, Math.ceil((m.trimAt + TRIM_DAYS * 86400000 - Date.now()) / 86400000)) : 0;
+      lines.push(`造型：${esc(formName(m.species, m.form))}${m.form ? `（大約 ${left} 天後長回來）` : ''}`);
+    } else if (f) lines.push(`${f.family === 'flabebe' ? '花色' : '花紋'}：${esc(formName(m.species, m.form))}`);
+    if (this.game.canMega(m.uid)) lines.push('✦ 帶著蒂安希進化石：對戰時會超級進化，也可以點牠叫牠超級進化');
+    else if (m.species === 719) lines.push('<span class="hint">好感滿了會發生什麼事呢…</span>');
+    if (this.game.canBondForm(m.uid)) lines.push('✦ 牠和夥伴的羈絆很深：對戰中有機會「牽絆變身」');
+    return lines.map(l => `<div>${l}</div>`).join('');
+  }
+
+  // 多麗米亞美容：9 種造型，花一個泡芙（自動用最普通的那個）
+  trimHtml(m) {
+    const puff = this.cheapestPuff();
+    const styles = formsOf(676).filter(s => s !== defaultForm(676));
+    return `<div class="trim"><p class="hint">${puff ? `修剪要花一個泡芙（會用${esc(puffName(puff))}），牠會很開心。5 天後毛會長回來。` : '修剪要花一個泡芙，但背包裡沒有泡芙了。'}</p>
+      <div class="styles">${styles.map(s => `<button data-style="${s}" ${!puff || s === m.form ? 'disabled' : ''}><small>${esc(formName(676, s))}</small></button>`).join('')}</div></div>`;
+  }
+
+  cheapestPuff() {
+    const bag = this.game.state.bag.puffs;
+    for (const t of TIER_ORDER) for (const f of FLAVORS) if (bag[puffKey(f, t)] > 0) return puffKey(f, t);
+    return null;
   }
 
   // 跟哪一隻夥伴感情最好
@@ -289,7 +325,7 @@ export class UI {
     for (const s of this.dex.all) {
       const d = g.state.dex[s.id];
       const cell = h(`<button class="cell ${this.selectedDex === s.id ? 'sel' : ''} ${d?.caught ? 'caught' : d?.seen ? 'seen' : 'unseen'}" data-dex="${s.id}"><small>${s.id}</small>${d?.shiny ? '<i class="shiny" title="抓過色違">✦</i>' : ''}</button>`);
-      if (d?.seen) cell.prepend(this.thumb(s.id, { size: 40, variant: d.caught ? 'color' : 'dark' }));
+      if (d?.seen) cell.prepend(this.thumb(s.id, { size: 40, variant: d.caught ? 'color' : 'dark', form: this.dexCoverForm(s.id, d) }));
       else cell.prepend(h('<span class="q">?</span>'));
       grid.append(cell);
     }
@@ -313,9 +349,38 @@ export class UI {
         <div class="hint">習性：${habitNames(id).map(esc).join('、')}</div>` : '<p class="hint">抓到之後就能看到更多資料。</p>'}
       <div class="hint">出沒：${esc(SPOTS[this.habitatOf(id)].zh)}</div>
       <div class="hint">遇見 ${d.seen} 次・捕獲 ${d.caught} 次${d.shiny ? `・色違 ${d.shiny} 次` : ''}</div>
-      ${d.shiny ? `<button data-act="shinyview" class="${shinyView ? 'sel' : ''}">✦ ${shinyView ? '看一般的樣子' : '看色違的樣子'}</button>` : known ? '<div class="hint">色違：還沒遇過</div>' : ''}`;
-    entry.querySelector('.big').append(this.thumb(id, { size: 96, variant: known ? 'color' : 'dark', shiny: shinyView }));
+      ${d.shiny ? `<button data-act="shinyview" class="${shinyView ? 'sel' : ''}">✦ ${shinyView ? '看一般的樣子' : '看色違的樣子'}</button>` : known ? '<div class="hint">色違：還沒遇過</div>' : ''}
+      ${this.dexFormsHtml(id, d)}`;
+    entry.querySelector('.big').append(this.thumb(id, { size: 96, variant: known ? 'color' : 'dark', shiny: shinyView, form: this.dexViewForm(id, d) }));
     return root;
+  }
+
+  // 圖鑑裡要看哪一種形態（點過的；沒點過就看封面那一種）
+  dexViewForm(id, d) {
+    if (!FORMS[id] || !FORMS[id].visible) return null;
+    return d.forms?.[this.dexForm]?.seen ? this.dexForm : this.dexCoverForm(id, d);
+  }
+
+  // 圖鑑格子上顯示的形態：抓過的優先，其次見過的（不要顯示一個根本沒見過的顏色）
+  dexCoverForm(id, d) {
+    if (!FORMS[id]?.visible) return null;
+    const all = formsOf(id);
+    return all.find(f => d.forms?.[f]?.caught) ?? all.find(f => d.forms?.[f]?.seen) ?? null;
+  }
+
+  // 花色、花紋、造型收集：見過的可以點來看，沒見過的是「？」
+  dexFormsHtml(id, d) {
+    const f = FORMS[id];
+    if (!f) return '';
+    const label = { flabebe: '花色', vivillon: '花紋', furfrou: '造型' }[f.family];
+    const all = formsOf(id);
+    const seen = all.filter(k => d.forms?.[k]?.seen);
+    const caught = all.filter(k => d.forms?.[k]?.caught);
+    const view = this.dexViewForm(id, d);
+    const chips = all.map(k => (d.forms?.[k]?.seen
+      ? `<button class="formchip ${k === view ? 'sel' : ''} ${d.forms[k].caught ? 'caught' : ''}" ${f.visible ? `data-dexform="${k}"` : 'disabled'}>${esc(formName(id, k))}</button>`
+      : '<span class="formchip unseen">？</span>')).join('');
+    return `<div class="forms"><div class="hint">${label}：見過 ${seen.length}・抓到 ${caught.length}／${all.length}${f.visible ? '' : '（進化成彩粉蝶才看得到花紋）'}</div><div class="chips">${chips}</div></div>`;
   }
 
   habitatOf(id) {
@@ -414,10 +479,21 @@ export class UI {
   onPanelClick(e) {
     const t = e.target.closest('button, [data-uid], [data-dex], [data-puff]');
     if (!t) return;
-    if (t.matches('.row[data-uid]')) { this.selectedUid = t.dataset.uid; this.audio.sfx('click'); this.renderPanel(); return; }
+    if (t.matches('.row[data-uid]')) { this.selectedUid = t.dataset.uid; this.trimOpen = false; this.audio.sfx('click'); this.renderPanel(); return; }
     if (t.dataset.dex) {
       const id = Number(t.dataset.dex);
-      if (this.game.state.dex[id]?.seen) { this.selectedDex = id; this.audio.sfx('click'); this.renderPanel(); }
+      if (this.game.state.dex[id]?.seen) { this.selectedDex = id; this.dexForm = null; this.audio.sfx('click'); this.renderPanel(); }
+      return;
+    }
+    if (t.dataset.dexform) { this.dexForm = t.dataset.dexform; this.audio.sfx('click'); this.renderPanel(); return; }
+    if (t.dataset.style) {
+      const puff = this.cheapestPuff();
+      const m = this.game.mon(this.selectedUid);
+      if (!puff || !m || !this.game.trim(m.uid, t.dataset.style, puff).ok) return;
+      this.trimOpen = false;
+      this.audio.sfx('sparkle');
+      this.toast(`${this.game.displayName(m)}換成了${formName(676, m.form)}！`, { icon: art.sparkle });
+      this.renderPanel();
       return;
     }
     if (t.dataset.puff) {
@@ -445,6 +521,7 @@ export class UI {
       }
       case 'spawn': this.director.spawnNow(); break;
       case 'shinyview': this.dexShiny = !this.dexShiny; this.audio.sfx('click'); this.renderPanel(); return;
+      case 'trim': this.trimOpen = !this.trimOpen; this.audio.sfx('click'); this.renderPanel(); return;
       case 'devfill':
         for (const k of Object.keys(this.game.state.bag.puffs)) this.game.state.bag.puffs[k] += 5;
         for (const k of BALL_ORDER) this.game.state.bag.balls[k] += 20;
@@ -505,7 +582,8 @@ export class UI {
       : '';
     this.bubble.innerHTML = `<div class="name">${esc(this.game.displayName(m))} <span class="hearts">${'♥'.repeat(n)}<i>${'♥'.repeat(5 - n)}</i></span></div>
       <div class="btns"><button data-act="feed">餵泡芙</button><button data-act="moves" class="${this.bubbleMoves ? 'sel' : ''}">招式</button><button data-act="info">看看牠</button><button data-act="recall">回球裡</button>
-      ${evo?.ready ? '<button class="primary" data-act="evolve">✦ 進化</button>' : ''}</div>${moves}`;
+      ${evo?.ready ? '<button class="primary" data-act="evolve">✦ 進化</button>' : ''}
+      ${this.game.canMega(m.uid) ? `<button data-act="mega" ${pet.formFx ? 'disabled' : ''}>${pet.battleForm === 'mega' ? '解除超級進化' : '✦ 超級進化'}</button>` : ''}</div>${moves}`;
   }
 
   onBubbleClick(e) {
@@ -527,6 +605,11 @@ export class UI {
     if (act === 'info') { this.selectedUid = pet.uid; this.closeBubble(); this.open('party'); }
     if (act === 'recall') { this.closeBubble(); this.game.setOut(pet.uid, false); }
     if (act === 'evolve') this.director.startEvolution(pet);
+    if (act === 'mega') {
+      this.closeBubble();
+      if (pet.battleForm === 'mega') revertForm(pet);
+      else transformForm(pet, 'mega'); // 最多維持 5 分鐘
+    }
   }
 
   closeBubble() {

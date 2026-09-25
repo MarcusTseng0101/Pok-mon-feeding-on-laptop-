@@ -35,6 +35,7 @@ export class Director {
       returnedFromIdle: this.signals.returnedFromIdle,
       lure: this.lure && Date.now() < this.lure.until ? this.lure.flavor : null,
       lureTier: this.lure && Date.now() < this.lure.until ? parsePuffKey(this.lure.puff).tier : null,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, // 彩粉蝶的花紋依所在地區決定
     };
   }
 
@@ -123,7 +124,7 @@ export class Director {
     const ctx = this.ctx();
     const plan = forcePlan ?? planSpawn(ctx, this.game.state, this.dex, this.rng);
     this.nextSpawnAt = Infinity;
-    await this.sprites.get(plan.speciesId, plan.shiny); // 先載好，點下去才不會看到替代圖
+    await this.sprites.get(spriteKey(plan.speciesId, plan.form), plan.shiny); // 先載好，點下去才不會看到替代圖
     if (this.stage.spot || this.enc) return;
     const life = this.dev ? 60 : plan.special ? 300 : 180;
     this.stage.spot = new Spot(this.stage, plan, { life });
@@ -214,6 +215,13 @@ export class Director {
     });
     st.on('spotGone', () => { if (!this.enc) this.scheduleNext(); });
     st.on('bond', (a, b, n) => this.game.bond(a.uid, b.uid, n));
+    // 超級進化、牽絆變身（只是演出，不會存檔）
+    st.on('formChange', (pet, form) => {
+      const name = this.game.displayName(pet.mon);
+      if (form === 'mega') this.ui?.toast(`${name}超級進化成超級蒂安希了！`, { icon: art.sparkle });
+      if (form === 'ash') this.ui?.toast(`${name}和夥伴的羈絆產生了共鳴…牽絆變身！`, { icon: art.sparkle });
+      if (form) pet.stage.fx.hearts(pet.x, pet.head().y, pet.S, 2);
+    });
   }
 
   setMode(mode) {
@@ -491,6 +499,15 @@ export class Director {
     });
     g.on('chainBroken', ({ speciesId, count }) => {
       if (count >= 3) this.ui?.toast(`${this.dex.name(speciesId)}的連鎖（×${count}）中斷了…`);
+    });
+    g.on('item', ({ item, uid }) => {
+      if (item !== 'diancite') return;
+      this.audio.jingle('newEntry', { resumeWith: this.ambientSong() });
+      this.ui?.toast(`${this.game.displayName(this.game.mon(uid))}好像很信任你…獲得了「蒂安希進化石」！現在牠可以超級進化了`, { icon: art.sparkle, kind: 'dex' });
+    });
+    g.on('trimExpired', ({ uid }) => {
+      const m = this.game.mon(uid);
+      if (m) this.ui?.toast(`${this.game.displayName(m)}的毛長回來了`);
     });
     g.on('charm', () => {
       this.audio.jingle('newEntry', { resumeWith: this.ambientSong() });

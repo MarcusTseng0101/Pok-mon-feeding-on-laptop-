@@ -4,6 +4,8 @@
 
 import { hearts } from './amie.js';
 import { shinyChance, chainSpawnMult } from './shiny.js';
+import { FORMS, canonicalForm } from './forms.js';
+import { vivillonForTimeZone } from './vivillon.js';
 
 export const FLAVOR_TYPES = {
   sweet: ['fairy', 'normal'],
@@ -87,12 +89,22 @@ export function rollSpecial(ctx, state, rng) {
 
 const SPECIAL_SPOT = { 716: 'rock', 717: 'sky', 718: 'rock', 719: 'rock', 720: 'ring', 721: 'puddle' };
 
-// 決定下一次生成：{ spot, speciesId, shiny, nature, special }
+// 野生寶可夢的形態：花蓓蓓一族隨機花色；粉蝶蟲一族依玩家所在地區決定花紋（跟原作一樣一個地區一種）
+const FLABEBE_WEIGHTS = { red: 1, yellow: 1, orange: 1, blue: 1, white: 1 }; // 猜的，可調整：原作各顏色出現的地點不同，這裡平均
+export function rollForm(speciesId, ctx, rng) {
+  const family = FORMS[speciesId]?.family;
+  if (family === 'flabebe') return canonicalForm(speciesId, rng.weighted(Object.entries(FLABEBE_WEIGHTS).map(([f, w]) => ({ f, w }))).f);
+  if (family === 'vivillon') return canonicalForm(speciesId, ctx.vivillon ?? vivillonForTimeZone(ctx.timeZone));
+  return null; // 野生的多麗米亞都是原本的樣子
+}
+
+// 決定下一次生成：{ spot, speciesId, form, shiny, nature, special }
 export function planSpawn(ctx, state, dex, rng) {
   const special = rollSpecial(ctx, state, rng);
   const speciesId = special ?? rng.weighted(speciesWeights(ctx, state, dex)).id;
   return {
     speciesId,
+    form: rollForm(speciesId, ctx, rng),
     spot: SPECIAL_SPOT[speciesId] ?? dex.habitat(speciesId),
     shiny: rng.chance(shinyChance(state, speciesId, ctx)),
     nature: rng.pick(dex.natures).slug,
