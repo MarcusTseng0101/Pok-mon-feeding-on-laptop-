@@ -219,7 +219,7 @@ test('存檔 migrate：壞資料會被修好', () => {
   assert.equal(s.mons[0].affection, 255);
   assert.deepEqual(Object.keys(s.dex), ['650']);
   assert.equal(s.starterChosen, true);
-  assert.equal(migrate(null, dex, T0).version, 1);
+  assert.equal(migrate(null, dex, T0).version, 2);
 });
 
 test('存檔 migrate：桌面位置保留下來，壞掉的位置丟掉', () => {

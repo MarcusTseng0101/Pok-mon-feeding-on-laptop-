@@ -1,6 +1,7 @@
 // 寶可夢圖片：向 main process 要 PNG（有快取），裁掉透明邊、建立命中遮罩與剪影。
 import { makeCanvas, alphaMask, tint } from './pixel.js';
 import { fallbackSprite } from './art.js';
+import { speciesOfKey } from '../../core/forms.js';
 
 function loadImage(src) {
   return new Promise((resolve, reject) => {
@@ -50,6 +51,7 @@ export class SpriteBank {
     this.cache = new Map();
   }
 
+  // id：圖鑑號，或 core/forms.js 的 spriteKey（'669-blue'、'10075'）
   key(id, shiny) { return `${id}:${shiny ? 1 : 0}`; }
 
   // 同步取得（還沒載好就先回傳備用圖，同時開始載入）
@@ -65,7 +67,7 @@ export class SpriteBank {
     const k = this.key(id, shiny);
     if (!this.cache.has(k)) {
       const entry = { asset: null, promise: null };
-      entry.promise = this.api.getSprite(id, shiny)
+      entry.promise = this.api.getSprite(String(id), shiny)
         .then(url => (url ? loadImage(url) : null))
         .then(img => (entry.asset = img ? makeAsset(crop(img)) : this.fallback(id)))
         .catch(() => (entry.asset = this.fallback(id)));
@@ -75,8 +77,9 @@ export class SpriteBank {
   }
 
   fallback(id) {
-    const k = `fb:${id}`;
-    if (!this.cache.has(k)) this.cache.set(k, { asset: makeAsset(fallbackSprite(this.dex.get(id)?.types ?? ['normal'], id), true) });
+    const species = speciesOfKey(id);
+    const k = `fb:${species}`;
+    if (!this.cache.has(k)) this.cache.set(k, { asset: makeAsset(fallbackSprite(this.dex.get(species)?.types ?? ['normal'], species), true) });
     return this.cache.get(k).asset;
   }
 

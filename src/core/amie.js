@@ -10,6 +10,9 @@ export const FLAVOR_ZH = { sweet: '甜甜', mint: '薄荷', citrus: '柑橘', mo
 // 泡芙口味對應性格喜好的五種味道（辣、酸、甜、澀、苦）
 export const FLAVOR_TASTE = { sweet: 'sweet', mint: 'dry', citrus: 'sour', mocha: 'bitter', spice: 'spicy' };
 export const TASTE_ZH = { sweet: '甜', dry: '澀', sour: '酸', bitter: '苦', spicy: '辣' };
+// 樹果：每一種對應一種泡芙口味（依原作樹果的主要味道），做泡芙時用
+export const BERRIES = { pecha: 'sweet', chesto: 'mint', aspear: 'citrus', rawst: 'mocha', cheri: 'spice' };
+export const BERRY_ZH = { pecha: '桃桃果', chesto: '零餘果', aspear: '利木果', rawst: '莓莓果', cheri: '櫻子果' };
 
 export const TIERS = {
   basic: { zh: '', fullness: 40, affection: 3, xp: 4 },

@@ -16,12 +16,23 @@
 npm install
 npm start          # 一般啟動
 npm run dev        # 開發模式：野生寶可夢每 8–15 秒出現一次、設定裡有「立刻生成」「補滿道具」、系統匣有開發者工具
-npm test           # 規則與音樂的單元測試
+npm test           # 規則、存檔、形態、視窗偵測、音樂的單元測試
 npm run dist       # 打包成安裝檔（Windows: NSIS + portable；在各自的作業系統上打包）
 ```
 
 沒有螢幕的環境可以做冒煙測試：`KALOS_SMOKE=out.png npx electron .` 會在 8 秒後把透明視窗截圖存到 `out.png` 並結束。
 也可以不開 Electron，直接用靜態伺服器打開 `src/renderer/index.html?dev=1`，會自動改用 `mock-api.js`（存檔放在 localStorage）。
+
+瀏覽器端的回歸測試放在 `test/e2e/`（需要另外裝好的 Playwright，不在 `package.json` 裡）：
+
+```bash
+node test/e2e/forms.cjs     # 形態圖片（藍花的花蓓蓓真的是藍色的圖）
+node test/e2e/habits.cjs    # 72 種寶可夢的每一個習性都能跑完、不會跑出螢幕
+node test/e2e/physics.cjs   # 碰撞與擊退：沒有重疊、撞球、重量差
+node test/e2e/perf.cjs      # 每幀 update + draw 的時間
+```
+
+每個腳本最後一行是 `PASS <名稱>` 或 `FAIL <名稱>: <原因>`。寶可夢圖會快取在 `.cache/sprites`（不進 repo）。
 
 第一次出現的寶可夢圖會從 GitHub 上的 PokeAPI sprites 下載，之後快取在使用者資料夾，離線也能玩。
 下載失敗時會先用依屬性顏色產生的替代圖。
@@ -205,11 +216,13 @@ data/kalos.json              72 種的名稱（繁中／日／英）、屬性、
 scripts/build-dex.mjs        從 PokeAPI（GitHub 上的靜態鏡像）產生 data/kalos.json
 src/core/                    遊戲規則（純 JS，不碰 DOM／Electron，node --test 直接測）
   game.js                    唯一會改存檔的地方：交流、捕獲、進化、背包、每日禮物
-  amie.js  capture.js  encounter.js  evolution.js  save.js  dex.js  rng.js
+  forms.js                   形態（花蓓蓓的花色、彩粉蝶的花紋、多麗米亞的造型、超級進化）與圖片 key
+  amie.js  capture.js  encounter.js  evolution.js  save.js  dex.js  rng.js  shiny.js
 src/main/                    Electron 主程序
   main.js                    透明置頂視窗、滑鼠穿透、游標輪詢、系統匣、IPC
   store.js                   存檔（先寫暫存檔再 rename，保留一份 .bak）
-  sprites.js                 寶可夢圖下載與快取
+  sprites.js                 寶可夢圖下載與快取（圖片 key 先驗證格式才拿來組路徑）
+  windows.js                 其他視窗的位置（Windows；只讀位置和大小，還沒接進遊戲）
   signals.js                 閒置時間、電源、CPU → 遭遇的「氣息」
   preload.cjs                給 renderer 的窄介面（contextIsolation + sandbox）
 src/renderer/                畫面
@@ -228,13 +241,14 @@ src/renderer/                畫面
 renderer 用寶可夢圖的透明度遮罩判斷游標是否停在牠身上，需要時才請主程序切換成可點擊。
 所以就算游標在別的視窗上，寶可夢也能看著你、被你摸到。
 
-存檔在使用者資料夾的 `save.json`（Windows：`%APPDATA%/kalos-amie`）。有變動 3 秒內寫入、每 30 秒保底一次、關閉時再寫一次；夥伴在桌面上的位置也會記住，下次打開回到原位。格式有版本號，`save.js` 的 `migrate()` 負責修正舊版或壞掉的存檔。
+存檔在使用者資料夾的 `save.json`（Windows：`%APPDATA%/kalos-amie`）。有變動 3 秒內寫入、每 30 秒保底一次、關閉時再寫一次；夥伴在桌面上的位置也會記住，下次打開回到原位。格式有版本號（目前是 v2），`save.js` 的 `migrate()` 負責修正舊版或壞掉的存檔；v1 的存檔讀進來不會少任何東西。
 
 ## 已知限制
 
 - 目前只在主螢幕顯示；系統匣有「移到游標所在的螢幕」
 - Linux 上透明視窗與滑鼠穿透依桌面環境而定（Windows、macOS 最穩）
-- 寶可夢不會站在其他視窗的標題列上（需要列舉視窗的原生模組，之後可以加）
+- 寶可夢還不會站在其他視窗的標題列上。偵測視窗位置的部分已經寫好（`src/main/windows.js`，用 PowerShell，不需要原生模組），
+  要先在 Windows 上用 `node scripts/probe-windows.mjs` 量過速度才決定怎麼接進遊戲。它只讀視窗的位置和大小，不讀標題、程式名稱或內容
 
 ## 素材與版權
 

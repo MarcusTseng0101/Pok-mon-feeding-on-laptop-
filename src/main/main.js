@@ -135,7 +135,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('data:dex', () => dexData);
   ipcMain.handle('save:load', () => store.load());
   ipcMain.handle('save:write', (_e, data) => store.save(data));
-  ipcMain.handle('sprite:get', (_e, id, shiny) => getSprite(Number(id), Boolean(shiny)));
+  ipcMain.handle('sprite:get', (_e, key, shiny) => getSprite(String(key), Boolean(shiny)));
   ipcMain.handle('signals:get', () => signals?.snapshot());
   ipcMain.handle('app:loginItem', (_e, on) => {
     if (typeof on === 'boolean') app.setLoginItemSettings({ openAtLogin: on });
