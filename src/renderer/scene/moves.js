@@ -8,6 +8,7 @@
 import * as art from '../gfx/art.js';
 import { blit, paint } from '../gfx/pixel.js';
 import { meet } from './behaviors.js';
+import { knockFrom } from './physics.js';
 
 const T = art.TYPE_COLORS;
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -244,6 +245,19 @@ function hit(pet) {
   impact(pet, m.def, at);
   const eff = isPet(m.target) ? effectiveness(m.def.type, m.target.types) : 1;
   if (isPet(m.target)) m.target.flinchT = 0.4;
+  // 擊退：衝撞最大力，擴散的會把旁邊的也一起推開；效果絕佳更遠、沒有效果不會動
+  const power = { contact: 320, projectile: 220, beam: 200, line: 160, rain: 150, portal: 180, area: 260 }[m.def.kind] ?? 0;
+  const mult = (m.def.big || m.def.heavy ? 1.3 : 1) * (eff > 1 ? 1.5 : eff < 1 ? (eff === 0 ? 0 : 0.6) : 1);
+  if (m.def.kind === 'area') {
+    const S = pet.S, r = (m.def.big ? 110 : 75) * S;
+    for (const o of pet.stage.pets.values()) {
+      if (o === pet) continue;
+      const d = Math.hypot(o.x - pet.x, o.gy - pet.gy);
+      if (d < r) knockFrom(o, pet.x, pet.gy, power * (1 - d / r * 0.5) * (o === m.target ? mult : 1));
+    }
+  } else if (isPet(m.target) && power) {
+    knockFrom(m.target, pet.x, pet.gy, power * mult);
+  }
   m.onHit?.(eff);
 }
 

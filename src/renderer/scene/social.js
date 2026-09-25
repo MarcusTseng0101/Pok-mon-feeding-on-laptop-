@@ -5,6 +5,7 @@ import { blit } from '../gfx/pixel.js';
 import { hearts } from '../../core/amie.js';
 import { meet, WALK_SPEED, RUN_SPEED } from './behaviors.js';
 import { startHabit } from './habits.js';
+import { knockFrom } from './physics.js';
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = list => list[Math.floor(Math.random() * list.length)];
@@ -49,12 +50,13 @@ export const SOCIAL_ACTIONS = {
         if (p === it) {
           const runners = g.members.filter(o => o !== it && o !== g.last);
           const target = runners.sort((a, b) => dist(a, it) - dist(b, it))[0] ?? g.members.find(o => o !== it);
-          if (it.moveTo(target.x, target.gy, RUN_SPEED * S * 0.95, dt) || dist(it, target) < ((it.asset.w + target.asset.w) / 2) * S * 0.7) {
+          if (it.moveTo(target.x, target.gy, RUN_SPEED * S * 0.95, dt) || dist(it, target) < ((it.asset.w + target.asset.w) / 2) * S * 0.85) {
             // 抓到了：換人當鬼
             g.catches++;
             g.last = it;
             g.it = target;
             target.freezeT = 0.8;
+            knockFrom(target, it.x, it.gy, 160); // 被拍一下
             target.showEmote('!', 0.8);
             it.showEmote('♪', 0.8);
             pet.stage.fx.stars((it.x + target.x) / 2, Math.min(it.head().y, target.head().y), S, 4);

@@ -11,6 +11,7 @@
 import * as art from '../gfx/art.js';
 import { blit } from '../gfx/pixel.js';
 import { hearts } from '../../core/amie.js';
+import { knockFrom } from './physics.js';
 
 export const WALK_SPEED = 26; // 美術像素／秒
 export const RUN_SPEED = 72;
@@ -328,6 +329,9 @@ export const ACTIONS = {
         const S = pet.S, a = center(pet), b = center(o);
         pet.stage.fx.burst((a.x + b.x) / 2, (a.y + b.y) / 2, S, ['#ffffff', '#ffe066'], { n: 5, speed: 60, spread: 6.3, g: 0, life: 0.25 });
         pet.stage.audio.sfx('land');
+        // 撞在一起：兩隻都被彈開一點（重的退得少）
+        knockFrom(pet, o.x, o.gy, 130);
+        knockFrom(o, pet.x, pet.gy, 130);
       }
       if (done) {
         release(pet, o);

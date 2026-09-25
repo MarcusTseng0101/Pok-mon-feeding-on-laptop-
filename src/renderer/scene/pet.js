@@ -10,6 +10,7 @@ import { ACTIONS, soloOptions, socialOptions, WALK_SPEED, RUN_SPEED } from './be
 import { HABIT_ACTIONS, habitOptions } from './habits.js';
 import { MOVE_ACTIONS, moveOptions } from './moves.js';
 import { SOCIAL_ACTIONS, groupOptions, maybeComfort } from './social.js';
+import { integrateKnock } from './physics.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
@@ -96,6 +97,11 @@ export class Pet {
   // 動作造成的上下位移（美術像素）
   lift() {
     const k = this.dur > 0 ? Math.min(1, this.stateT / this.dur) : 0;
+    const bump = this.hopT > 0 ? Math.round(Math.sin((this.hopT / 0.25) * Math.PI) * 4) : 0;
+    return bump + this.baseLift(k);
+  }
+
+  baseLift(k) {
     if (this.act?.lift) return this.act.lift(this, k);
     switch (this.state) {
       case 'walk': case 'follow': case 'chase': case 'flee': case 'run':
@@ -253,6 +259,8 @@ export class Pet {
   // ---------- 每一幀 ----------
   update(dt) {
     const st = this.stage, S = this.S;
+    this.lastPos = { x: this.x, y: this.gy, dt }; // 碰撞時用來估計速度
+    this.hopT = Math.max(0, (this.hopT ?? 0) - dt); // 被撞到時彈一下
     this.t += dt;
     this.stateT += dt;
     this.squashT = Math.max(0, this.squashT - dt);
@@ -282,6 +290,8 @@ export class Pet {
       case 'walk':
       case 'run': {
         const speed = (this.state === 'run' ? RUN_SPEED : WALK_SPEED) * S;
+        // 路被別隻擋住太久就放棄
+        if (this.state === 'walk' && this.stateT > 15) { this.onArrive = null; this.set('idle', 1); break; }
         if (this.moveTo(this.target.x, this.target.y, speed, dt)) {
           if (this.state === 'run' && this.stateT < this.dur) { this.target = this.randomPoint(60, 200); break; } // 暴衝：一直換方向
           const arrive = this.onArrive;
@@ -409,6 +419,7 @@ export class Pet {
       st.fx.sparkles(r.x + r.w * (0.2 + Math.random() * 0.6), r.y + r.h * (0.2 + Math.random() * 0.5), S, 1, 2);
     }
 
+    integrateKnock(this, dt); // 被推、被打到的擊退
     if (this.state !== 'held') {
       const b = this.bounds();
       if (this.x < b.x0) { this.x = b.x0; this.vx = Math.abs(this.vx) * 0.5; }

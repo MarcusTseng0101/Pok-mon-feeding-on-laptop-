@@ -4,6 +4,7 @@
 // 或正在拖曳、拿著泡芙、瞄準時，視窗才接收滑鼠；其餘時間點擊都會落到下面的視窗。
 import { Fx } from './fx.js';
 import { Pet } from './pet.js';
+import { resolveCollisions } from './physics.js';
 import { blit } from '../gfx/pixel.js';
 import * as art from '../gfx/art.js';
 
@@ -250,6 +251,7 @@ export class Stage {
 
   update(dt) {
     for (const p of this.pets.values()) p.update(dt);
+    resolveCollisions(this, dt); // 夥伴之間不會互相穿過去
     this.spot?.update(dt);
     if (this.spot?.gone) { this.spot = null; this.fire('spotGone'); }
     this.wild?.update(dt);
