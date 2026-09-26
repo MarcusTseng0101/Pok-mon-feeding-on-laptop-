@@ -63,7 +63,8 @@ export function homeOptions(pet) {
   return [
     ['goBed', beds && energy < 50 ? 6 : 0, () => goToBed(pet) || pet.set('sleep', rnd(8, 14))],
     // 回基地坐坐：舒適度越低越想回去；就算不累，偶爾也會回家看看
-    ['goBase', atHome(pet) ? 0.5 : comfort < 70 ? 5 : 2.5, // 權重是猜的，可以調 () => goHomeAndRest(pet) || pet.set('sit', rnd(3, 6))],
+    // （權重是猜的，可以調）
+    ['goBase', atHome(pet) ? 0.5 : comfort < 70 ? 5 : 2.5, () => goHomeAndRest(pet) || pet.set('sit', rnd(3, 6))],
   ];
 }
 
