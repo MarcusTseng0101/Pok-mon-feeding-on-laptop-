@@ -11,6 +11,7 @@ import { shinyChance } from '../core/shiny.js';
 import { spriteKey, inheritForm } from '../core/forms.js';
 import { puffName, hearts, FLAVOR_ZH, parsePuffKey } from '../core/amie.js';
 import * as art from './gfx/art.js';
+import { socialized } from '../core/mind.js';
 
 const TYPING_WATCH_AFTER = 30; // 連續打字幾秒後過來看（秒）
 const TYPING_COOLDOWN = 3 * 60 * 1000; // 猜的，可調整：不要一直跑過來
@@ -331,7 +332,12 @@ export class Director {
       }
     });
     st.on('spotGone', () => { if (!this.enc) this.scheduleNext(); });
-    st.on('bond', (a, b, n) => this.game.bond(a.uid, b.uid, n));
+    st.on('bond', (a, b, n) => {
+      this.game.bond(a.uid, b.uid, n);
+      this.game.playedTogether(a.uid, b.uid); // 兩邊都記得跟誰玩過
+      for (const p of [a, b]) if (p.mon.mind) socialized(p.mon.mind, 8);
+    });
+    st.on('duelResult', (w, l) => this.game.duelResult(w.uid, l.uid));
     st.on('perched', () => { this.game.state.stats.perches++; });
     // 超級進化、牽絆變身（只是演出，不會存檔）
     st.on('formChange', (pet, form) => {

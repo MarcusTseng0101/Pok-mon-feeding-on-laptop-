@@ -346,3 +346,13 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .dialog.ask .choices { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .dialog.ask .choices button { text-align: left; }
 .dialog.ask .choices small { display: block; font-size: 11px; opacity: 0.8; }
+
+/* 心智：心情、需求、最近在想什麼 */
+.party .mind { background: var(--panel-2); padding: 6px 8px; box-shadow: 0 0 0 2px var(--line); line-height: 1.6; }
+.party .mind .needs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; margin: 4px 0; }
+.party .mind .need { position: relative; display: block; height: 16px; background: #e8dccb; box-shadow: 0 0 0 1px var(--ink); }
+.party .mind .need i { position: absolute; inset: 0 auto 0 0; background: #b7e39a; }
+.party .mind .need small { position: relative; padding-left: 4px; font-size: 10px; }
+.party .mind ul { margin: 2px 0 0; padding-left: 16px; }
+.party .mind li small { color: var(--muted); margin-left: 6px; font-size: 10px; }
+.party .mind .mems { color: var(--muted); font-size: 11px; margin-top: 2px; }

@@ -6,12 +6,15 @@
 // 所以逐個欄位合併：
 //   寶可夢     依 uid 取聯集；兩邊都有：取好感＋成長比較多的那份，暱稱用比較新改的
 //   圖鑑       每個計數取最大、時間取最早；形態也一樣
-//   感情、統計  取最大（統計不能相加，不然每次同步都會重複累加）
+//   感情、統計  取最大（統計不能相加，不然每次同步都會重複累加）；競爭心也取最大
+//   記憶       同一隻寶可夢兩邊記得的事取聯集（依時間排序，保留上限內最新的）
 //   獎章       聯集（時間取最早）
 //   蛋         依 uid 取聯集，但已經孵化的（hatchedEggs）不會再出現
 //   背包       每台電腦各自記「自己造成的變化量」（ledger），總數＝起點＋所有電腦的變化量。
 //              這樣合併幾次、誰先誰後，結果都一樣，也不會把同一筆重複算進去
 //   設定、同步資訊、夥伴在桌面上的位置、正在進行的專注、天氣：每台電腦各自保留，不合併
+
+import { mergeMemory } from './memory.js';
 
 export const SYNC_DIR = 'kalos-amie';
 export const DEVICE_RE = /^[a-z0-9]{6,32}$/;
@@ -102,6 +105,7 @@ function mergeMon(a, b) {
   m.nickname = nickFrom.nickname;
   m.nicknameAt = nickFrom.nicknameAt ?? null;
   m.tasteKnown = a.tasteKnown || b.tasteKnown;
+  m.memory = mergeMemory(a.memory, b.memory); // 兩台電腦各自記得的事都留著
   return m;
 }
 
@@ -156,6 +160,7 @@ export function mergeShared(local, remote) {
   out.dex = {};
   for (const id of [...new Set([...Object.keys(local.dex), ...Object.keys(remote.dex)])].sort((a, b) => a - b)) out.dex[id] = mergeDexEntry(local.dex[id], remote.dex[id]);
   out.bonds = maxMap(local.bonds, remote.bonds);
+  out.rivalries = maxMap(local.rivalries, remote.rivalries);
   out.stats = maxMap(local.stats, remote.stats);
   out.achievements = minMap(local.achievements, remote.achievements);
   out.achievementRewards = { fancy: local.achievementRewards.fancy || remote.achievementRewards.fancy, pokeBall: local.achievementRewards.pokeBall || remote.achievementRewards.pokeBall };

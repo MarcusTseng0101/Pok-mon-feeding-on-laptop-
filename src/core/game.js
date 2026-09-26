@@ -10,6 +10,8 @@ import * as focus from './focus.js';
 import * as eggs from './eggs.js';
 import { newlyUnlocked, pendingRewards } from './achievements.js';
 import { canonicalForm, inheritForm, defaultForm, FORMS } from './forms.js';
+import { createMind } from './mind.js';
+import { remember } from './memory.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
 
 // 夥伴之間的感情（0–255），到這些門檻時通知畫面
@@ -95,6 +97,8 @@ export class Game {
     const t = this.now();
     const away = Math.min(24 * 60, Math.max(0, (t - (this.state.lastSeenAt ?? t)) / MIN));
     for (const m of this.state.mons) amie.applyDecay(m, away);
+    // 離開很久：在桌面上的夥伴記得「等你等了好久」
+    if (away >= 180) for (const m of this.outMons()) { this.remember(m.uid, { k: 'user-away', data: { hours: away / 60 } }); this.remember(m.uid, { k: 'user-back' }); }
     this.state.lastSeenAt = t;
     this.lastTick = t;
     this.checkDailyGift();
@@ -165,6 +169,7 @@ export class Game {
     const before = amie.hearts(mon.affection);
     const r = amie.stroke(mon);
     this.state.stats.strokes++;
+    this.remember(uid, { k: 'stroked' });
     this.afterAffection(mon, before);
     return r;
   }
@@ -178,6 +183,7 @@ export class Game {
     if (r.ok) {
       this.state.bag.puffs[puff]--;
       this.state.stats.puffsFed++;
+      this.remember(uid, { k: 'fed', data: { puffZh: amie.puffName(puff) } });
       this.afterAffection(mon, before);
       this.emit('fed', { uid, puff, ...r });
     }
@@ -418,6 +424,7 @@ export class Game {
     d.firstCaughtAt ??= t;
     if (egg.shiny) { d.shiny = (d.shiny ?? 0) + 1; this.state.stats.shinies++; }
     this.recordForm(egg.species, egg.form, 'caught');
+    for (const o of this.outMons()) this.remember(o.uid, { k: 'caught-new', with: mon.uid, data: { name: this.dex.name(mon.species) } });
     if (this.outMons().length < MAX_OUT) mon.out = true;
     this.state.mons.push(mon);
     this.state.stats.eggsHatched++;
@@ -559,6 +566,8 @@ export class Game {
       form: canonicalForm(species, form),
       trimAt: null,
       training: normalizeTraining(null),
+      mind: createMind(this.rng),
+      memory: [],
     };
   }
 
@@ -594,6 +603,44 @@ export class Game {
     return after;
   }
   bondOf(uidA, uidB) { return this.state.bonds[bondKey(uidA, uidB)] ?? 0; }
+  rivalryOf(uidA, uidB) { return this.state.rivalries[bondKey(uidA, uidB)] ?? 0; }
+
+  // 心智帶來的小變化（自己找到樹果吃、玩得開心）
+  mindDelta(uid, { fullness = 0, enjoyment = 0 } = {}) {
+    const mon = this.mon(uid);
+    if (!mon) return;
+    mon.fullness = Math.min(amie.MAX, Math.max(0, mon.fullness + fullness));
+    mon.enjoyment = Math.min(amie.MAX, Math.max(0, mon.enjoyment + enjoyment));
+  }
+
+  // ---- 記憶 ----
+  remember(uid, event) {
+    const mon = this.mon(uid);
+    if (!mon) return;
+    remember(mon.memory, event, this.now());
+  }
+
+  // 一起玩過（感情增加時由畫面呼叫）：兩邊都記得跟誰玩
+  playedTogether(uidA, uidB) {
+    const a = this.mon(uidA), b = this.mon(uidB);
+    if (!a || !b || uidA === uidB) return;
+    const name = m => this.displayName(m);
+    this.remember(uidA, { k: 'played-with', with: uidB, data: { name: name(b) } });
+    this.remember(uidB, { k: 'played-with', with: uidA, data: { name: name(a) } });
+  }
+
+  // 切磋的結果：競爭心 +1，兩邊各自記得贏了或輸了
+  duelResult(winnerUid, loserUid) {
+    const w = this.mon(winnerUid), l = this.mon(loserUid);
+    if (!w || !l || winnerUid === loserUid) return null;
+    const k = bondKey(winnerUid, loserUid);
+    this.state.rivalries[k] = Math.min(99, (this.state.rivalries[k] ?? 0) + 1);
+    const name = m => this.displayName(m);
+    this.remember(winnerUid, { k: 'won', with: loserUid, data: { name: name(l) } });
+    this.remember(loserUid, { k: 'lost', with: winnerUid, data: { name: name(w) } });
+    this.emit('duelResult', { winner: winnerUid, loser: loserUid });
+    return this.state.rivalries[k];
+  }
   bestFriend(uid) {
     let best = null;
     for (const [k, v] of Object.entries(this.state.bonds)) {
