@@ -36,6 +36,7 @@ node test/e2e/mind.cjs         # 想法泡泡、夥伴資料頁的心智、聊�
 node test/e2e/cursor.cjs       # 撲游標、追游標、坐在游標旁邊（永遠不蓋住游標、不攔截滑鼠）
 node test/e2e/peek.cjs         # 探頭：慢慢靠近會走進來、太快會嚇跑、頻率最多 1/3
 node test/e2e/trips.cjs        # 出門旅行：鬼抓人正常結束、走出去、紙條、走回來、收明信片、相簿
+node test/e2e/letters.cjs      # 寫信：離開 7 小時收到信、打開、提到記憶裡的事、惡意暱稱不會被當成 HTML、信箱、生日
 node test/e2e/base.cjs         # 秘密基地：空地點不到、家具點得到、擺放和搬動、累了去床上睡、晚上回基地睡
 node test/e2e/world.cjs        # 天氣（不會攔截滑鼠、查不到沿用上次）、獎章、同步資料夾（合併、不重複加）
 node test/e2e/habits.cjs    # 72 種寶可夢的每一個習性都能跑完、不會跑出螢幕
@@ -155,6 +156,25 @@ node test/e2e/perf.cjs      # 每幀 update + draw 的時間
   - 直接點桌面上的家具也可以搬動它。
 - 滑鼠：只有家具點得到。院子的空地和帳篷都點不到，所以不會擋到你點後面的視窗。
 - 兩台電腦同步時，基地用最後修改的那一邊。材料放在背包裡，跟其他東西一樣走 ledger。
+
+**寫信給你**（`src/core/letters.js`；全部在本機用範本組出來，不連網、不用 AI）
+- 夥伴會在這些時候寫信給你：
+  - 你離開超過 6 小時：「你不在的時候…」
+  - 旅行回來的隔天早上 9 點。
+  - 好感滿了。
+  - 你的生日，可以在設定裡填，不填也沒關係。
+- 有信的時候，桌面右下角會出現一個信封，點開就能看。選單的「信箱」可以看過去所有的信。
+- 每天最多 2 封，沒寄完的隔天再寄。
+- 一封信由幾段組成：
+  - 開頭。
+  - 為什麼寫信。
+  - 牠記憶裡真的發生過的 1–2 件事，例如你餵了什麼、跟誰玩、輸給誰、去了哪裡。不會編造沒發生的事。
+  - 提到好朋友或競爭對手。
+  - 現在的心情。
+  - 結尾，最後有牠的屬性顏色的小腳印簽名。
+- 語氣看個性：外向的很熱情，膽小的很害羞，貪吃的一定會提到吃的。
+- 最近 5 封用過的開頭和結尾不會再用。
+- 信的內容一律當成純文字顯示，就算暱稱取成 HTML 也不會被執行。
 
 **生態動作**（依屬性與時間，寫在 `src/renderer/scene/behaviors.js`）：
 
@@ -379,6 +399,7 @@ src/main/                    Electron 主程序
 src/core/minigames.js        小遊戲的計分與獎勵（純函式）
 src/core/perch.js focus.js eggs.js   視窗頂邊、番茄鐘、孵蛋的規則（eggdata.js 由 scripts/build-eggs.mjs 產生）
 src/core/weather.js achievements.js sync.js   天氣、獎章、同步的合併規則
+src/core/letters.js          寫信（範本、觸發、每天上限、同步）
 src/core/base.js             秘密基地（升級、家具格子、材料、同步）；畫面在 renderer/scene/base.js、home.js
 src/core/trips.js            出門旅行（地點、結算、同步）；明信片的圖在 renderer/gfx/postcards.js
 src/core/mind.js memory.js   心智（需求、個性、心情、理由）與記憶；scene/mindlink.js 把它接到 Pet.decide()

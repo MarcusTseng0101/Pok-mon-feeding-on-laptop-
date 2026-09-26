@@ -93,6 +93,7 @@ async function main() {
     director.syncPets();
     if (away > 60) ui.toast('好久不見！夥伴們都在等你');
     setTimeout(() => director.showReadyEggs(), 2000); // 上次關掉時已經可以孵的蛋
+    director.refreshMail(); // 還沒打開的信（包括離開很久時寫的「你不在的時候…」）
   }
   sprites.prefetchAll();
 

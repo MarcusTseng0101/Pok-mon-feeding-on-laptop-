@@ -17,6 +17,7 @@ import { startDepart, startReturn } from './scene/travel.js';
 import { BaseView } from './scene/base.js';
 import { FURNITURE, STAGES } from '../core/base.js';
 import * as cards from './gfx/postcards.js';
+import * as mail from './gfx/letters.js';
 
 const TYPING_WATCH_AFTER = 30; // 連續打字幾秒後過來看（秒）
 const TYPING_COOLDOWN = 3 * 60 * 1000; // 猜的，可調整：不要一直跑過來
@@ -191,6 +192,24 @@ export class Director {
     const hhmm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
     const day = new Date().toDateString() === t.toDateString() ? '' : '明天 ';
     this.ui?.toast(`${this.game.displayName(mon)}去${PLACES[mon.trip.place].zh}旅行了，大約 ${day}${hhmm} 回來`, { icon: cards.note });
+  }
+
+  // ---------- 信 ----------
+  refreshMail() {
+    const st = this.stage, S = st.S;
+    const unread = this.game.unreadLetters();
+    if (!unread.length) { if (this.envelope) { this.envelope.life = 0; this.envelope = null; } return; }
+    if (this.envelope && !this.envelope.gone) return;
+    // 右下角（精靈球按鈕的左邊一點）
+    this.envelope = new Prop(st, { kind: 'letter', x: st.W - 90 * S, y: st.H - 10 * S, onClick: () => this.openNextLetter() });
+    st.props.push(this.envelope);
+  }
+
+  openNextLetter() {
+    const l = this.game.unreadLetters()[0];
+    if (!l) return;
+    this.audio.sfx('open');
+    this.ui?.showLetter(l);
   }
 
   // ---------- 秘密基地 ----------
@@ -802,6 +821,9 @@ export class Director {
       this.audio.jingle('newEntry', { resumeWith: this.ambientSong() });
       this.ui?.toast('圖鑑捕獲 60 種！獲得了「閃耀護符」，色違更容易出現了', { icon: art.sparkle, kind: 'dex' });
     });
+    // 信：有沒打開的信，桌面角落就有一個信封
+    g.on('letter', l => { this.refreshMail(); this.audio.sfx('open'); this.ui?.toast(`${l.name}寫了一封信給你`, { icon: mail.envelope }); });
+    g.on('letterOpened', () => this.refreshMail());
     g.on('bondUp', ({ a, b, level, zh }) => {
       if (level < 2) return;
       const pa = this.stage.pets.get(a), pb = this.stage.pets.get(b);

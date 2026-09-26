@@ -382,3 +382,17 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .basepanel .placed .row span { min-width: 60px; }
 .basepanel .side button.sel, .basepanel .side button.sel:hover { background: var(--pink-2); }
 .mats { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+
+/* 信箱、信 */
+.mailbox { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+.mailbox .list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+.mailbox .letter-row { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; align-items: center; text-align: left; padding: 6px 8px; }
+.mailbox .letter-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mailbox .letter-row small { color: var(--muted); font-size: 10px; }
+.mailbox .letter-row.unread { background: #fff6c8; }
+.dialog.letter { max-width: 400px; text-align: left; }
+.dialog.letter .paper { background: repeating-linear-gradient(#fffdf6 0 21px, #e8dcc6 21px 22px) 0 12px; padding: 10px 14px; box-shadow: 0 0 0 2px var(--line); }
+.dialog.letter .body { white-space: pre-wrap; margin: 0; line-height: 22px; }
+.dialog.letter .sign { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 8px; color: var(--muted); }
+.dialog.letter .btns { text-align: center; margin-top: 10px; }
+.settings .birthday select { margin: 0 2px; }
