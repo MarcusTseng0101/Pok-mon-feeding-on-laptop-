@@ -6,6 +6,7 @@
 // 這裡不用內建亂數，也不碰畫面。
 import { createRng } from './rng.js';
 import { BERRIES } from './amie.js';
+import { PLACE_MATERIALS } from './base.js';
 
 const MIN = 60_000;
 export const TRIP_MIN_MIN = 30; // 旅行最短、最長幾分鐘（猜的，可以調）
@@ -172,7 +173,13 @@ export function rollTrip(trip, { dex, friendName = null, selfName = '' } = {}) {
   }
   const egg = rng() < EGG_CHANCE;
   const friend = rng() < FRIEND_CHANCE && sights.length ? sights[Math.floor(rng() * sights.length)].id : null;
-  return { place: trip.place, diary, gifts, egg, friend, sight: sight?.id ?? null, postcardSeed: Math.floor(rng() * 2 ** 31) };
+  const postcardSeed = Math.floor(rng() * 2 ** 31);
+  // 蓋基地的材料：那個地方比較容易撿到的，1–3 個（放在最後擲，前面的結果才不會因為加了材料而改變）
+  gifts.materials = {};
+  const mats = PLACE_MATERIALS[trip.place];
+  const nMat = 1 + Math.floor(rng() * 3);
+  for (let i = 0; i < nMat; i++) { const m = mats[Math.floor(rng() * mats.length)]; gifts.materials[m] = (gifts.materials[m] ?? 0) + 1; }
+  return { place: trip.place, diary, gifts, egg, friend, sight: sight?.id ?? null, postcardSeed };
 }
 
 export function normalizePostcard(p) {

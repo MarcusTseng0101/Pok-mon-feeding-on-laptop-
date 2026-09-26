@@ -13,6 +13,7 @@ import { canonicalForm, inheritForm, defaultForm, FORMS } from './forms.js';
 import { createMind } from './mind.js';
 import { remember } from './memory.js';
 import * as trips from './trips.js';
+import * as baseRules from './base.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
 
 // 夥伴之間的感情（0–255），到這些門檻時通知畫面
@@ -641,6 +642,7 @@ export class Game {
     for (const [b, n] of Object.entries(r.gifts.berries)) bag.berries[b] = Math.min(999, bag.berries[b] + n);
     for (const [b, n] of Object.entries(r.gifts.balls)) bag.balls[b] = Math.min(999, bag.balls[b] + n);
     for (const p of r.gifts.puffs) bag.puffs[p] = (bag.puffs[p] ?? 0) + 1;
+    for (const [k, n] of Object.entries(r.gifts.materials ?? {})) bag.materials[k] = Math.min(999, bag.materials[k] + n);
     // 撿到蛋：跟這隻同一族的（uid 由旅行決定，同步時不會變成兩顆）
     let egg = null;
     if (r.egg && this.state.eggs.length < MAX_EGGS) {
@@ -662,6 +664,17 @@ export class Game {
     this.emit('bag');
     return result;
   }
+
+  // ---- 秘密基地（core/base.js）----
+  basePlace(kind, x, y) {
+    const r = baseRules.place(this.state, kind, x, y, this.now(), `${kind}${this.now().toString(36)}${Math.floor(this.rng() * 1e4).toString(36)}`);
+    if (r.ok) { this.emit('base'); this.emit('bag'); }
+    return r;
+  }
+  baseMove(id, x, y) { const ok = baseRules.move(this.state, id, x, y, this.now()); if (ok) this.emit('base'); return ok; }
+  baseRemove(id) { const ok = baseRules.remove(this.state, id, this.now()); if (ok) { this.emit('base'); this.emit('bag'); } return ok; }
+  baseUpgrade() { const r = baseRules.upgrade(this.state, this.now()); if (r.ok) { this.emit('base'); this.emit('bag'); } return r; }
+  baseSide(side) { this.state.base.side = side === 'right' ? 'right' : 'left'; this.state.base.updatedAt = this.now(); this.emit('base'); }
 
   // ---- 記憶 ----
   remember(uid, event) {
