@@ -4,6 +4,7 @@ import * as art from '../gfx/art.js';
 import { pixelCircle } from './fx.js';
 import { RING_MIN } from '../../core/capture.js';
 import { spriteKey } from '../../core/forms.js';
+import * as cards from '../gfx/postcards.js';
 
 // ---------- 氣息點 ----------
 export class Spot {
@@ -427,7 +428,7 @@ export class Prop {
     this.alpha = 0;
     this.gone = false;
   }
-  image() { return this.kind === 'cell' ? art.zygardeCell(this.t) : art.puff(this.puff); }
+  image() { return this.kind === 'cell' ? art.zygardeCell(this.t) : this.kind === 'note' ? cards.note : art.puff(this.puff); }
   rect() {
     const img = this.image(), S = this.stage.S;
     const bob = this.kind === 'cell' ? Math.round(Math.sin(this.t * 2)) * S : 0;

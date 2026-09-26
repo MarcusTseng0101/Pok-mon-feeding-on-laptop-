@@ -356,3 +356,16 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .party .mind ul { margin: 2px 0 0; padding-left: 16px; }
 .party .mind li small { color: var(--muted); margin-left: 6px; font-size: 10px; }
 .party .mind .mems { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+/* 相簿、明信片 */
+.album { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+.album .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; overflow-y: auto; align-content: start; padding: 3px; }
+.album .card { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px; background: #fff; }
+.album .card small { color: var(--muted); font-size: 10px; }
+.album .hint, .album .empty { grid-column: 1 / -1; }
+.dialog.postcard { max-width: 380px; }
+.dialog.postcard .pic { display: flex; justify-content: center; margin: 4px 0 8px; }
+.dialog.postcard .diary { margin: 4px 0; }
+.dialog.postcard .gifts { color: var(--muted); font-size: 12px; margin: 2px 0; }
+.dialog.postcard .from { text-align: right; color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
+.party .trip { margin: 0; padding: 4px 8px; background: #fff6c8; box-shadow: 0 0 0 2px var(--line); }

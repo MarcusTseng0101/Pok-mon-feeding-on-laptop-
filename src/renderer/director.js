@@ -12,6 +12,9 @@ import { spriteKey, inheritForm } from '../core/forms.js';
 import { puffName, hearts, FLAVOR_ZH, parsePuffKey } from '../core/amie.js';
 import * as art from './gfx/art.js';
 import { socialized } from '../core/mind.js';
+import { PLACES } from '../core/trips.js';
+import { startDepart, startReturn } from './scene/travel.js';
+import * as cards from './gfx/postcards.js';
 
 const TYPING_WATCH_AFTER = 30; // 連續打字幾秒後過來看（秒）
 const TYPING_COOLDOWN = 3 * 60 * 1000; // 猜的，可調整：不要一直跑過來
@@ -103,11 +106,12 @@ export class Director {
 
   syncPets() {
     const quiet = this.game.state.settings.quiet;
-    const want = new Set(quiet ? [] : this.game.outMons().map(m => m.uid));
-    for (const uid of [...this.stage.pets.keys()]) if (!want.has(uid)) this.stage.removePet(uid);
-    const outs = this.game.outMons();
+    // 旅行中的不在桌面上；正在走出去的讓牠走完；回來了的由 refreshTrips() 讓牠從邊邊走進來
+    const want = new Set(quiet ? [] : this.game.homeMons().map(m => m.uid));
+    for (const uid of [...this.stage.pets.keys()]) if (!want.has(uid) && this.stage.pets.get(uid).state !== 'depart') this.stage.removePet(uid);
+    const outs = this.game.homeMons();
     outs.forEach((mon, i) => {
-      if (!want.has(mon.uid) || this.stage.pets.has(mon.uid)) return;
+      if (!want.has(mon.uid) || this.stage.pets.has(mon.uid) || this.game.tripStatus(mon.uid) === 'back') return;
       // 回到上次關掉時的位置；新出來的平均分散在螢幕上，不要擠在一起
       const st = this.stage;
       const pos = mon.pos
@@ -138,6 +142,79 @@ export class Director {
       this.ui?.toast('誘餌泡芙的香味散掉了');
     }
     if (this.evolution) this.updateEvolution(dt);
+    this.tripT = (this.tripT ?? 0) + dt;
+    if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); }
+  }
+
+  // ---------- 出門旅行 ----------
+  // 每秒檢查一次：旅行中的留一張紙條；回來了的從邊邊走進來；收完明信片的拿掉紙條
+  refreshTrips() {
+    const st = this.stage, S = st.S;
+    this.notes ??= new Map();
+    const quiet = this.game.state.settings.quiet;
+    for (const mon of this.game.outMons()) {
+      const status = this.game.tripStatus(mon.uid);
+      const pet = st.pets.get(mon.uid);
+      if (status === 'away') {
+        if (pet && pet.state !== 'depart' && !pet.leaving) startDepart(pet); // 從夥伴頁按「讓牠去旅行」
+        if (!pet && !this.notes.has(mon.uid)) { // 走出螢幕以後才放紙條（放在牠出發的地方）
+          const pos = mon.pos ? { x: mon.pos.x * st.W, y: mon.pos.y * st.H } : { x: st.W * 0.5, y: st.H * 0.7 };
+          const prop = new Prop(st, { kind: 'note', x: pos.x, y: pos.y, onClick: () => this.noteClicked(mon.uid) });
+          st.props.push(prop);
+          this.notes.set(mon.uid, prop);
+        }
+      } else {
+        const prop = this.notes.get(mon.uid);
+        if (prop) { prop.life = 0; this.notes.delete(mon.uid); }
+        if (status === 'back' && !pet && !quiet && !this.returning?.has(mon.uid)) {
+          (this.returning ??= new Set()).add(mon.uid);
+          this.sprites.get(spriteKey(mon.species, mon.form), mon.shiny).then(() => {
+            this.returning.delete(mon.uid);
+            if (this.game.tripStatus(mon.uid) !== 'back' || st.pets.has(mon.uid)) return;
+            startReturn(st.addPet(mon, { x: -100, gy: st.H * 0.7 }));
+            this.ui?.toast(`${this.game.displayName(mon)}旅行回來了！點牠收下明信片`, { icon: cards.mini });
+          });
+        }
+      }
+    }
+    for (const [uid, prop] of this.notes) if (!this.game.mon(uid)?.trip) { prop.life = 0; this.notes.delete(uid); }
+  }
+
+  noteClicked(uid) {
+    const mon = this.game.mon(uid);
+    if (!mon?.trip) return;
+    const t = new Date(mon.trip.returnAt);
+    const hhmm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+    const day = new Date().toDateString() === t.toDateString() ? '' : '明天 ';
+    this.ui?.toast(`${this.game.displayName(mon)}去${PLACES[mon.trip.place].zh}旅行了，大約 ${day}${hhmm} 回來`, { icon: cards.note });
+  }
+
+  // 從夥伴頁按「讓牠去旅行」
+  sendOnTrip(uid) {
+    const trip = this.game.depart(uid, { curious: 0.5 });
+    if (!trip) return false;
+    const pet = this.stage.pets.get(uid);
+    if (pet) startDepart(pet);
+    return true;
+  }
+
+  // 點旅行回來的寶可夢：收下明信片、禮物、日記
+  collectTrip(pet) {
+    const r = this.game.settleTrip(pet.uid);
+    if (!r) return;
+    this.audio.sfx('collect');
+    pet.set('happy', 0.8);
+    pet.showEmote('♥', 1.4);
+    this.ui?.showPostcard(r);
+    if (r.egg) this.ui?.toast('牠還撿到了一顆蛋！', { icon: art.egg() });
+    // 帶了朋友回來：過一下子，那隻野生寶可夢會出現在附近
+    if (r.friend) {
+      setTimeout(() => {
+        if (this.enc || this.stage.spot) return;
+        this.spawn({ speciesId: r.friend, form: null, spot: this.dex.habitat(r.friend), shiny: false, nature: this.rng.pick(this.dex.natures).slug, special: false });
+        this.ui?.toast(`${this.game.displayName(pet.mon)}帶了一個朋友回來！`);
+      }, 3000);
+    }
   }
 
   // ---------- 天氣 ----------
@@ -307,7 +384,8 @@ export class Director {
     });
     st.on('click', target => {
       this.audio.resume();
-      if (target instanceof Pet) this.ui?.openPetBubble(target);
+      if (target instanceof Pet && this.game.tripStatus(target.uid) === 'back') this.collectTrip(target);
+      else if (target instanceof Pet) this.ui?.openPetBubble(target);
       else if (target instanceof Spot) this.beginEncounter(target);
       else if (target instanceof WildMon) this.ui?.showEncounter(this.enc);
       else target?.onClick?.(); // 道具、蛋
@@ -346,6 +424,13 @@ export class Director {
       this.game.bond(a.uid, b.uid, n);
       this.game.playedTogether(a.uid, b.uid); // 兩邊都記得跟誰玩過
       for (const p of [a, b]) if (p.mon.mind) socialized(p.mon.mind, 8);
+    });
+    // 走出螢幕了：從舞台上拿掉（紙條由 refreshTrips 放）
+    st.on('tripGone', pet => {
+      const f = pet.tripFrom, mon = this.game.mon(pet.uid);
+      if (f && mon) mon.pos = { x: Math.min(1, Math.max(0, f.x / this.stage.W)), y: Math.min(1, Math.max(0, f.y / this.stage.H)) };
+      this.stage.pets.delete(pet.uid);
+      this.refreshTrips();
     });
     st.on('duelResult', (w, l) => this.game.duelResult(w.uid, l.uid));
     st.on('perched', () => { this.game.state.stats.perches++; });
