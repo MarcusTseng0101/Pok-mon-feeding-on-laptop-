@@ -70,45 +70,64 @@ export function integrateKnock(pet, dt) {
   if (Math.hypot(pet.kvx, pet.kvy) < 4 * pet.S) pet.kvx = pet.kvy = 0;
 }
 
+const DEEP = 0.6; // 橢圓空間的距離小於這個＝疊得很深（看得出穿模）
+const RELAX_PASSES = 3; // 一團擠在一起時：推開一對又被第三隻擠回去，多推幾輪只修位置
+
+// 兩隻腳印的橢圓空間距離：< 1 表示重疊
+function footDist(a, b, S) {
+  const rx = (a.asset.w + b.asset.w) * FOOT * S;
+  return Math.hypot((b.x - a.x) / rx, (b.gy - a.gy) / (rx * DEPTH));
+}
+
+// 把一對重疊的推開（只改位置）。沒有重疊回傳 null，有的話回傳推開的方向
+function pushApart(a, b, S) {
+  const rx = (a.asset.w + b.asset.w) * FOOT * S;
+  const ry = rx * DEPTH;
+  const dx = b.x - a.x, dy = b.gy - a.gy;
+  const nd = footDist(a, b, S);
+  if (nd >= 1) return null;
+  // 推開方向（剛好重疊在同一點時隨便挑一邊）
+  let nx = dx / rx, ny = dy / ry;
+  if (nd < 1e-4) { nx = Math.random() < 0.5 ? -1 : 1; ny = 0; }
+  if (a.perch) { nx = Math.sign(dx) || (Math.random() < 0.5 ? -1 : 1); ny = 0; } // 頂邊上只能左右推
+  const len = Math.hypot(nx, ny) || 1;
+  nx /= len; ny /= len;
+  const depth = 1 - nd;
+  const ma = mass(a), mb = mass(b), sum = ma + mb;
+  // 輕的被推比較多；一般碰到只修正一部分，看起來是軟軟地擠開。
+  // 疊得很深（招式、互動剛結束時）就一次推開，不要讓人看到穿模好幾幀
+  const push = Math.min(1, depth) * (nd < DEEP ? 1 : 0.6);
+  const wa = { x: -nx * rx * push * (mb / sum), y: -ny * ry * push * (mb / sum) };
+  const wb = { x: nx * rx * push * (ma / sum), y: ny * ry * push * (ma / sum) };
+  const a0 = { x: a.x, y: a.gy }, b0 = { x: b.x, y: b.gy };
+  a.x += wa.x; a.gy += wa.y;
+  b.x += wb.x; b.gy += wb.y;
+  a.clamp(); b.clamp(); // 被擠到螢幕邊邊就停在邊上
+  // 被邊緣擋住、推不動的份量，改由另一隻多退一點（不然貼著邊的兩隻會卡在一起好幾幀）
+  const lostA = { x: wa.x - (a.x - a0.x), y: wa.y - (a.gy - a0.y) };
+  const lostB = { x: wb.x - (b.x - b0.x), y: wb.y - (b.gy - b0.y) };
+  if (lostA.x || lostA.y || lostB.x || lostB.y) {
+    b.x -= lostA.x; b.gy -= lostA.y;
+    a.x -= lostB.x; a.gy -= lostB.y;
+    a.clamp(); b.clamp();
+  }
+  return { nx, ny, nd };
+}
+
+const collides = (a, b) => sameLayer(a, b) && !together(a, b) && heightOverlap(a, b);
+
 // 每一幀：把重疊的推開；跑太快撞在一起會彈開、被丟出去的會把別隻撞飛
 export function resolveCollisions(stage, dt) {
   const pets = [...stage.pets.values()].filter(p => !ghostly(p));
   const now = performance.now();
+  const S = stage.S;
   for (let i = 0; i < pets.length; i++) {
     for (let j = i + 1; j < pets.length; j++) {
       const a = pets[i], b = pets[j];
-      if (!sameLayer(a, b) || together(a, b) || !heightOverlap(a, b)) continue;
-      const S = stage.S;
-      const rx = (a.asset.w + b.asset.w) * FOOT * S;
-      const ry = rx * DEPTH;
-      const dx = b.x - a.x, dy = b.gy - a.gy;
-      const nd = Math.hypot(dx / rx, dy / ry); // 橢圓空間的距離，< 1 表示重疊
-      if (nd >= 1) continue;
-      // 推開方向（剛好重疊在同一點時隨便挑一邊）
-      let nx = dx / rx, ny = dy / ry;
-      if (nd < 1e-4) { nx = Math.random() < 0.5 ? -1 : 1; ny = 0; }
-      if (a.perch) { nx = Math.sign(dx) || (Math.random() < 0.5 ? -1 : 1); ny = 0; } // 頂邊上只能左右推
-      const len = Math.hypot(nx, ny) || 1;
-      nx /= len; ny /= len;
-      const depth = 1 - nd;
-      const ma = mass(a), mb = mass(b), sum = ma + mb;
-      // 輕的被推比較多；一般碰到只修正一部分，看起來是軟軟地擠開。
-      // 疊得很深（招式、互動剛結束時）就一次推開，不要讓人看到穿模好幾幀
-      const push = Math.min(1, depth) * (nd < 0.6 ? 1 : 0.6);
-      const wa = { x: -nx * rx * push * (mb / sum), y: -ny * ry * push * (mb / sum) };
-      const wb = { x: nx * rx * push * (ma / sum), y: ny * ry * push * (ma / sum) };
-      const a0 = { x: a.x, y: a.gy }, b0 = { x: b.x, y: b.gy };
-      a.x += wa.x; a.gy += wa.y;
-      b.x += wb.x; b.gy += wb.y;
-      a.clamp(); b.clamp(); // 被擠到螢幕邊邊就停在邊上
-      // 被邊緣擋住、推不動的份量，改由另一隻多退一點（不然貼著邊的兩隻會卡在一起好幾幀）
-      const lostA = { x: wa.x - (a.x - a0.x), y: wa.y - (a.gy - a0.y) };
-      const lostB = { x: wb.x - (b.x - b0.x), y: wb.y - (b.gy - b0.y) };
-      if (lostA.x || lostA.y || lostB.x || lostB.y) {
-        b.x -= lostA.x; b.gy -= lostA.y;
-        a.x -= lostB.x; a.gy -= lostB.y;
-        a.clamp(); b.clamp();
-      }
+      if (!collides(a, b)) continue;
+      const hit = pushApart(a, b, S);
+      if (!hit) continue;
+      const { nx, ny } = hit;
 
       // 相對速度：被丟出去的（fall）用 vx/vy，其他用擊退速度＋這一幀的移動
       const va = velocity(a), vb = velocity(b);
@@ -140,6 +159,17 @@ export function resolveCollisions(stage, dt) {
         }
       }
     }
+  }
+  // 推開一對之後又被第三隻擠回去（一群擠在一起、貼著螢幕邊）：還疊得很深的再推幾輪，只修位置、不再算撞擊
+  for (let pass = 0; pass < RELAX_PASSES; pass++) {
+    let deep = false;
+    for (let i = 0; i < pets.length; i++) {
+      for (let j = i + 1; j < pets.length; j++) {
+        const a = pets[i], b = pets[j];
+        if (collides(a, b) && footDist(a, b, S) < DEEP) { pushApart(a, b, S); deep = true; }
+      }
+    }
+    if (!deep) break;
   }
 }
 

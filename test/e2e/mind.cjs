@@ -56,6 +56,8 @@ run('mind', async ({ page, shot }, check) => {
     c.decide();
     out.thought = c.thought;
     for (const p of [a, b, c]) p.set('sit', 999); // 接下來測滑鼠停留：先不要動
+    // 放在畫面中間：靠邊的話名字和泡泡會往內收（刻意的），就量不出有沒有對準頭
+    a.x = stage.W * 0.2; b.x = stage.W * 0.8; c.x = stage.W / 2; c.gy = stage.H * 0.6;
     const rc = c.rect();
     out.at = { x: (rc.x + rc.w / 2) / stage.dpr, y: (rc.y + rc.h / 2) / stage.dpr };
     return out;

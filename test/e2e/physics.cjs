@@ -15,7 +15,9 @@ run('physics', async ({ page }, check) => {
     while (stage.pets.size < 6 && Date.now() - t0 < 10000) await new Promise(r => setTimeout(r, 50));
     const pets = [...stage.pets.values()];
     const P = Object.fromEntries(pets.map(p => [p.mon.species, p]));
-    const reset = () => { for (const q of pets) { q.set('idle', 99); q.partner = null; q.group = null; q.duel = null; q.habit = null; q.moveCtx = null; q.z = 0; q.kvx = q.kvy = 0; q.vx = q.vy = 0; } };
+    const reset = () => { for (const q of pets) { q.set('idle', 99); q.partner = null; q.group = null; q.hidden = false; q.duel = null; q.habit = null; q.moveCtx = null; q.z = 0; q.kvx = q.kvy = 0; q.vx = q.vy = 0; } };
+    // 跟 physics.js 的 heightOverlap 一樣：一隻跳起來從另一隻頭上過去，不算撞在一起
+    const sameHeight = (a, b) => { const a0 = a.alt + a.z, b0 = b.alt + b.z; return a0 < b0 + b.asset.h * 0.8 && b0 < a0 + a.asset.h * 0.8; };
     const nd = (a, b) => { const rx = (a.asset.w + b.asset.w) * 0.35 * stage.S, ry = rx * 0.45; return Math.hypot((b.x - a.x) / rx, (b.gy - a.gy) / ry); };
     const out = {};
     // 全部疊在同一點 → 被推開
@@ -55,7 +57,7 @@ run('physics', async ({ page }, check) => {
         const x = pets[i], y = pets[j];
         if (stage.pets.get(x.uid) !== x || stage.pets.get(y.uid) !== y) continue; // 已經不在桌面上
         if (x.floats || y.floats || x.state === 'held') continue;
-        const exempt = x.partner === y || y.partner === x || x.hidden || y.hidden || ['habit', 'dig'].includes(x.state) || ['habit', 'dig'].includes(y.state);
+        const exempt = x.partner === y || y.partner === x || x.hidden || y.hidden || ['habit', 'dig'].includes(x.state) || ['habit', 'dig'].includes(y.state) || !sameHeight(x, y);
         if (!exempt && nd(x, y) < 0.6) deep++;
       }
     }

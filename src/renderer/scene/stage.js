@@ -85,6 +85,9 @@ export class Stage {
   addPet(mon, opts) {
     if (this.pets.has(mon.uid)) return this.pets.get(mon.uid);
     const pet = new Pet(this, mon, opts);
+    // 同一種的錯開動畫（隨機的起點偶爾會剛好對上，兩隻看起來像複製的）：每多一隻晚 0.62 秒（待機一圈 1.6 秒）
+    const twins = [...this.pets.values()].filter(p => p.spriteKey === pet.spriteKey);
+    if (twins.length) pet.animT = twins[0].animT + twins.length * 0.62;
     this.pets.set(mon.uid, pet);
     return pet;
   }

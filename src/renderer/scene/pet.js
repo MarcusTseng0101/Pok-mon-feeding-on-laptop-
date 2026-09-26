@@ -242,7 +242,8 @@ export class Pet {
     this.showEmote('…', 1.2);
   }
 
-  happy() { this.set('happy', 0.6); }
+  // 走出螢幕（出門）、走回來的路上：開心就好（愛心、表情照樣有），不要停下來
+  happy() { if (this.state !== 'depart' && this.state !== 'tripReturn') this.set('happy', 0.6); }
 
   pickUp(px, py) {
     const r = this.rect();
@@ -426,7 +427,8 @@ export class Pet {
         if (done) { this.set('idle', 1); this.showEmote('✦', 0.8); }
         break;
       case 'trip':
-        if (done) this.set('idle', 1);
+        // 站起來：本來要走去哪裡（床、你旁邊、果實…）就繼續走過去，不會忘記
+        if (done) { if (this.onArrive && this.target) this.set('walk'); else this.set('idle', 1); }
         break;
       case 'greet':
         if (this.partner) this.facing = this.partner.x > this.x ? 1 : -1;
@@ -476,7 +478,9 @@ export class Pet {
     }
 
     integrateKnock(this, dt); // 被推、被打到的擊退
-    if (this.state !== 'held') {
+    // 走出螢幕（出門）、從螢幕外走進來（回家）的時候本來就在螢幕外：不要夾回來，不然會卡在邊上
+    const offscreen = (this.state === 'depart' && this.departure?.phase === 'out') || this.state === 'tripReturn';
+    if (this.state !== 'held' && !offscreen) {
       const b = this.bounds();
       if (this.x < b.x0) { this.x = b.x0; this.vx = Math.abs(this.vx) * 0.5; }
       if (this.x > b.x1) { this.x = b.x1; this.vx = -Math.abs(this.vx) * 0.5; }
