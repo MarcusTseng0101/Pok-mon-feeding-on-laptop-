@@ -242,7 +242,8 @@ export class Pet {
     this.showEmote('…', 1.2);
   }
 
-  happy() { this.set('happy', 0.6); }
+  // 走出螢幕（出門）、走回來的路上：開心就好（愛心、表情照樣有），不要停下來
+  happy() { if (this.state !== 'depart' && this.state !== 'tripReturn') this.set('happy', 0.6); }
 
   pickUp(px, py) {
     const r = this.rect();
