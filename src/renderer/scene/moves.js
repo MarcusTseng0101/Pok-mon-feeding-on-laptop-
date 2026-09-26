@@ -13,6 +13,7 @@ import { duelHitChance } from '../../core/minigames.js';
 import { transform, endDuelForms } from './battleforms.js';
 import * as FX from './movefx.js';
 import { hearts } from '../../core/amie.js';
+import { effectiveness } from '../../core/types.js';
 
 const T = art.TYPE_COLORS;
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -136,33 +137,13 @@ export function movesetFor(dex, speciesId, mon = null) {
   return [...new Set(list)].filter(id => MOVES[id]).slice(0, 4);
 }
 
-// 屬性相剋（第六世代）：[效果絕佳, 效果不好, 沒有效果]
-const CHART = {
-  normal: [[], ['rock', 'steel'], ['ghost']],
-  fire: [['grass', 'ice', 'bug', 'steel'], ['fire', 'water', 'rock', 'dragon'], []],
-  water: [['fire', 'ground', 'rock'], ['water', 'grass', 'dragon'], []],
-  electric: [['water', 'flying'], ['electric', 'grass', 'dragon'], ['ground']],
-  grass: [['water', 'ground', 'rock'], ['fire', 'grass', 'poison', 'flying', 'bug', 'dragon', 'steel'], []],
-  ice: [['grass', 'ground', 'flying', 'dragon'], ['fire', 'water', 'ice', 'steel'], []],
-  fighting: [['normal', 'ice', 'rock', 'dark', 'steel'], ['poison', 'flying', 'psychic', 'bug', 'fairy'], ['ghost']],
-  poison: [['grass', 'fairy'], ['poison', 'ground', 'rock', 'ghost'], ['steel']],
-  ground: [['fire', 'electric', 'poison', 'rock', 'steel'], ['grass', 'bug'], ['flying']],
-  flying: [['grass', 'fighting', 'bug'], ['electric', 'rock', 'steel'], []],
-  psychic: [['fighting', 'poison'], ['psychic', 'steel'], ['dark']],
-  bug: [['grass', 'psychic', 'dark'], ['fire', 'fighting', 'poison', 'flying', 'ghost', 'steel', 'fairy'], []],
-  rock: [['fire', 'ice', 'flying', 'bug'], ['fighting', 'ground', 'steel'], []],
-  ghost: [['psychic', 'ghost'], ['dark'], ['normal']],
-  dragon: [['dragon'], ['steel'], ['fairy']],
-  dark: [['psychic', 'ghost'], ['fighting', 'dark', 'fairy'], []],
-  steel: [['ice', 'rock', 'fairy'], ['fire', 'water', 'electric', 'steel'], []],
-  fairy: [['fighting', 'dragon', 'dark'], ['fire', 'poison', 'steel'], []],
-};
-export function effectiveness(moveType, targetTypes) {
-  const [sup, weak, none] = CHART[moveType];
-  let m = 1;
-  for (const t of targetTypes) m *= none.includes(t) ? 0 : sup.includes(t) ? 2 : weak.includes(t) ? 0.5 : 1;
-  return m;
+// 故事裡的對戰用：代表招式前 3 個＋撞擊（屬性都被克制的時候，至少有一招打得到）
+export function battleMovesFor(dex, speciesId, mon = null) {
+  const list = movesetFor(dex, speciesId, mon);
+  return list.includes('tackle') ? list : [...list.slice(0, 3), 'tackle'];
 }
+
+export { effectiveness }; // 屬性相剋表在 core/types.js（故事裡的對戰也用）
 
 // ---------- 使出招式 ----------
 const center = pet => { const r = pet.rect(); return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; };
@@ -255,6 +236,7 @@ function hit(pet) {
       const d = Math.hypot(o.x - pet.x, o.gy - pet.gy);
       if (d < r) knockFrom(o, pet.x, pet.gy, power * (1 - d / r * 0.5) * (o === m.target ? mult : 1));
     }
+    if (isPet(m.target) && m.target.guest) knockFrom(m.target, pet.x, pet.gy, power * mult); // 故事對戰的對手不在夥伴名單裡
   } else if (isPet(m.target) && power) {
     knockFrom(m.target, pet.x, pet.gy, power * mult);
   }
@@ -525,6 +507,21 @@ export const MOVE_ACTIONS = {
       }
     },
   },
+  // 故事裡的對戰（scene/battle.js）：走到自己的位置、面向對手，等輪到自己
+  battle: {
+    update(pet, dt) {
+      const b = pet.battleSpot;
+      if (!b) { pet.set('idle', 1); return; }
+      if (pet.moveTo(b.x, b.y, 160 * pet.S, dt)) pet.facing = b.face;
+    },
+    lift: pet => (pet.floats ? Math.round(Math.sin(pet.t * 2) * 2) : Math.floor(pet.t * 2.4) % 2),
+  },
+  // 倒下了：往旁邊倒、慢慢變淡（對手倒下後會消失；你的夥伴對戰結束後站起來）
+  faint: {
+    update(pet) { if (pet.guest) pet.alpha = Math.max(0, 1 - pet.stateT / 0.9); },
+    pose(pet, p) { p.rot = -pet.facing * (Math.PI / 2) * Math.min(1, pet.stateT / 0.25); p.pivot = 'center'; },
+    lift: () => 0,
+  },
   // 切磋中沒輪到的一方：看著對方
   duel: {
     update(pet, dt, done) {
@@ -621,6 +618,7 @@ function endDuel(d, pet) {
 
 // Pet.decide() 用
 export function moveOptions(pet, others) {
+  if (pet.stage.battle) return []; // 故事的對戰進行中：旁邊的夥伴不自己練招、不切磋
   const h = pet.mon.affection;
   const list = [
     ['practice', 4, () => useMove(pet, pick(movesetFor(pet.stage.dex, pet.mon.species, pet.mon)), practicePoint(pet))],

@@ -18,6 +18,11 @@ import { BaseView } from './scene/base.js';
 import { FURNITURE, STAGES } from '../core/base.js';
 import * as cards from './gfx/postcards.js';
 import * as mail from './gfx/letters.js';
+import { StoryBattle } from './scene/battle.js';
+import { KEY_ITEMS } from '../core/items.js';
+import { CAST, BADGES, lossesOf } from '../core/story.js';
+
+const CAST_ZH = who => CAST[who]?.zh ?? '有人';
 
 const TYPING_WATCH_AFTER = 30; // 連續打字幾秒後過來看（秒）
 const TYPING_COOLDOWN = 3 * 60 * 1000; // 猜的，可調整：不要一直跑過來
@@ -138,7 +143,7 @@ export class Director {
     this.stage.env.focus = focusing;
     if (focusing && this.game.focusRemaining() <= 0) this.finishFocus();
     if (!focusing) this.typingReaction(now);
-    if (!quiet && !playing && !focusing && !this.stage.spot && !this.enc && now >= this.nextSpawnAt && this.game.state.starterChosen) this.spawn();
+    if (!quiet && !playing && !focusing && !this.stage.spot && !this.enc && !this.stage.battle && now >= this.nextSpawnAt && this.game.state.starterChosen) this.spawn();
     if (this.enc && !this.enc.throwing && now > this.enc.deadline) this.wildLeaves('等不及，自己跑走了…');
     if (this.lure && now > this.lure.until) {
       this.lure.prop.life = 0;
@@ -200,7 +205,7 @@ export class Director {
   tickStory({ force = false } = {}) {
     const ui = this.ui, g = this.game;
     if (!ui?.holo || this.storyBusy || ui.holo.busy) return false;
-    if (this.enc || this.stage.minigame || g.state.focus.active || g.state.settings.quiet) return false;
+    if (this.enc || this.stage.minigame || this.stage.battle || g.state.focus.active || g.state.settings.quiet) return false;
     if (!ui.modal.classList.contains('hidden')) return false;
     const ev = g.storyNext({ force });
     if (!ev) return false;
@@ -217,10 +222,66 @@ export class Director {
       this.storyBusy = false;
       return;
     }
-    if (ev.kind === 'visit') { this.spawnVisitor(ev); return; } // 點他才開始說話；在那之前不會發生別的事
+    if (ev.kind === 'visit' || ev.kind === 'battle') { this.spawnVisitor(ev); return; } // 點他才開始說話；在那之前不會發生別的事
     const r = await this.ui.holo.play(ev, { onLine: who => this.storyReact(ev, who) });
+    if (ev.kind === 'legend') { this.storyLegend(ev); return; } // 抓到才算做完
     g.storyDone(ev.id, { choice: r.choice });
     this.storyBusy = false;
+  }
+
+  // ---------- 故事裡的對戰 ----------
+  // 館主說完話就開打；打完再說一段（贏了／輸了）
+  startStoryBattle(ev, visitor) {
+    const pets = [...this.stage.pets.values()].filter(p => !p.leaving && !p.mon.trip);
+    if (!pets.length) {
+      this.ui?.toast('桌面上要有夥伴才能對戰。把夥伴叫出來以後，再點一次來挑戰的人');
+      visitor.talking = false;
+      return;
+    }
+    this.ui?.closeBubble?.();
+    for (const p of pets) if (p.free && !p.perch) { p.facing = p.x < this.stage.W / 2 ? 1 : -1; p.set('look', 2); p.showEmote('!', 1); }
+    this.audio.playSong('wild');
+    const battle = new StoryBattle({ stage: this.stage, game: this.game, dex: this.dex, audio: this.audio, hud: this.ui.battleHud }, ev, {
+      onEnd: async (won, uids) => {
+        const g = this.game;
+        if (won) {
+          this.audio.jingle('caught', { resumeWith: this.ambientSong() });
+          for (const p of this.stage.pets.values()) if (p.free) { p.set('cheer', 1.1); p.showEmote('♪', 1.4); }
+          g.battleWon?.(uids);
+        }
+        await this.ui.holo.play({ ...ev, kind: 'call', lines: won ? ev.win : ev.lose, choice: null }, { onLine: w => this.storyReact(ev, w) });
+        if (won) {
+          g.storyDone(ev.id);
+          if (ev.battle.badge) this.ui?.toast(`獲得了${BADGES[ev.battle.badge].zh}！`, { icon: art.sparkle, kind: 'dex' });
+          if (ev.id === 'champion-diantha') this.ui?.toast('你成為了卡洛斯的冠軍！', { icon: art.sparkle, kind: 'dex' });
+        } else {
+          g.storyLost(ev.id);
+          const n = lossesOf(g.state.story, ev.id);
+          this.ui?.toast(n >= 2 ? '明天再來挑戰。換一隻屬性有利的夥伴、或多陪陪夥伴（好感越高越強），會比較好打' : '明天再來挑戰吧');
+        }
+        visitor.life = visitor.t + 0.5;
+        this.storyBusy = false;
+        this.refreshMusic();
+      },
+    });
+    battle.start();
+  }
+
+  // ---------- 傳說的寶可夢 ----------
+  // 出現在桌面中間，不會逃走、不會等太久自己走掉；抓到才算這件事做完（關掉 app 下次會再出現）
+  storyLegend(ev) {
+    const g = this.game, st = this.stage, S = st.S;
+    const bag = g.state.bag.balls;
+    if (bag.poke + bag.great + bag.ultra < 5) {
+      bag.ultra += 5;
+      this.ui?.toast('博士寄來了 5 顆高級球！');
+    }
+    const plan = g.storyLegendPlan(ev);
+    this.stage.spot = null;
+    this.beginEncounter({ plan, x: st.W / 2, y: st.H * 0.55, groundY: st.H - 60 * S });
+    if (this.enc) this.enc.deadline = Infinity;
+    st.shake(6, 0.8);
+    this.ui?.toast(`${this.dex.name(plan.speciesId)}出現了！`, { icon: art.sparkle, kind: 'dex' });
   }
 
   // 有人說話：夥伴轉頭看投影（廣播在正中間，通訊器在左下角）
@@ -248,6 +309,7 @@ export class Director {
       if (prop.talking) return;
       prop.talking = true;
       await this.ui.holo.play(ev, { onLine: w => this.storyReact(ev, w) });
+      if (ev.kind === 'battle') { this.startStoryBattle(ev, prop); return; }
       this.game.storyDone(ev.id);
       prop.life = prop.t + 0.5; // 慢慢消失
       this.storyBusy = false;
@@ -256,7 +318,8 @@ export class Director {
     this.ui.portraits.get(who).then(() => { prop.img = this.ui.portraits.peekFigure(who); });
     st.props.push(prop);
     this.visitor = prop;
-    this.ui?.toast(`${ev.lines[0][0] === 'az' ? '有一個很高的人' : '有人'}站在秘密基地旁邊……`);
+    const who0 = ev.lines[0][0];
+    this.ui?.toast(ev.kind === 'battle' ? `${CAST_ZH(who0)}來挑戰你了！點他開始對戰` : `${who0 === 'az' ? '有一個很高的人' : '有人'}站在秘密基地旁邊……`);
   }
 
   // 桌面上常駐的信箱：放在秘密基地院子靠螢幕中間的那一側；有沒看的信就立旗子
@@ -567,7 +630,7 @@ export class Director {
     // 超級進化、牽絆變身（只是演出，不會存檔）
     st.on('formChange', (pet, form) => {
       const name = this.game.displayName(pet.mon);
-      if (form === 'mega') this.ui?.toast(`${name}超級進化成超級蒂安希了！`, { icon: art.sparkle });
+      if (form === 'mega') this.ui?.toast(`${name}超級進化成超級${this.dex.name(pet.mon.species)}了！`, { icon: art.sparkle });
       if (form === 'ash') this.ui?.toast(`${name}和夥伴的羈絆產生了共鳴…牽絆變身！`, { icon: art.sparkle });
       if (form) pet.stage.fx.hearts(pet.x, pet.head().y, pet.S, 2);
     });
@@ -700,7 +763,7 @@ export class Director {
     this.setMode(null);
     if (!result.ok) { this.ui?.toast(`沒有${BALLS[ball].zh}了`); return; }
     enc.throwing = true;
-    enc.deadline = Date.now() + 120_000;
+    if (!enc.wild.story) enc.deadline = Date.now() + 120_000;
     this.ui?.showEncounter(enc);
     this.audio.sfx('throw');
     const c = w.center();
@@ -726,6 +789,7 @@ export class Director {
     const name = this.dex.name(enc.wild.speciesId);
     if (r.caught) {
       w.set('caught');
+      if (enc.wild.story) { this.game.storyDone(enc.wild.story); this.storyBusy = false; } // 故事裡的傳說寶可夢
       this.audio.jingle('caught', { resumeWith: this.ambientSong() });
       this.ui?.toast(`抓到${enc.wild.shiny ? '色違的' : ''}${name}了！`, { icon: art.balls[ballEntity.kind] });
       setTimeout(() => this.petsReact(ballEntity, '♪', 'cheer'), 600);
@@ -765,6 +829,7 @@ export class Director {
 
   wildLeaves(reason) {
     if (!this.enc) return;
+    if (this.enc.wild.story) this.storyBusy = false; // 這件事還沒做完：之後會再發生
     const w = this.enc.entity;
     this.game.wildGone(this.enc.wild);
     this.petsReact(w, '…');
@@ -774,9 +839,10 @@ export class Director {
     this.endEncounter();
   }
 
-  runAway() {
-    if (!this.enc || this.enc.throwing) return;
-    this.wildLeaves('回到了牠來的地方');
+  // force：勿擾模式（故事裡的傳說寶可夢平常不會走；勿擾時暫時離開，下次會再來）
+  runAway({ force = false } = {}) {
+    if (!this.enc || this.enc.throwing || (this.enc.wild.story && !force)) return;
+    this.wildLeaves(this.enc.wild.story ? '暫時離開了，之後還會再來' : '回到了牠來的地方');
   }
 
   endEncounter() {
@@ -866,7 +932,14 @@ export class Director {
     g.on('chainBroken', ({ speciesId, count }) => {
       if (count >= 3) this.ui?.toast(`${this.dex.name(speciesId)}的連鎖（×${count}）中斷了…`);
     });
-    g.on('item', ({ item, uid }) => {
+    g.on('item', ({ item, uid, story }) => {
+      if (story) { // 故事裡拿到的
+        this.audio.jingle('newEntry', { resumeWith: this.ambientSong() });
+        const it = KEY_ITEMS[item];
+        const how = item === 'megaring' ? '有了它，帶著進化石的夥伴就能超級進化' : it.species ? `${this.dex.name(it.species)}帶著它、又有超級手環，就能超級進化` : '';
+        this.ui?.toast(`獲得了「${it.zh}」！${how}`, { icon: art.sparkle, kind: 'dex' });
+        return;
+      }
       if (item !== 'diancite') return;
       this.audio.jingle('newEntry', { resumeWith: this.ambientSong() });
       this.ui?.toast(`${this.game.displayName(this.game.mon(uid))}好像很信任你…獲得了「蒂安希進化石」！現在牠可以超級進化了`, { icon: art.sparkle, kind: 'dex' });

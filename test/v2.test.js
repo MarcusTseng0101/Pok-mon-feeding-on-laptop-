@@ -58,7 +58,8 @@ test('存檔 v2：新欄位都有預設值', () => {
   assert.equal(s.mons[0].form, null);
   assert.equal(s.mons[0].trimAt, null);
   assert.deepEqual(s.bag.berries, { pecha: 0, chesto: 0, aspear: 0, rawst: 0, cheri: 0 });
-  assert.deepEqual(s.bag.items, { diancite: false });
+  assert.equal(s.bag.items.diancite, false);
+  assert.ok(Object.values(s.bag.items).every(v => v === false), '重要物品一開始都沒有');
   assert.deepEqual(s.eggs, []);
   assert.deepEqual(s.achievements, {});
   assert.deepEqual(s.focus, { sessions: 0, totalMinutes: 0, streakDays: 0, lastDay: null, active: null });
@@ -104,7 +105,9 @@ test('存檔 v2：壞掉的值會被夾回合法範圍', () => {
     stats: { catches: -4, berriesPicked: 'many' },
   }, dex, T0);
   assert.deepEqual(s.bag.berries, { pecha: 0, chesto: 0, aspear: 0, rawst: 0, cheri: 999 });
-  assert.deepEqual(s.bag.items, { diancite: true });
+  assert.equal(s.bag.items.diancite, true);
+  assert.equal(s.bag.items.masterball, undefined, '不認識的物品不留');
+  assert.equal(s.bag.items.megaring, false);
   assert.deepEqual(s.mons.map(m => m.form), [null, null, null, null, 'polar']);
   const t = s.mons[0].training;
   assert.deepEqual(t, { hp: 252, atk: 252, def: 0, spa: 0, spd: 6, spe: 0 });

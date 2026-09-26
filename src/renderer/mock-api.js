@@ -32,7 +32,7 @@ export function createMockApi() {
       if (!base || !/^[a-z0-9-]{1,40}$/.test(name)) return null;
       try {
         const res = await fetch(`${base}/${name}.png`);
-        if (!res.ok) return null;
+        if (!res.ok || res.status === 204) return null;
         const blob = await res.blob();
         return await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
       } catch { return null; }

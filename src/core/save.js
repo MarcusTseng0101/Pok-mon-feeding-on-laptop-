@@ -7,6 +7,7 @@ import { normalizeMind } from './mind.js';
 import { normalizeMemory } from './memory.js';
 import { normalizeLetters, defaultLetters } from './letters.js';
 import { normalizeStory, defaultStory } from './story.js';
+import { ITEM_IDS } from './items.js';
 import { normalizeBase, defaultBase, emptyMaterials, MATERIALS } from './base.js';
 import { normalizeTrip, normalizePostcard, PLACES, POSTCARDS_KEPT, TRIPS_DONE_KEPT } from './trips.js';
 
@@ -23,7 +24,7 @@ export const MAX_EGGS = 3;
 export const TRAINING_STATS = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
 export const TRAINING_MAX = 252; // 單一能力上限（同原作努力值）
 export const TRAINING_TOTAL = 510; // 六項加起來的上限
-export const ITEMS = ['diancite'];
+export const ITEMS = ITEM_IDS; // 重要物品（core/items.js）
 
 export const DEFAULT_SETTINGS = {
   musicVolume: 0.45,

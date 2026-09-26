@@ -72,15 +72,13 @@ export function speciesWeights(ctx, state, dex) {
 const caughtCount = state => Object.values(state.dex).filter(d => d.caught > 0).length;
 const hasCaught = (state, id) => (state.dex[id]?.caught ?? 0) > 0;
 
-// 傳說與幻之寶可夢：各有自己的出現條件，條件成立時每次生成有小機率改成牠。
+// 傳說與幻之寶可夢（哲爾尼亞斯、伊裴爾塔爾除外）：各有自己的出現條件，條件成立時每次生成有小機率改成牠。
 export function rollSpecial(ctx, state, rng) {
   const n = caughtCount(state);
   const again = id => (hasCaught(state, id) ? 0.25 : 1); // 已經抓過的，再遇到的機會變低
   if (state.zygardeCells >= 10 && !hasCaught(state, 718)) return 718;
-  const tod = ctx.hour;
   const rolls = [
-    { id: 716, ok: n >= 30 && tod >= 5 && tod < 8, p: 0.04 }, // 清晨的七色光：哲爾尼亞斯
-    { id: 717, ok: n >= 30 && tod >= 0 && tod < 4, p: 0.04 }, // 深夜：伊裴爾塔爾
+    // 哲爾尼亞斯、伊裴爾塔爾：主線故事裡遇到（core/story.js 的 legend 事件），不會隨機出現
     { id: 719, ok: n >= 45 && hasCaught(state, 703), p: 0.05 }, // 抓過小碎鑽：蒂安希
     { id: 720, ok: n >= 50, p: 0.03 }, // 胡帕的圓環
     { id: 721, ok: n >= 50 && ctx.cpuHot, p: 0.06 }, // 電腦很燙的蒸氣：波爾凱尼恩

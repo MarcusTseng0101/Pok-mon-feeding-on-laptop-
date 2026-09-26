@@ -477,6 +477,8 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .holo-dim.on { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .holo .portrait::after { animation: none; } .holo-dim { transition: none; } }
 
+.story { display: flex; flex-direction: column; height: 100%; }
+.story .list { flex: 1; min-height: 0; }
 .story .summary { display: flex; gap: 8px; align-items: center; }
 .story .next { margin: 6px 0 10px; color: var(--muted); }
 .story .ver { font-weight: 700; padding: 1px 8px; border-radius: 4px; color: #fff; }
@@ -486,3 +488,49 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .story .story-row .face { display: flex; justify-content: center; align-items: flex-end; height: 52px; overflow: hidden; }
 .story .story-row .txt { display: flex; flex-direction: column; min-width: 0; }
 .story .story-row small { color: var(--muted); font-size: 11px; }
+
+/* ---------- 主線故事：對戰面板 ---------- */
+.battle-hud {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  width: min(600px, calc(100vw - 32px));
+  height: 222px; /* 固定高度：對戰的寶可夢站在面板上緣，面板內容換來換去時位置不會跳 */
+  box-sizing: border-box;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.battle-hud .title { font-size: 11px; color: var(--muted); text-align: center; }
+.battle-hud .sides { display: flex; justify-content: space-between; gap: 16px; }
+.battle-hud .side { flex: 1; min-width: 0; min-height: 44px; }
+.battle-hud .side.foe { text-align: right; }
+.battle-hud .who { display: flex; align-items: center; gap: 4px; }
+.battle-hud .side.foe .who { flex-direction: row-reverse; }
+.battle-hud .who b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.battle-hud .who .left { font-size: 9px; color: var(--pink); letter-spacing: 1px; }
+.battle-hud .bar { height: 8px; margin: 3px 0 1px; background: #4a3a48; box-shadow: 0 0 0 2px var(--ink); }
+.battle-hud .bar i { display: block; height: 100%; transition: width 0.6s steps(12); }
+.battle-hud .side.foe .bar i { margin-left: auto; }
+.battle-hud .bar i.ok { background: #5ad06a; }
+.battle-hud .bar i.mid { background: #f0c030; }
+.battle-hud .bar i.low { background: #f05a4a; }
+.battle-hud .num { font-size: 10px; color: var(--muted); }
+.battle-hud .msg { margin: 0; min-height: 1.4em; text-align: center; }
+.battle-hud .moves { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 6px; }
+.battle-hud .moves button { display: flex; flex-direction: column; align-items: flex-start; border-left: 6px solid var(--t); text-align: left; padding: 4px 8px; }
+.battle-hud .moves small { font-size: 10px; color: var(--muted); }
+.battle-hud .moves .super { color: #e0601a; }
+.battle-hud .moves .weak, .battle-hud .moves .none { color: #6a8ab8; }
+.battle-hud .pets { display: flex; flex-wrap: wrap; justify-content: center; }
+.battle-hud .pets button { display: inline-flex; align-items: center; gap: 4px; }
+.battle-hud .choices { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-between; overflow: auto; }
+.battle-hud .extra { display: flex; justify-content: flex-end; }
+.battle-hud .extra button { font-size: 11px; padding: 2px 8px; }
+.story .badges { display: flex; align-items: center; gap: 4px; margin: 6px 0 2px; }
+.story .badges small { margin-left: 6px; color: var(--muted); }
+/* 徽章：八角形的小像素圖（沒拿到是灰色的） */
+.gym-badge { width: 14px; height: 14px; background: #d6cbbd; clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); }
+.gym-badge.on { background: var(--c); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.5); }
