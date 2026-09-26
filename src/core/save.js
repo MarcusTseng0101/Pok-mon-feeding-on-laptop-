@@ -12,6 +12,7 @@ import { defaultAttention, normalizeAttention, LIMITS, DEFAULT_LIMIT } from './a
 import { defaultRoutine, normalizeRoutine } from './routine.js';
 import { defaultTogether, normalizeTogether } from './together.js';
 import { defaultMood, normalizeMood } from './mood.js';
+import { defaultSymbiosis, normalizeSymbiosis } from './symbiosis.js';
 import { normalizeBase, defaultBase, emptyMaterials, MATERIALS } from './base.js';
 import { normalizeTrip, normalizePostcard, PLACES, POSTCARDS_KEPT, TRIPS_DONE_KEPT } from './trips.js';
 
@@ -89,6 +90,7 @@ export function defaultSave(now) {
     routine: defaultRoutine(), // 你的作息：最近 28 天每天的第一次／最後一次操作、打字、專注分鐘（core/routine.js）
     together: defaultTogether(), // 你和大家：第一次見面、里程碑、每週的信（core/together.js）
     mood: defaultMood(), // 每天的心情（core/mood.js）
+    symbiosis: defaultSymbiosis(), // 共生：休息的果實、今天的花草、留下的小花、一起累（core/symbiosis.js）
     base: defaultBase(now), // 秘密基地（core/base.js）：一開始有帳篷＋一張小床
     minigames: { day: null, baked: 0, deluxe: 0 }, // 今天做了幾個泡芙（每天有上限）
     stats: {
@@ -212,6 +214,7 @@ export function migrate(raw, dex, now) {
   const earliest = s.mons.map(m => m.caughtAt).filter(Number.isFinite).sort((a, b) => a - b)[0];
   s.together = normalizeTogether(raw.together, s.starterChosen ? earliest ?? s.createdAt : null);
   s.mood = normalizeMood(raw.mood);
+  s.symbiosis = normalizeSymbiosis(raw.symbiosis);
   if (!(s.settings.interruptions in LIMITS)) s.settings.interruptions = String(DEFAULT_LIMIT);
   s.settings.birthday = typeof s.settings.birthday === 'string' && /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s.settings.birthday) ? s.settings.birthday : null;
   s.placesVisited = Object.fromEntries(Object.entries(raw.placesVisited && typeof raw.placesVisited === 'object' ? raw.placesVisited : {}).filter(([k, v]) => PLACES[k] && Number.isFinite(v)));

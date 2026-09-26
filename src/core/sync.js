@@ -26,6 +26,7 @@ import { mergeAttention } from './attention.js';
 import { mergeRoutine } from './routine.js';
 import { mergeTogether } from './together.js';
 import { mergeMood } from './mood.js';
+import { mergeSymbiosis } from './symbiosis.js';
 import { mergeTrip, mergePostcards, mergeTripsDone } from './trips.js';
 
 export const SYNC_DIR = 'kalos-amie';
@@ -189,6 +190,7 @@ export function mergeShared(local, remote) {
   out.routine = mergeRoutine(local.routine, remote.routine); // 作息：同一天取最早／最晚、時間加起來
   out.together = mergeTogether(local.together, remote.together); // 里程碑取聯集、第一次見面取早的
   out.mood = mergeMood(remote.mood, local.mood); // 心情：同一天兩邊都選了，用這台電腦的
+  out.symbiosis = mergeSymbiosis(local.symbiosis, remote.symbiosis); // 共生：同一天取最大值（同一次離開兩台都會算到）
   out.achievementRewards = { fancy: local.achievementRewards.fancy || remote.achievementRewards.fancy, pokeBall: local.achievementRewards.pokeBall || remote.achievementRewards.pokeBall };
   out.pendingVivillon = (local.pendingVivillon.length >= remote.pendingVivillon.length ? local : remote).pendingVivillon.slice();
   // 蛋：聯集，已經孵化的不要
