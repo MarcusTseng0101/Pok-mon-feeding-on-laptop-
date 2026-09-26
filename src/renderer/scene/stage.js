@@ -11,33 +11,7 @@ import { blit } from '../gfx/pixel.js';
 import * as art from '../gfx/art.js';
 import { FurnitureTarget } from './base.js';
 
-const THOUGHT_HOVER = 0.6; // 秒
-
-// 想法泡泡：白底、深色框、像素風的小尾巴，畫在頭上
-function drawThought(ctx, pet, S) {
-  const text = pet.thought.text;
-  ctx.font = `${8 * S}px Cubic11, monospace`;
-  const pad = 4 * S;
-  const w = Math.ceil(ctx.measureText(text).width / S) * S + pad * 2, h = 12 * S;
-  const head = pet.head();
-  const x = Math.round(Math.min(Math.max(head.x - w / 2, 2 * S), pet.stage.W - w - 2 * S));
-  const y = Math.round(Math.max(head.y - h - 26 * S, 2 * S)); // 名字標籤的上面
-  ctx.fillStyle = '#2a2030';
-  ctx.fillRect(x - S, y - S, w + 2 * S, h + 2 * S);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(x, y, w, h);
-  // 小圓點尾巴（想法泡泡，不是說話）
-  for (const [dx, dy, s] of [[-6 * S, h + 3 * S, 3], [-3 * S, h + 7 * S, 2]]) {
-    ctx.fillStyle = '#2a2030';
-    ctx.fillRect(Math.round(head.x) + dx - S, y + dy - S, (s + 2) * S, (s + 2) * S);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(Math.round(head.x) + dx, y + dy, s * S, s * S);
-  }
-  ctx.fillStyle = '#2a2030';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, x + pad, y + h / 2 + S / 2);
-  ctx.textBaseline = 'alphabetic';
-}
+export const THOUGHT_HOVER = 0.6; // 秒：滑鼠停在寶可夢身上多久顯示想法泡泡（畫在 ui 的名字標籤上）
 
 const STROKE_DIST = 16; // 美術像素：來回滑動多少距離算一次撫摸
 const DRAG_START = 6; // CSS 像素
@@ -358,7 +332,6 @@ export class Stage {
     this.minigame?.draw(ctx);
     this.weatherFx.draw(ctx);
     this.fx.draw(ctx, S);
-    if (this.hoverPet && this.hoverT >= THOUGHT_HOVER && this.hoverPet.thought && !this.mode && !this.drag?.held) drawThought(ctx, this.hoverPet, S);
     if (this.mode?.type === 'feed' && this.pointer.known) {
       const img = art.puff(this.mode.puff);
       blit(ctx, img, this.pointer.x - (img.width * S) / 2, this.pointer.y - (img.height * S) / 2, S);

@@ -662,10 +662,29 @@ export class Pet {
       const img2 = art.bittenPuff(this.eating.puff, this.eating.bites);
       blit(ctx, img2, m.x - (img2.width * S) / 2, m.y - (img2.height * S) / 2, S);
     }
-    if (this.emote && alpha > 0.3) {
-      const e = this.emote.img, h = this.head();
-      const bob = Math.floor(this.t * 3) % 2 ? 0 : S;
-      blit(ctx, e, h.x - (e.width * S) / 2 + (this.facing > 0 ? 6 : -6) * S, h.y - (e.height + 4) * S - bob, S);
-    }
+    if (this.emote && alpha > 0.3) drawEmoteBubble(ctx, this, S);
   }
+}
+
+// 表情泡泡：白底、深色框，小尾巴指著頭頂正中間。
+// 跟別隻聊天時泡泡往外側偏（尾巴不動），兩隻的泡泡才不會疊在一起；碰到螢幕邊邊就往內收
+function drawEmoteBubble(ctx, pet, S) {
+  const e = pet.emote.img, h = pet.head(), st = pet.stage;
+  const pad = 2, w = (e.width + pad * 2) * S, hh = (e.height + pad * 2) * S, tail = 3 * S;
+  const bob = Math.floor(pet.t * 3) % 2 ? 0 : S;
+  const hx = Math.round(h.x / S) * S;
+  const o = pet.partner;
+  const lean = o && Math.abs(o.x - pet.x) < (w + 8 * S) * 2 ? (o.x > pet.x ? -1 : 1) * Math.round(w / 2 / S - 3) * S : 0;
+  const x = Math.max(S, Math.min(st.W - w - S, hx - Math.round(w / 2 / S) * S + lean));
+  const y = Math.max(S, Math.round(h.y) - hh - tail - 2 * S - bob);
+  const tx = Math.max(x + 2 * S, Math.min(x + w - 4 * S, hx - S)); // 尾巴的位置（留在泡泡裡面）
+  ctx.fillStyle = '#2a2030';
+  ctx.fillRect(x, y - S, w, hh + 2 * S);
+  ctx.fillRect(x - S, y, w + 2 * S, hh);
+  ctx.fillRect(tx - S, y + hh, 4 * S, S);
+  ctx.fillRect(tx, y + hh + S, 2 * S, tail - S);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x, y, w, hh);
+  ctx.fillRect(tx, y + hh, 2 * S, S);
+  blit(ctx, e, x + pad * S, y + pad * S, S);
 }

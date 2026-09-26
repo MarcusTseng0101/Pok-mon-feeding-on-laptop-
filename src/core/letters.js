@@ -10,6 +10,7 @@ import { levels, moodOf, traitsOf, normalizeMind } from './mind.js';
 const DAY = 24 * 3_600_000;
 export const PER_DAY = 2;
 export const INBOX_KEPT = 30;
+export const DELETED_KEPT = 100; // 記住刪掉哪些信（同步時才不會從另一台電腦跑回來）
 const RECENT_KEPT = 5;
 
 export const KINDS = {
@@ -130,7 +131,7 @@ export function writeLetter(mon, kind, rng, ctx = {}, recent = { open: [], close
 // state.letters = { inbox: [{ id, uid, name, species, kind, at, text, refs, opened }], pending: [{ key, kind, uid, due, data }],
 //                   day, sent（今天寄了幾封）, recent: { open, close }, birthdayYear }
 export function defaultLetters() {
-  return { inbox: [], pending: [], day: null, sent: 0, recent: { open: [], close: [] }, birthdayYear: null };
+  return { inbox: [], pending: [], deleted: [], day: null, sent: 0, recent: { open: [], close: [] }, birthdayYear: null };
 }
 
 export function normalizeLetters(raw) {
@@ -155,12 +156,15 @@ export function normalizeLetters(raw) {
   const idx = a => (Array.isArray(a) ? a : []).filter(Number.isInteger).slice(-RECENT_KEPT);
   d.recent = { open: idx(raw.recent?.open), close: idx(raw.recent?.close) };
   d.birthdayYear = Number.isInteger(raw.birthdayYear) ? raw.birthdayYear : null;
+  d.deleted = (Array.isArray(raw.deleted) ? raw.deleted : []).filter(id => typeof id === 'string').map(id => id.slice(0, 80)).slice(-DELETED_KEPT);
+  const gone = new Set(d.deleted);
+  d.inbox = d.inbox.filter(l => !gone.has(l.id));
   return d;
 }
 
 // 排一封信（同一個 key 不會排兩次）
 export function queue(letters, { kind, uid, due, data = {}, key }) {
-  if (letters.pending.some(p => p.key === key) || letters.inbox.some(l => l.id === key)) return false;
+  if (letters.pending.some(p => p.key === key) || letters.inbox.some(l => l.id === key) || letters.deleted?.includes(key)) return false;
   letters.pending.push({ key, kind, uid, due, data });
   letters.pending.sort((a, b) => a.due - b.due || (a.key < b.key ? -1 : 1));
   letters.pending = letters.pending.slice(0, 10);
@@ -191,8 +195,11 @@ export function mergeLetters(a, b) {
     const prev = inbox.get(l.id);
     inbox.set(l.id, prev ? { ...prev, opened: prev.opened || l.opened } : structuredClone(l));
   }
-  out.inbox = [...inbox.values()].sort((x, y) => x.at - y.at || (x.id < y.id ? -1 : 1)).slice(-INBOX_KEPT);
-  const delivered = new Set(out.inbox.map(l => l.id));
+  // 刪掉的信：兩邊的聯集（另一台電腦還留著也不會再跑回來）
+  out.deleted = [...new Set([...(a?.deleted ?? []), ...(b?.deleted ?? [])])].slice(-DELETED_KEPT);
+  const gone = new Set(out.deleted);
+  out.inbox = [...inbox.values()].filter(l => !gone.has(l.id)).sort((x, y) => x.at - y.at || (x.id < y.id ? -1 : 1)).slice(-INBOX_KEPT);
+  const delivered = new Set([...out.inbox.map(l => l.id), ...gone]);
   const pend = new Map();
   for (const p of [...(a?.pending ?? []), ...(b?.pending ?? [])]) if (!delivered.has(p.key) && !pend.has(p.key)) pend.set(p.key, structuredClone(p));
   out.pending = [...pend.values()].sort((x, y) => x.due - y.due || (x.key < y.key ? -1 : 1)).slice(0, 10);
