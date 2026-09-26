@@ -183,14 +183,13 @@ function buildTray() {
 
 app.whenReady().then(async () => {
   const store = createStore(app.getPath('userData'));
-  const { getSprite, getAnimSprite } = createSpriteCache(path.join(app.getPath('userData'), 'sprites'));
+  const { getSprite } = createSpriteCache(path.join(app.getPath('userData'), 'sprites'));
   const dexData = JSON.parse(await readFile(path.join(here, '../../data/kalos.json'), 'utf8'));
 
   ipcMain.handle('data:dex', () => dexData);
   ipcMain.handle('save:load', () => store.load());
   ipcMain.handle('save:write', (_e, data) => store.save(data));
   ipcMain.handle('sprite:get', (_e, key, shiny) => getSprite(String(key), Boolean(shiny)));
-  ipcMain.handle('sprite:anim', (_e, key, shiny) => getAnimSprite(String(key), Boolean(shiny)));
   const getTrainer = createTrainerCache(path.join(app.getPath('userData'), 'trainers'));
   ipcMain.handle('trainer:get', (_e, name) => getTrainer(String(name)));
   ipcMain.handle('signals:get', () => signals?.snapshot());

@@ -86,7 +86,11 @@ export class Pet {
   // 圖片依形態而不同（藍花的花蓓蓓、超級蒂安希…）；battleForm 是對戰中暫時的形態，不存檔
   get spriteKey() { return spriteKey(this.mon.species, this.battleForm ?? this.mon.form); }
   // 會動的圖載好了就用它（每一隻有自己的播放位置），還沒就先用不會動的圖
-  get asset() { return liveAsset(this, this.stage.sprites, this.spriteKey, this.mon.shiny, this.animT); }
+  // 這一幀有在移動就播走路的動作（左右腳輪流抬），不然播待機（呼吸）
+  get asset() {
+    const lp = this.lastPos, moving = lp && Math.hypot(this.x - lp.x, this.gy - lp.y) > 0.25 * this.S;
+    return liveAsset(this, this.stage.sprites, this.spriteKey, this.mon.shiny, this.animT, moving ? 'walk' : 'idle');
+  }
   get S() { return this.stage.S; }
   get types() { return this.stage.dex.get(this.mon.species).types; }
   get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state] ?? PERCH_ACTIONS[this.state] ?? CURSOR_ACTIONS[this.state] ?? TRAVEL_ACTIONS[this.state]; }
