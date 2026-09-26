@@ -606,12 +606,13 @@ export class Director {
       pet.runningHome = true; // 測試用：正在跑回來
       const t0 = performance.now();
       const arrived = () => {
-        if (pet.state === 'tripReturn' && performance.now() - t0 < 8000 && st.pets.get(uid) === pet) { setTimeout(arrived, 100); return; }
+        // 等牠跑到紙條那裡（畫面很卡的時候會跑比較久：最多等 20 秒，時間到就不等了，但不會把牠停在半路）
+        const running = pet.state === 'tripReturn';
+        if (running && performance.now() - t0 < 20_000 && st.pets.get(uid) === pet) { setTimeout(arrived, 100); return; }
         pet.runningHome = false;
-        pet.runHome = false;
         if (postcard) {
           this.audio.sfx('collect');
-          pet.set('happy', 0.8);
+          if (!running) pet.set('happy', 0.8);
           pet.showEmote('♥', 1.4);
           this.ui?.showPostcard({ postcard });
         } else if (auto) {

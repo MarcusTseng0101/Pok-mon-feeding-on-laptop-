@@ -91,7 +91,7 @@ async function test({ page, shot: rawShot }, check) {
     const { game, stage } = window.__kalos;
     const t0 = Date.now();
     let entered = null;
-    while (Date.now() - t0 < 12000) {
+    while (Date.now() - t0 < 25000) { // 畫面卡的時候遊戲時間比較慢，多等一下
       const p = stage.pets.get(uid);
       if (p && entered === null) entered = { x: Math.round(p.x), state: p.state };
       if (p && !p.runningHome && p.state !== 'tripReturn') break;

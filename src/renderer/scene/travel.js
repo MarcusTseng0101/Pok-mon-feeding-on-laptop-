@@ -56,6 +56,7 @@ export const TRAVEL_ACTIONS = {
       // runHome：跟你出門回來，用跑的（core/outing.js）；旅行回來慢慢走
       if (!r || pet.moveTo(r.x, r.y, (pet.runHome ? RUN_SPEED * 0.8 : WALK_SPEED * 1.2) * pet.S, dt)) {
         pet.returnTo = null;
+        pet.runHome = false;
         pet.showEmote('!', 1.2);
         pet.set('idle', 2);
       }
