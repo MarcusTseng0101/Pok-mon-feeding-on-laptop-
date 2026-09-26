@@ -14,12 +14,16 @@ import * as art from './gfx/art.js';
 import { socialized } from '../core/mind.js';
 import { PLACES } from '../core/trips.js';
 import { startDepart, startReturn } from './scene/travel.js';
+import { BaseView } from './scene/base.js';
+import { FURNITURE, STAGES } from '../core/base.js';
 import * as cards from './gfx/postcards.js';
 
 const TYPING_WATCH_AFTER = 30; // 連續打字幾秒後過來看（秒）
 const TYPING_COOLDOWN = 3 * 60 * 1000; // 猜的，可調整：不要一直跑過來
 
 const LURE_MINUTES = 10;
+
+const BASE_PROBLEM = { full: '這一階的基地擺不下更多家具了，升級看看', 'no-medal': '獎盃的數量不能超過獎章', materials: '材料不夠', blocked: '這裡放不下' };
 
 export class Director {
   constructor({ stage, game, dex, sprites, audio, api, rng, dev }) {
@@ -187,6 +191,28 @@ export class Director {
     const hhmm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
     const day = new Date().toDateString() === t.toDateString() ? '' : '明天 ';
     this.ui?.toast(`${this.game.displayName(mon)}去${PLACES[mon.trip.place].zh}旅行了，大約 ${day}${hhmm} 回來`, { icon: cards.note });
+  }
+
+  // ---------- 秘密基地 ----------
+  startBasePlace(kind) {
+    this.setMode({ type: 'base', kind });
+    this.ui?.toast(`點院子裡的格子放${FURNITURE[kind].zh}（右鍵取消）`);
+  }
+
+  baseModeClick() {
+    const st = this.stage, m = st.mode;
+    const cell = st.baseView.cellAt(st.pointer.x, st.pointer.y);
+    if (!cell) { this.setMode(null); return; } // 點到院子外面：取消
+    if (m.kind) {
+      const r = this.game.basePlace(m.kind, cell.x, cell.y);
+      if (!r.ok) { this.ui?.toast(BASE_PROBLEM[r.reason] ?? '這裡放不下'); return; }
+      this.audio.sfx('collect');
+      st.fx.sparkles(st.baseView.spotOf(r.item).x, st.baseView.spotOf(r.item).y - 8 * st.S, st.S, 6, 10);
+    } else if (m.moveId) {
+      if (!this.game.baseMove(m.moveId, cell.x, cell.y)) { this.ui?.toast('這裡放不下'); return; }
+      this.audio.sfx('click');
+    }
+    this.setMode(null);
   }
 
   // 從夥伴頁按「讓牠去旅行」
@@ -400,6 +426,8 @@ export class Director {
       if (m?.type === 'aim') {
         if (target instanceof WildMon && target.state === 'idle') this.throwBall(m.ball);
         else this.setMode(null);
+      } else if (m?.type === 'base') {
+        this.baseModeClick();
       } else if (m?.type === 'minigame') {
         m.host.click(st.pointer.x, st.pointer.y);
       } else if (m?.type === 'feed') {
@@ -422,6 +450,12 @@ export class Director {
       }
     });
     st.on('spotGone', () => { if (!this.enc) this.scheduleNext(); });
+    // 秘密基地：點家具可以搬動它
+    st.baseView = new BaseView(st, () => this.game.state.base);
+    st.on('furnitureClick', it => {
+      this.setMode({ type: 'base', moveId: it.id });
+      this.ui?.toast(`點院子裡的格子，把${FURNITURE[it.kind].zh}搬過去（右鍵取消）`);
+    });
     // 探頭：慢慢靠近 → 走進來；太快 → 嚇跑（還沒開始遭遇，所以不會中斷連鎖）
     st.on('peekCome', spot => { if (this.stage.spot === spot && !this.enc) this.beginEncounter(spot); });
     st.on('peekScared', () => this.ui?.toast('嚇跑了…下次慢慢靠近牠試試'));

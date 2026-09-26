@@ -17,6 +17,8 @@ import { habitNames } from '../scene/habits.js';
 import { describe as describeMind } from '../scene/mindlink.js';
 import { NEEDS, NEED_ZH, MOOD_ZH } from '../../core/mind.js';
 import { PLACES, PLACE_IDS } from '../../core/trips.js';
+import { STAGES, FURNITURE, MATERIALS, enough, trophiesAllowed } from '../../core/base.js';
+import * as baseGfx from '../gfx/basegfx.js';
 import * as cards from '../gfx/postcards.js';
 import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
 import { transform as transformForm, revert as revertForm } from '../scene/battleforms.js';
@@ -60,7 +62,7 @@ export class UI {
     this.menu = h(`<div class="menu hit pix hidden">
       <button data-open="party">夥伴</button><button data-open="dex">圖鑑</button>
       <button data-open="play">一起玩</button><button data-open="medals">獎章</button>
-      <button data-open="bag">背包</button><button data-open="album">相簿</button><button data-open="aura">氣息</button>
+      <button data-open="bag">背包</button><button data-open="album">相簿</button><button data-open="base">秘密基地</button><button data-open="aura">氣息</button>
       <button data-open="settings">設定</button><button data-act="quiet">勿擾模式</button>
       <button data-act="focus">開始專注</button>
     </div>`);
@@ -193,7 +195,7 @@ export class UI {
   }
 
   renderPanel() {
-    const titles = { party: '夥伴', dex: '卡洛斯圖鑑', play: '一起玩', medals: '獎章', bag: '背包', album: '相簿', aura: '氣息', settings: '設定' };
+    const titles = { party: '夥伴', dex: '卡洛斯圖鑑', play: '一起玩', medals: '獎章', bag: '背包', album: '相簿', base: '秘密基地', aura: '氣息', settings: '設定' };
     this.win.querySelector('.title').textContent = titles[this.panel];
     const body = this.win.querySelector('.body');
     const scroll = body.querySelector('.scroll')?.scrollTop;
@@ -439,6 +441,36 @@ export class UI {
     return root;
   }
 
+  // ---------- 秘密基地 ----------
+  render_base() {
+    const g = this.game.state, b = g.base, mats = g.bag.materials;
+    const cur = STAGES[b.stage], next = STAGES[b.stage + 1];
+    const costText = cost => Object.entries(cost).map(([k, n]) => `${MATERIALS[k]}×${n}`).join('、') || '免費';
+    const root = h(`<div class="basepanel scroll">
+      <div class="top"><div class="home"></div><div>
+        <b>${esc(cur.zh)}</b>・家具 ${b.items.length}／${cur.maxItems}
+        <div class="mats">${Object.entries(MATERIALS).map(([k, zh]) => `<span>${esc(zh)} ${mats[k]}</span>`).join('')}</div>
+        <p class="hint">材料是夥伴旅行帶回來的。累了會回床上睡、想休息會回來坐坐，晚上大家會回來擠在一起睡。</p>
+        ${next ? `<button data-act="baseupgrade" ${enough(mats, next.cost) ? '' : 'disabled'}>升級成${esc(next.zh)}（${esc(costText(next.cost))}）</button>` : '<p class="hint">已經是最好的樹屋了！</p>'}
+        <div class="side">位置：<button data-baseside="left" class="${b.side === 'left' ? 'sel' : ''}">左下角</button><button data-baseside="right" class="${b.side === 'right' ? 'sel' : ''}">右下角</button></div>
+      </div></div>
+      <h3>擺家具</h3><div class="furn"></div>
+      <h3>已經擺的</h3><div class="placed"></div></div>`);
+    root.querySelector('.home').append(pixelImg(baseGfx.STRUCTURES[b.stage], 2));
+    const full = b.items.length >= cur.maxItems;
+    const trophies = b.items.filter(i => i.kind === 'trophy').length;
+    for (const [kind, f] of Object.entries(FURNITURE)) {
+      const can = !full && enough(mats, f.cost) && (kind !== 'trophy' || trophies < trophiesAllowed(g));
+      const el = h(`<button data-basekind="${kind}" ${can ? '' : 'disabled'}><b>${esc(f.zh)}</b><small>${esc(kind === 'trophy' ? `獎章換的（${trophies}／${trophiesAllowed(g)}）` : costText(f.cost))}</small></button>`);
+      el.prepend(pixelImg(baseGfx.FURNITURE_ART[kind], 2));
+      root.querySelector('.furn').append(el);
+    }
+    const placed = root.querySelector('.placed');
+    if (!b.items.length) placed.append(h('<p class="hint">還沒有家具</p>'));
+    for (const it of b.items) placed.append(h(`<div class="row"><span>${esc(FURNITURE[it.kind].zh)}</span><button data-basemove="${esc(it.id)}">搬動</button><button data-baseremove="${esc(it.id)}">收起來</button></div>`));
+    return root;
+  }
+
   // ---------- 相簿（旅行帶回來的明信片） ----------
   render_album() {
     const g = this.game.state;
@@ -463,6 +495,7 @@ export class UI {
       ...Object.entries(gifts.berries).map(([b, n]) => `${BERRY_ZH[b]}×${n}`),
       ...Object.entries(gifts.balls).map(([b, n]) => `${BALLS[b].zh}×${n}`),
       ...gifts.puffs.map(k => puffName(k)),
+      ...Object.entries(gifts.materials ?? {}).map(([k, n]) => `${MATERIALS[k]}×${n}`),
     ].join('、') : '';
     this.modal.innerHTML = `<div class="dialog postcard hit pix"><h2></h2><div class="pic"></div><p class="diary"></p>${giftText ? '<p class="gifts"></p>' : ''}<p class="from"></p><div class="btns"><button data-yes class="primary">好</button></div></div>`;
     this.modal.querySelector('h2').textContent = `來自${PLACES[p.place].zh}的明信片`;
@@ -509,6 +542,7 @@ export class UI {
       <p class="hint">精靈球每 10 分鐘補充 1 顆（最多補到 30）。抓到新的寶可夢也會拿到獎勵。</p>
       <h4>寶可夢泡芙</h4><div class="puffs"></div><p class="hint puffhint">點選泡芙可以放在桌面上當誘餌（持續 10 分鐘）。</p>
       <h4>樹果</h4><div class="balls berries"></div><p class="hint">在「一起玩」摘樹果，拿來做泡芙。</p>
+      <h4>材料</h4><div class="mats">${Object.entries(MATERIALS).map(([k, zh]) => `<span>${esc(zh)} ×${bag.materials[k]}</span>`).join('')}</div><p class="hint">夥伴旅行帶回來的，拿來蓋秘密基地。</p>
       ${this.game.state.eggs.length ? `<h4>蛋（${this.game.state.eggs.length}／3）</h4><div class="eggs"></div><p class="hint">移動游標、在電腦前待著，蛋就會慢慢孵化。好了之後會出現在桌面上。</p>` : ''}
       ${bag.items.diancite ? '<h4>重要物品</h4><div class="item">✦ 蒂安希進化石</div>' : ''}
       ${this.game.state.zygardeCells ? `<h4>其他</h4><div class="cells"></div>` : ''}</div>`);
@@ -620,6 +654,10 @@ export class UI {
       return;
     }
     if (t.dataset.citypick !== undefined) { this.pickCity(Number(t.dataset.citypick)); return; }
+    if (t.dataset.basekind) { this.closePanel(); this.director.startBasePlace(t.dataset.basekind); return; }
+    if (t.dataset.basemove) { this.closePanel(); this.stage.fire('furnitureClick', this.game.state.base.items.find(i => i.id === t.dataset.basemove)); return; }
+    if (t.dataset.baseremove) { this.game.baseRemove(t.dataset.baseremove); this.audio.sfx('close'); this.renderPanel(); return; }
+    if (t.dataset.baseside) { this.game.baseSide(t.dataset.baseside); this.audio.sfx('click'); this.renderPanel(); return; }
     if (t.dataset.postcard) { const pc = this.game.state.postcards.find(x => x.id === t.dataset.postcard); if (pc) { this.audio.sfx('click'); this.showPostcard({ postcard: pc }); } return; }
     if (t.dataset.play) { this.minigames.open(t.dataset.play, this.playPartner()?.uid); return; }
     if (t.dataset.dexform) { this.dexForm = t.dataset.dexform; this.audio.sfx('click'); this.renderPanel(); return; }
@@ -647,6 +685,12 @@ export class UI {
     const m = this.game.mon(this.selectedUid);
     switch (act) {
       case 'recall': this.game.setOut(m.uid, false); this.audio.sfx('close'); break;
+      case 'baseupgrade': {
+        const r = this.game.baseUpgrade();
+        if (r.ok) { this.audio.sfx('collect'); this.toast(`秘密基地升級成${r.stage.zh}了！`); }
+        this.renderPanel();
+        return;
+      }
       case 'trip':
         if (this.director.sendOnTrip(m.uid)) { this.toast(`${this.game.displayName(m)}出發去旅行了！`); this.closePanel(); }
         break;

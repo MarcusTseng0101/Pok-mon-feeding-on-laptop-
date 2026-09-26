@@ -369,3 +369,16 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .dialog.postcard .gifts { color: var(--muted); font-size: 12px; margin: 2px 0; }
 .dialog.postcard .from { text-align: right; color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
 .party .trip { margin: 0; padding: 4px 8px; background: #fff6c8; box-shadow: 0 0 0 2px var(--line); }
+
+/* 秘密基地 */
+.basepanel { height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.basepanel .top { display: flex; gap: 12px; align-items: flex-start; line-height: 1.7; }
+.basepanel .home { min-width: 110px; display: grid; place-items: center; background: var(--panel-2); padding: 4px; }
+.basepanel h3 { margin: 6px 0 0; font-size: 14px; }
+.basepanel .furn { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.basepanel .furn button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; }
+.basepanel .furn small { color: var(--muted); font-size: 10px; }
+.basepanel .placed .row { display: flex; gap: 6px; align-items: center; }
+.basepanel .placed .row span { min-width: 60px; }
+.basepanel .side button.sel, .basepanel .side button.sel:hover { background: var(--pink-2); }
+.mats { display: flex; flex-wrap: wrap; gap: 4px 10px; }
