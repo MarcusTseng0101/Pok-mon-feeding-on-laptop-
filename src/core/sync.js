@@ -11,6 +11,7 @@
 //   旅行       同一隻的旅行取出發時間比較晚的；結算過的（tripsDone）不會再結算；明信片取聯集
 //              禮物只在結算的那台電腦加進背包，另一台透過背包的 ledger 收到
 //   秘密基地   整個基地用最後修改的時間決定（last-writer-wins）；材料在背包裡，走 ledger
+//   信         收到的信、待寄的信取聯集；打開過的算打開過
 //   獎章       聯集（時間取最早）
 //   蛋         依 uid 取聯集，但已經孵化的（hatchedEggs）不會再出現
 //   背包       每台電腦各自記「自己造成的變化量」（ledger），總數＝起點＋所有電腦的變化量。
@@ -19,6 +20,7 @@
 
 import { mergeMemory } from './memory.js';
 import { mergeBase } from './base.js';
+import { mergeLetters } from './letters.js';
 import { mergeTrip, mergePostcards, mergeTripsDone } from './trips.js';
 
 export const SYNC_DIR = 'kalos-amie';
@@ -176,6 +178,7 @@ export function mergeShared(local, remote) {
   out.postcards = mergePostcards(local.postcards, remote.postcards);
   out.placesVisited = minMap(local.placesVisited, remote.placesVisited);
   out.base = mergeBase(local.base, remote.base); // 秘密基地：最後改的那一邊
+  out.letters = mergeLetters(local.letters, remote.letters); // 信：聯集，打開過的算打開過
   out.achievementRewards = { fancy: local.achievementRewards.fancy || remote.achievementRewards.fancy, pokeBall: local.achievementRewards.pokeBall || remote.achievementRewards.pokeBall };
   out.pendingVivillon = (local.pendingVivillon.length >= remote.pendingVivillon.length ? local : remote).pendingVivillon.slice();
   // 蛋：聯集，已經孵化的不要
