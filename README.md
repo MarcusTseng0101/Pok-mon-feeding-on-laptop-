@@ -273,7 +273,7 @@ X・Y 的主線節點，改成發生在你的桌面上（`src/core/story.js`）�
 - **特別事件**：不照日子排隊，條件到了才發生。破關後朋友們送你另外兩族御三家的進化石；國際刑警「帥哥」只在晚上來（烏賊王進化石）；**另一隻傳說寶可夢**在破關幾天後、特定的時段出現（X 版是晚上的伊裴爾塔爾、Y 版是早上的哲爾尼亞斯）；還有關於基格爾德的線索
 - 選單的「故事」：第幾天、下一件事大約幾天後（不劇透是什麼事）、8 個徽章，以及發生過的事，可以重看
 - 對話都是重新寫的，沒有照抄遊戲台詞
-- 人物的圖用 Pokémon Showdown 的訓練家圖（第一次需要時下載、存在使用者資料夾）；下載不到的時候用剪影
+- 人物的圖用 Pokémon Showdown 的訓練家圖（第一次需要時下載、存在使用者資料夾）；Showdown 拿不到時改從 Smogon 在 GitHub 上的原始檔（[smogon/sprites](https://github.com/smogon/sprites)）下載。兩邊都沒有的人（博士、莎娜、特雷維、弗拉達利、查克洛、卡露乃、帥哥、閃焰隊的手下）用手繪的像素圖（`src/renderer/gfx/trainerart.js`）
 
 **對戰**（`src/core/battle.js`、`src/renderer/scene/battle.js`）：桌面上的夥伴都可以上場，一次一隻；畫面下方的面板選招式（會顯示「效果絕佳」之類的提示），招式特效跟切磋一樣。
 規則刻意簡單：每隻 100 HP、你先攻，傷害看屬性相剋、本系加成、進化到哪裡、好感和超級特訓。
@@ -493,6 +493,6 @@ renderer 用寶可夢圖的透明度遮罩判斷游標是否停在牠身上，�
 
 寶可夢名稱、圖片與相關商標屬於任天堂／Creatures／GAME FREAK。這是個人非商業的同人專案。
 寶可夢圖片不包含在 repo 內，執行時才從 [PokeAPI/sprites](https://github.com/PokeAPI/sprites) 下載到本機；
-主線故事的人物圖來自 [Pokémon Showdown 的訓練家圖](https://play.pokemonshowdown.com/sprites/trainers/)，同樣只在執行時下載、不放進 repo；其中有些是同好畫的，作者請見該頁的說明。
+主線故事的人物圖來自 [Pokémon Showdown 的訓練家圖](https://play.pokemonshowdown.com/sprites/trainers/)（備用來源是同一批圖在 [smogon/sprites](https://github.com/smogon/sprites) 的原始檔），同樣只在執行時下載、不放進 repo；其中有些是同好畫的，作者請見該頁的說明。沒有圖的角色是這個專案自己手繪的。
 圖鑑資料來自 [PokeAPI](https://pokeapi.co/)，其中 19 種沒有官方繁中敘述，是由英文翻譯（遊戲內標示「非官方翻譯」）。
 音樂與音效為原創。介面字型為 [俐方體 11 號（Cubic 11）](https://github.com/ACh-K/Cubic-11)，授權見 `src/renderer/fonts/OFL.txt`。

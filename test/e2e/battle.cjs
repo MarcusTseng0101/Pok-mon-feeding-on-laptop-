@@ -57,6 +57,11 @@ run('battle', async ({ page, shot }, check) => {
   await page.waitForTimeout(300);
   const v = await page.evaluate(() => { const { stage } = window.__kalos; return { npc: stage.props.some(p => p.kind === 'npc' && !p.gone), battle: Boolean(stage.battle) }; });
   check(v.npc && !v.battle, `館主沒有站在基地旁邊等你：${JSON.stringify(v)}`);
+  // 可爾妮的圖：Smogon 的訓練家圖（不是剪影）
+  await page.waitForTimeout(1200);
+  const real = await page.evaluate(async () => { const e = await window.__kalos.ui.portraits.get('korrina'); return e.real && e.canvas.height > 50; });
+  check(real, '可爾妮的圖沒有載到（還是剪影）');
+  await shot('battle-visitor');
   await page.evaluate(() => { const { stage } = window.__kalos; stage.fire('click', stage.props.find(p => p.kind === 'npc' && !p.gone)); });
   const intro = await talkThrough();
   check(intro.includes('可爾妮'), `開打前的台詞不對：${intro}`);

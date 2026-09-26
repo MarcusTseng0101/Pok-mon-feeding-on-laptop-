@@ -32,11 +32,30 @@ function fetchSprite(rel) {
   });
 }
 
+// 故事的訓練家圖（/__trainers/<名字>.png）：從 Smogon 在 GitHub 上的原始檔抓（跟 src/main/trainers.js 的備用來源一樣），存在 .cache/trainers
+const SMOGON = 'https://raw.githubusercontent.com/smogon/sprites/master/src/_uncategorized/noncanonical/trainers/gen6/x-y';
+const SMOGON_NAMES = { az: 'AZ', clemont: 'Clemont', drasna: 'Drasna', korrina: 'Korrina', malva: 'Malva', olympia: 'Olympia', ramos: 'Ramos', siebold: 'Siebold', tierno: 'Tierno', valerie: 'Valerie', viola: 'Viola', wikstrom: 'Wikstrom', wulfric: 'Wulfric' };
+function fetchTrainer(name) {
+  if (!SMOGON_NAMES[name]) return Promise.resolve(null);
+  const file = path.join(ROOT, '.cache/trainers', `${name}.png`);
+  if (fs.existsSync(file)) return Promise.resolve(file);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  return new Promise(resolve => {
+    execFile('curl', ['-sfL', '--max-time', '20', '-o', file, `${SMOGON}/${SMOGON_NAMES[name]}.png`], err => {
+      if (err) { fs.rmSync(file, { force: true }); resolve(null); } else resolve(file);
+    });
+  });
+}
+
 function serve() {
   const server = http.createServer(async (req, res) => {
     const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     let file;
-    if (url.startsWith('/__sprites/')) {
+    if (url.startsWith('/__trainers/')) {
+      const m = /^\/__trainers\/([a-z0-9-]{1,40})\.png$/.exec(url);
+      file = m ? await fetchTrainer(m[1]) : null;
+      if (!file) { res.writeHead(204).end(); return; } // 沒有這張：不回 404（瀏覽器會在 console 記一筆錯誤）
+    } else if (url.startsWith('/__sprites/')) {
       const rel = url.slice('/__sprites/'.length);
       if (!/^(shiny\/)?\d{3,5}(-[a-z]+)*\.png$/.test(rel)) { res.writeHead(400).end(); return; }
       file = await fetchSprite(rel);
@@ -82,7 +101,7 @@ async function open({ query = {}, fresh = true, viewport = { width: 1280, height
   page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   await watchHangs(page);
-  const q =new URLSearchParams({ dev: '1', sprites: '/__sprites', ...(fresh ? { fresh: '1' } : {}), ...query });
+  const q =new URLSearchParams({ dev: '1', sprites: '/__sprites', trainers: '/__trainers', ...(fresh ? { fresh: '1' } : {}), ...query });
   await page.goto(`${base}/src/renderer/index.html?${q}`);
   await page.waitForFunction(() => window.__kalos?.game, null, { timeout: 15000 });
   return {

@@ -1,5 +1,7 @@
-// 故事裡的人的圖：先試 Showdown 的訓練家圖（依序試 CAST 裡列的檔名），都拿不到就用剪影。
+// 故事裡的人的圖：先試 Showdown 的訓練家圖（依序試 CAST 裡列的檔名），拿不到就用手繪的圖（gfx/trainerart.js），
+// 都沒有才用剪影。
 import { makeCanvas, paint } from './pixel.js';
+import { drawnTrainer } from './trainerart.js';
 import { CAST } from '../../core/story.js';
 
 // 半身剪影（24×24）：頭、肩膀，用角色的顏色
@@ -72,12 +74,12 @@ export class Portraits {
   // 同步：拿到了就回傳圖，不然回傳剪影（並開始載入）
   peek(who) {
     const e = this.get(who) && this.cache.get(who);
-    return e.canvas ?? silhouette(who);
+    return e.canvas ?? drawnTrainer(who) ?? silhouette(who);
   }
   // 站著的樣子（來拜訪的人）：拿到訓練家圖就用它，不然用全身剪影
   peekFigure(who) {
     const e = this.cache.get(who);
-    return e?.real ? e.canvas : figure(who);
+    return e?.real ? e.canvas : drawnTrainer(who) ?? figure(who);
   }
   // { canvas, real }：real＝真的訓練家圖（不是剪影）
   get(who) {
@@ -92,6 +94,8 @@ export class Portraits {
             if (c) { entry.canvas = c; entry.real = true; return entry; }
           } catch { /* 下一個 */ }
         }
+        const drawn = drawnTrainer(who);
+        if (drawn) { entry.canvas = drawn; entry.real = true; return entry; }
         entry.canvas = silhouette(who);
         return entry;
       })();
