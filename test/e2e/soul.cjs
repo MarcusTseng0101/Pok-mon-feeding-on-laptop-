@@ -5,6 +5,7 @@
 //   3. 每個決策都有理由，而且理由屬於實際被選中的類別
 //   4. 至少 2 個理由提到需求，至少 1 個提到關係或記憶
 //   5. 出門旅行最多 1 次（一次只能一隻出門，旅行至少 30 分鐘）
+//   6. 有回秘密基地（v3 PR 4）
 // 執行：node test/e2e/soul.cjs        BASELINE=1 node test/e2e/soul.cjs（心智的倍率全部當 1，看基準線）
 const { open } = require('./lib.cjs');
 
@@ -81,6 +82,7 @@ async function runSeed(seed) {
     if (bad.length) p(`${bad.length} 個理由不屬於實際的類別，例如 ${JSON.stringify(bad[0])}`);
     if (needs < 2) p(`提到需求的理由只有 ${needs} 個`);
     if (rel < 1) p('沒有理由提到關係或記憶');
+    if (!count.base) p('沒有回秘密基地');
     if ((count.trip ?? 0) > 1) p(`600 秒內出門旅行了 ${count.trip} 次（最多 1 次）`);
     if (r.errors.length) p(`console 有錯誤：${r.errors.slice(0, 2).join(' | ')}`);
   }
