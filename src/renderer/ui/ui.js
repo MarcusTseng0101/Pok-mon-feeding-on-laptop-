@@ -19,6 +19,8 @@ import { NEEDS, NEED_ZH, MOOD_ZH } from '../../core/mind.js';
 import { PLACES, PLACE_IDS } from '../../core/trips.js';
 import { STAGES, FURNITURE, MATERIALS, enough, trophiesAllowed } from '../../core/base.js';
 import * as baseGfx from '../gfx/basegfx.js';
+import * as mail from '../gfx/letters.js';
+import { KINDS as LETTER_KINDS } from '../../core/letters.js';
 import * as cards from '../gfx/postcards.js';
 import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
 import { transform as transformForm, revert as revertForm } from '../scene/battleforms.js';
@@ -62,7 +64,7 @@ export class UI {
     this.menu = h(`<div class="menu hit pix hidden">
       <button data-open="party">夥伴</button><button data-open="dex">圖鑑</button>
       <button data-open="play">一起玩</button><button data-open="medals">獎章</button>
-      <button data-open="bag">背包</button><button data-open="album">相簿</button><button data-open="base">秘密基地</button><button data-open="aura">氣息</button>
+      <button data-open="bag">背包</button><button data-open="album">相簿</button><button data-open="base">秘密基地</button><button data-open="mail">信箱</button><button data-open="aura">氣息</button>
       <button data-open="settings">設定</button><button data-act="quiet">勿擾模式</button>
       <button data-act="focus">開始專注</button>
     </div>`);
@@ -196,7 +198,7 @@ export class UI {
   }
 
   renderPanel() {
-    const titles = { party: '夥伴', dex: '卡洛斯圖鑑', play: '一起玩', medals: '獎章', bag: '背包', album: '相簿', base: '秘密基地', aura: '氣息', settings: '設定' };
+    const titles = { party: '夥伴', dex: '卡洛斯圖鑑', play: '一起玩', medals: '獎章', bag: '背包', album: '相簿', base: '秘密基地', mail: '信箱', aura: '氣息', settings: '設定' };
     this.win.querySelector('.title').textContent = titles[this.panel];
     const body = this.win.querySelector('.body');
     const scroll = body.querySelector('.scroll')?.scrollTop;
@@ -472,6 +474,33 @@ export class UI {
     return root;
   }
 
+  // ---------- 信箱 ----------
+  render_mail() {
+    const inbox = [...this.game.state.letters.inbox].reverse();
+    const root = h(`<div class="mailbox"><div class="summary">${inbox.length} 封信・${this.game.unreadLetters().length} 封還沒看</div><div class="list scroll"></div></div>`);
+    const list = root.querySelector('.list');
+    if (!inbox.length) list.append(h('<p class="empty">還沒有信。你離開很久、夥伴旅行回來、好感滿了、或是你的生日（在設定裡填），夥伴會寫信給你。</p>'));
+    for (const l of inbox) {
+      const first = l.text.split('\n').find(s => s.trim()) ?? '';
+      const row = h(`<button class="letter-row ${l.opened ? '' : 'unread'}" data-letter="${esc(l.id)}"><b>${l.opened ? '' : '✉ '}${esc(l.name)}</b><span>${esc(first)}</span><small>${esc(LETTER_KINDS[l.kind].zh)}・${new Date(l.at).toLocaleDateString('zh-TW')}</small></button>`);
+      list.append(row);
+    }
+    return root;
+  }
+
+  // 打開一封信：信紙＋腳印簽名（內容一律用 textContent，不當成 HTML）
+  showLetter(l) {
+    const sp = this.dex.get(l.species);
+    const color = art.TYPE_COLORS[sp?.types?.[0]] ?? '#ff6fa5';
+    this.modal.innerHTML = `<div class="dialog letter hit pix"><div class="paper"><p class="body"></p><div class="sign"><span class="who"></span></div></div><div class="btns"><button data-yes class="primary">收好</button></div></div>`;
+    this.modal.querySelector('.body').textContent = l.text;
+    this.modal.querySelector('.who').textContent = `—— ${l.name}`;
+    this.modal.querySelector('.sign').append(pixelImg(mail.pawprint(color), 3));
+    this.modal.classList.remove('hidden');
+    this.game.openLetter(l.id);
+    this.modal.onclick = e => { if (e.target.closest('[data-yes]')) { this.modal.classList.add('hidden'); if (this.panel === 'mail') this.renderPanel(); } };
+  }
+
   // ---------- 相簿（旅行帶回來的明信片） ----------
   render_album() {
     const g = this.game.state;
@@ -633,6 +662,9 @@ export class UI {
       <label>專注時間 <input type="range" min="15" max="60" step="5" data-set="focusMinutes" value="${s.focusMinutes}"> <span class="focusmin">${s.focusMinutes} 分鐘</span></label>
       ${this.weatherSettingsHtml()}
       ${this.syncSettingsHtml()}
+      <div class="birthday">你的生日（選填，那天夥伴會寫信給你）：
+        <select data-bmonth><option value="">—</option>${Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}" ${s.birthday && +s.birthday.slice(0, 2) === i + 1 ? 'selected' : ''}>${i + 1} 月</option>`).join('')}</select>
+        <select data-bday><option value="">—</option>${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${s.birthday && +s.birthday.slice(3) === i + 1 ? 'selected' : ''}>${i + 1} 日</option>`).join('')}</select></div>
       <label><input type="checkbox" data-set="muted" ${s.muted ? 'checked' : ''}> 靜音</label>
       <div>野生寶可夢出現頻率：${rates}</div>
       <label><input type="checkbox" data-set="showLauncher" ${s.showLauncher ? 'checked' : ''}> 顯示右下角的精靈球按鈕（隱藏後可從系統匣開啟選單）</label>
@@ -655,6 +687,7 @@ export class UI {
       return;
     }
     if (t.dataset.citypick !== undefined) { this.pickCity(Number(t.dataset.citypick)); return; }
+    if (t.dataset.letter) { const l = this.game.state.letters.inbox.find(x => x.id === t.dataset.letter); if (l) { this.audio.sfx('open'); this.showLetter(l); } return; }
     if (t.dataset.basekind) { this.closePanel(); this.director.startBasePlace(t.dataset.basekind); return; }
     if (t.dataset.basemove) { this.closePanel(); this.stage.fire('furnitureClick', this.game.state.base.items.find(i => i.id === t.dataset.basemove)); return; }
     if (t.dataset.baseremove) { this.game.baseRemove(t.dataset.baseremove); this.audio.sfx('close'); this.renderPanel(); return; }
@@ -732,6 +765,12 @@ export class UI {
       else this.game.setSetting(t.dataset.set, t.checked);
     }
     if (t.dataset.login !== undefined) this.api.setLoginItem(t.checked);
+    if (t.dataset.bmonth !== undefined || t.dataset.bday !== undefined) {
+      const m = Number(this.win.querySelector('[data-bmonth]').value), d = Number(this.win.querySelector('[data-bday]').value);
+      const ok = m && d && d <= new Date(2024, m, 0).getDate(); // 2024 是閏年：2 月 29 日也可以
+      this.game.setSetting('birthday', ok ? `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` : null);
+      if (ok) this.toast(`記住了！${m} 月 ${d} 日夥伴會寫信給你`);
+    }
     if (t.matches('.nick input')) this.game.rename(t.dataset.uid, t.value);
     if (t.dataset.partner !== undefined) { this.playUid = t.value; this.renderPanel(); }
     if (t.dataset.weatheron !== undefined && this.game.state.weather) {

@@ -14,6 +14,7 @@ import { createMind } from './mind.js';
 import { remember } from './memory.js';
 import * as trips from './trips.js';
 import * as baseRules from './base.js';
+import * as L from './letters.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
 
 // 夥伴之間的感情（0–255），到這些門檻時通知畫面
@@ -101,6 +102,12 @@ export class Game {
     for (const m of this.state.mons) amie.applyDecay(m, away);
     // 離開很久：在桌面上的夥伴記得「等你等了好久」
     if (away >= 180) for (const m of this.outMons()) { this.remember(m.uid, { k: 'user-away', data: { hours: away / 60 } }); this.remember(m.uid, { k: 'user-back' }); }
+    // 離開 6 小時以上：最喜歡你的那隻寫信給你「你不在的時候…」
+    if (away >= 360) {
+      const w = this.letterWriter();
+      if (w) L.queue(this.state.letters, { key: `away-${w.uid}-${L.localDay(t)}`, kind: 'away', uid: w.uid, due: t, data: { hours: Math.round(away / 60) } });
+    }
+    this.deliverLetters();
     this.state.lastSeenAt = t;
     this.lastTick = t;
     this.checkDailyGift();
@@ -129,6 +136,8 @@ export class Game {
     this.expireTrims();
     this.checkItems(); // 陪伴也會加好感
     this.maybeFindEgg();
+    this.checkBirthday(t);
+    this.deliverLetters();
     this.checkAchievements();
     this.emit('tick');
   }
@@ -195,6 +204,7 @@ export class Game {
   afterAffection(mon, heartsBefore) {
     const now = amie.hearts(mon.affection);
     if (now > heartsBefore) this.emit('heartsUp', { uid: mon.uid, hearts: now });
+    if (now >= 5 && heartsBefore < 5) L.queue(this.state.letters, { key: `hearts-${mon.uid}`, kind: 'hearts', uid: mon.uid, due: this.now() + 60_000 });
     this.checkItems();
   }
 
@@ -659,6 +669,7 @@ export class Game {
     this.state.stats.trips = (this.state.stats.trips ?? 0) + 1;
     mon.trip = null;
     this.remember(uid, { k: 'trip', data: { name: trips.PLACES[trip.place].zh } });
+    L.queue(this.state.letters, { key: `trip-${trip.id}`.slice(0, 80), kind: 'trip', uid, due: L.nextMorning(this.now()), data: { place: trips.PLACES[trip.place].zh } }); // 隔天早上寫信
     const result = { postcard, gifts: r.gifts, egg, friend: r.friend, diary: r.diary };
     this.emit('tripSettled', { uid, ...result });
     this.emit('bag');
@@ -675,6 +686,67 @@ export class Game {
   baseRemove(id) { const ok = baseRules.remove(this.state, id, this.now()); if (ok) { this.emit('base'); this.emit('bag'); } return ok; }
   baseUpgrade() { const r = baseRules.upgrade(this.state, this.now()); if (r.ok) { this.emit('base'); this.emit('bag'); } return r; }
   baseSide(side) { this.state.base.side = side === 'right' ? 'right' : 'left'; this.state.base.updatedAt = this.now(); this.emit('base'); }
+
+  // ---- 信（core/letters.js）----
+  // 誰來寫信：在桌面上、好感最高的
+  letterWriter() {
+    const outs = this.outMons().filter(m => !m.trip);
+    const list = outs.length ? outs : this.state.mons;
+    return [...list].sort((a, b) => b.affection - a.affection || (a.uid < b.uid ? -1 : 1))[0] ?? null;
+  }
+
+  checkBirthday(t = this.now()) {
+    const L2 = this.state.letters;
+    const year = new Date(t).getFullYear();
+    if (!L.isBirthday(this.state.settings.birthday, t) || L2.birthdayYear === year) return;
+    const w = this.letterWriter();
+    if (!w) return;
+    L2.birthdayYear = year;
+    L.queue(L2, { key: `bday-${year}`, kind: 'birthday', uid: w.uid, due: t });
+  }
+
+  // 寄出到時間的信（每天最多 PER_DAY 封；沒寄完的明天再寄）
+  deliverLetters() {
+    const t = this.now(), box = this.state.letters;
+    const today = L.localDay(t);
+    if (box.day !== today) { box.day = today; box.sent = 0; }
+    const out = [];
+    while (box.sent < L.PER_DAY) {
+      const i = box.pending.findIndex(p => p.due <= t);
+      if (i < 0) break;
+      const [p] = box.pending.splice(i, 1);
+      const mon = this.mon(p.uid);
+      if (!mon) continue; // 寫信的那隻已經不在了
+      const best = this.bestFriend(mon.uid);
+      let rival = null;
+      for (const [k, v] of Object.entries(this.state.rivalries)) {
+        const [a, b] = k.split('|');
+        const other = a === mon.uid ? b : b === mon.uid ? a : null;
+        if (other && this.mon(other) && v >= 2 && (!rival || v > rival.v)) rival = { v, name: this.displayName(this.mon(other)) };
+      }
+      const r = L.writeLetter(mon, p.kind, this.rng, {
+        now: t, hours: p.data?.hours, place: p.data?.place,
+        friend: best && bondLevel(best.points) >= 2 ? { name: this.displayName(this.mon(best.uid)) } : null,
+        rival,
+      }, box.recent);
+      box.recent = { open: [...box.recent.open, r.openIdx].slice(-5), close: [...box.recent.close, r.closeIdx].slice(-5) };
+      const letter = { id: p.key, uid: mon.uid, name: this.displayName(mon), species: mon.species, kind: p.kind, at: t, text: r.text, refs: r.refs, opened: false };
+      box.inbox = [...box.inbox, letter].slice(-L.INBOX_KEPT);
+      box.sent++;
+      out.push(letter);
+      this.emit('letter', letter);
+    }
+    return out;
+  }
+
+  openLetter(id) {
+    const l = this.state.letters.inbox.find(x => x.id === id);
+    if (!l) return null;
+    l.opened = true;
+    this.emit('letterOpened', l);
+    return l;
+  }
+  unreadLetters() { return this.state.letters.inbox.filter(l => !l.opened); }
 
   // ---- 記憶 ----
   remember(uid, event) {

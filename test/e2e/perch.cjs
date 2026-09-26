@@ -130,14 +130,15 @@ run('perch', async ({ page, shot }, check) => {
     out.afterClose = up.filter(p => p.perch).length;
     for (let f = 0; f < 100; f++) stage.update(0.05);
     for (const p of pets) p.set('idle', 1); // 接下來測「自己跳上去」：大家自由活動
-    // 6) 自己跳上去：有視窗的時候，自由活動 6 分鐘，至少會有一隻自己跳上去（權重低；3 分鐘大約有 3% 的機會一隻都沒有）
+    // 6) 自己跳上去：有視窗的時候，自由活動 10 分鐘，至少會有一隻自己跳上去
+    //    （v3 以後牠們會去基地、睡午覺、出門，6 分鐘平均約 3 次，一次都沒有的機會約 5%；10 分鐘約 0.5%）
     api.emit('windows', [WIN]);
     // 固定成白天：半夜（1–6 點）大家都在睡覺，本來就不會跳上視窗（測試不能看真的時鐘）
     window.__kalos.director.updateEnv = () => {};
     Object.assign(stage.env, { sleepy: false, userActive: true, hour: 14 });
     const before = window.__kalos.game.state.stats.perches;
     out.candidates = pets.map(p => P.perchCandidates(p).length);
-    for (let f = 0; f < 6 * 60 * 20; f++) { stage.update(0.05); if (f % 40 === 0) await yieldNow(); }
+    for (let f = 0; f < 10 * 60 * 20; f++) { stage.update(0.05); if (f % 40 === 0) await yieldNow(); }
     out.natural = window.__kalos.game.state.stats.perches - before;
     return out;
   }, WIN);
@@ -151,5 +152,5 @@ run('perch', async ({ page, shot }, check) => {
   check(r2.afterFling.every(([perched, state]) => !perched && (state === 'fall' || state === 'walk')), `視窗被甩開時沒有掉下來：${JSON.stringify(r2.afterFling)}`);
   check(r2.landed, '掉下來之後沒有落地');
   check(r2.reperched === 2 && r2.afterClose === 0, `關掉視窗時沒有掉下來：${r2.reperched} → ${r2.afterClose}`);
-  check(r2.natural >= 1, `6 分鐘內沒有任何一隻自己跳上視窗（${r2.natural}，可以站的頂邊：${r2.candidates}）`);
+  check(r2.natural >= 1, `10 分鐘內沒有任何一隻自己跳上視窗（${r2.natural}，可以站的頂邊：${r2.candidates}）`);
 });

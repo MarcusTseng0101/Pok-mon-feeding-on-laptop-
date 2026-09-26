@@ -51,6 +51,24 @@ function serve() {
   return new Promise(r => server.listen(0, '127.0.0.1', () => r(server)));
 }
 
+// 同一個 page.evaluate 跑超過 HANG_MS 還沒回來：暫停網頁的 JS、印出當下的堆疊，再讓它繼續跑。
+// 很少見的卡住（例如某個迴圈停不下來）下次出現時，就能直接知道卡在哪一行
+const HANG_MS = Number(process.env.E2E_HANG_MS) || 60000;
+async function watchHangs(page) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Debugger.enable');
+  cdp.on('Debugger.paused', ev => {
+    const where = ev.callFrames.slice(0, 15).map(f => `  ${f.functionName || '(anonymous)'} ${f.url.replace(/^.*?\/src\//, 'src/')}:${f.location.lineNumber + 1}`);
+    console.log(`[hang] page.evaluate 超過 ${HANG_MS / 1000} 秒，網頁 JS 卡在：\n${where.join('\n')}`);
+    cdp.send('Debugger.resume').catch(() => {});
+  });
+  const evaluate = page.evaluate.bind(page);
+  page.evaluate = async (...args) => {
+    const timer = setTimeout(() => cdp.send('Debugger.pause').catch(() => {}), HANG_MS);
+    try { return await evaluate(...args); } finally { clearTimeout(timer); }
+  };
+}
+
 // query：額外的網址參數（例如 { windows: '...' }）
 // init：在網頁任何程式執行之前先跑的函式（例如把 Math.random 換成固定種子的版本），initArg 是傳給它的參數
 async function open({ query = {}, fresh = true, viewport = { width: 1280, height: 720 }, init = null, initArg } = {}) {
@@ -63,7 +81,8 @@ async function open({ query = {}, fresh = true, viewport = { width: 1280, height
   const errors = [];
   page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-  const q = new URLSearchParams({ dev: '1', sprites: '/__sprites', ...(fresh ? { fresh: '1' } : {}), ...query });
+  await watchHangs(page);
+  const q =new URLSearchParams({ dev: '1', sprites: '/__sprites', ...(fresh ? { fresh: '1' } : {}), ...query });
   await page.goto(`${base}/src/renderer/index.html?${q}`);
   await page.waitForFunction(() => window.__kalos?.game, null, { timeout: 15000 });
   return {
