@@ -28,6 +28,11 @@ function together(a, b) {
   return (a.partner === b || b.partner === a) && (close.includes(a.state) || close.includes(b.state));
 }
 
+// 在不在同一層：地上的只跟地上的撞，站在視窗上的只跟同一個視窗頂邊上的撞
+function sameLayer(a, b) {
+  return (a.perch?.hwnd ?? null) === (b.perch?.hwnd ?? null);
+}
+
 // 高度有沒有重疊（會飄的在上面飛過去就不會撞到）
 function heightOverlap(a, b) {
   const a0 = a.alt + a.z, a1 = a0 + a.asset.h * 0.8;
@@ -72,7 +77,7 @@ export function resolveCollisions(stage, dt) {
   for (let i = 0; i < pets.length; i++) {
     for (let j = i + 1; j < pets.length; j++) {
       const a = pets[i], b = pets[j];
-      if (together(a, b) || !heightOverlap(a, b)) continue;
+      if (!sameLayer(a, b) || together(a, b) || !heightOverlap(a, b)) continue;
       const S = stage.S;
       const rx = (a.asset.w + b.asset.w) * FOOT * S;
       const ry = rx * DEPTH;
@@ -82,6 +87,7 @@ export function resolveCollisions(stage, dt) {
       // 推開方向（剛好重疊在同一點時隨便挑一邊）
       let nx = dx / rx, ny = dy / ry;
       if (nd < 1e-4) { nx = Math.random() < 0.5 ? -1 : 1; ny = 0; }
+      if (a.perch) { nx = Math.sign(dx) || (Math.random() < 0.5 ? -1 : 1); ny = 0; } // 頂邊上只能左右推
       const len = Math.hypot(nx, ny) || 1;
       nx /= len; ny /= len;
       const depth = 1 - nd;

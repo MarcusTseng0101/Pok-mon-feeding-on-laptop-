@@ -13,10 +13,30 @@ import { MOVE_ACTIONS, moveOptions } from './moves.js';
 import { SOCIAL_ACTIONS, groupOptions, maybeComfort } from './social.js';
 import { integrateKnock } from './physics.js';
 import { updateForm, drawForm } from './battleforms.js';
+import { PERCH_ACTIONS, perchBounds, perchedChoices, perchOption } from './perching.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
 
+
+// 專注番茄鐘進行中：只做安靜的動作，不跑來跑去、不找別隻玩
+function focusChoices(pet) {
+  const rp = (a, b) => a + Math.random() * (b - a);
+  return [
+    ['idle', 10, () => pet.set('idle', rp(4, 10))],
+    ['sit', 14, () => pet.set('sit', rp(8, 20))],
+    ['nap', 10, () => pet.set('sleep', rp(10, 30))],
+    ['look', 3, () => pet.set('look', rp(2, 3))],
+  ];
+}
+
+// [名稱, 權重, 動作] 裡依權重挑一個
+function pickWeighted(list) {
+  const choices = list.filter(([, w]) => w > 0);
+  const total = choices.reduce((sum, [, w]) => sum + w, 0);
+  let r = Math.random() * total;
+  return choices.find(([, w]) => (r -= w) < 0) ?? choices[0];
+}
 
 export class Pet {
   constructor(stage, mon, { x, gy, fromBall = false } = {}) {
@@ -58,7 +78,7 @@ export class Pet {
   get asset() { return this.stage.sprites.peek(this.spriteKey, this.mon.shiny); }
   get S() { return this.stage.S; }
   get types() { return this.stage.dex.get(this.mon.species).types; }
-  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state]; }
+  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state] ?? PERCH_ACTIONS[this.state]; }
   // 圖的腳底在螢幕上的 y（含飄浮與離地高度，不含走路的上下晃動）
   get y() { return this.gy - (this.alt + this.z) * this.S; }
   restY() { return this.gy - this.alt * this.S; }
@@ -69,8 +89,9 @@ export class Pet {
     if ((state === 'trip' || state === 'dizzy') && was !== state && !this.leaving) maybeComfort(this);
   }
 
-  // 腳底可以站的範圍：頭不能超出螢幕上緣
+  // 腳底可以站的範圍：頭不能超出螢幕上緣。站在視窗頂邊上時只能沿著頂邊走
   bounds() {
+    if (this.perch) { const pb = perchBounds(this); if (pb) return pb; }
     const a = this.asset, S = this.S, st = this.stage;
     const half = (a.w * S) / 2;
     return { x0: half, x1: st.W - half, y0: (a.h + this.alt + 6) * S, y1: st.H - 3 * S };
@@ -209,6 +230,8 @@ export class Pet {
 
   pickUp(px, py) {
     const r = this.rect();
+    this.perch = null; // 從視窗上被抓起來
+    this.perchJump = null;
     this.endPlay();
     this.meet = null;
     this.habit = null;
@@ -485,7 +508,10 @@ export class Pet {
   decide() {
     const st = this.stage;
     this.onArrive = null;
-    const others = [...st.pets.values()].filter(o => o !== this && o.free && !o.partner);
+    if (this.perch) { pickWeighted(perchedChoices(this))[2](); return; } // 站在視窗上：只做安靜的事或跳下來
+    if (st.env.focus) { pickWeighted(focusChoices(this))[2](); return; } // 專注中：安靜地陪你
+    // 站在視窗上、正在往上跳的不算（不會被拉去玩）
+    const others = [...st.pets.values()].filter(o => o !== this && o.free && !o.partner && !o.perch && o.state !== 'perchUp');
     if (st.env.sleepy) {
       // 想睡了：有其他夥伴在睡的話靠過去一起睡
       const cuddle = socialOptions(this, others).find(([n]) => n === 'cuddle');
@@ -526,11 +552,9 @@ export class Pet {
       ...habitOptions(this, others), // 這一種寶可夢專屬的習性
       ...moveOptions(this, others), // 練習招式、切磋
       ...groupOptions(this, others.filter(o => !o.group)), // 一群一起玩、好朋友之間
-    ].filter(([, w]) => w > 0);
-    const total = choices.reduce((sum, [, w]) => sum + w, 0);
-    let r = Math.random() * total;
-    const pick = choices.find(([, w]) => (r -= w) < 0) ?? choices[0];
-    pick[2]();
+      ...perchOption(this), // 跳到其他視窗的標題列上
+    ];
+    pickWeighted(choices)[2]();
   }
 
   draw(ctx) {

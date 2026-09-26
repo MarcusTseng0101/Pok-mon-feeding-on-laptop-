@@ -8,6 +8,7 @@ import { createStore } from './store.js';
 import { createSpriteCache } from './sprites.js';
 import { createSignals } from './signals.js';
 import { trayImage } from './tray-icon.js';
+import { createWindowProbe } from './windows.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DEV = process.env.KALOS_DEV === '1';
@@ -20,8 +21,9 @@ app.setAppUserModelId?.('dev.kalos.amie');
 let win = null;
 let tray = null;
 let signals = null;
+let windowProbe = null;
 let flushedForQuit = false;
-const trayState = { muted: false, quiet: false };
+const trayState = { muted: false, quiet: false, focus: false, focusMinutes: 25 };
 
 function currentDisplay() {
   if (!win) return screen.getPrimaryDisplay();
@@ -93,12 +95,43 @@ function createWindow() {
     const key = `${p.x},${p.y}`;
     if (key === last) return;
     last = key;
+    lastCursorMove = Date.now();
     win.webContents.send('cursor', { x: p.x - b.x, y: p.y - b.y });
   }, 33);
 
-  signals = createSignals(s => win?.webContents.send('signals', s));
+  signals = createSignals(s => win?.webContents.send('signals', s), { lastCursorMove: () => lastCursorMove });
+  startWindowWatch();
   screen.on('display-metrics-changed', () => fitToDisplay(currentDisplay()));
   screen.on('display-removed', () => fitToDisplay(screen.getPrimaryDisplay()));
+}
+
+// 其他視窗的位置（給寶可夢站在視窗上）：只有位置和大小，沒有標題或內容。
+// 每 250 ms 查一次（Windows 上實測一次約 1–2 ms），有變化才送給畫面。勿擾模式時暫停。
+let lastCursorMove = 0;
+function startWindowWatch() {
+  if (process.platform !== 'win32' || SMOKE) return;
+  const handle = win.getNativeWindowHandle();
+  const hwnd = handle.length >= 8 ? Number(handle.readBigUInt64LE(0)) : handle.readUInt32LE(0);
+  windowProbe = createWindowProbe({
+    exclude: hwnd,
+    // 實體像素 → DIP（縮放 125%、150% 的螢幕才不會歪），再換成相對於我們視窗的座標
+    toDip: r => {
+      const d = screen.screenToDipRect(null, r);
+      const b = win?.getBounds() ?? { x: 0, y: 0 };
+      return { x: d.x - b.x, y: d.y - b.y, width: d.width, height: d.height };
+    },
+  });
+  let last = '';
+  const tick = async () => {
+    if (!win || windowProbe.disabled) return;
+    if (!trayState.quiet) {
+      const list = await windowProbe.snapshot();
+      const key = JSON.stringify(list);
+      if (key !== last) { last = key; win?.webContents.send('windows', list); }
+    }
+    setTimeout(tick, 250);
+  };
+  tick();
 }
 
 function send(command) {
@@ -117,6 +150,9 @@ function buildTray() {
     { label: '氣息', click: () => send('aura') },
     { label: '設定', click: () => send('settings') },
     { type: 'separator' },
+    trayState.focus
+      ? { label: '結束專注', click: () => send('focusStop') }
+      : { label: `開始專注（${trayState.focusMinutes} 分鐘）`, click: () => send('focusStart') },
     { label: '靜音', type: 'checkbox', checked: trayState.muted, click: () => send('toggleMute') },
     { label: '勿擾模式（收起寶可夢）', type: 'checkbox', checked: trayState.quiet, click: () => send('toggleQuiet') },
     { label: '移到游標所在的螢幕', click: () => fitToDisplay(screen.getDisplayNearestPoint(screen.getCursorScreenPoint())) },
@@ -163,3 +199,4 @@ app.on('before-quit', e => {
 
 app.on('second-instance', () => send('menu'));
 app.on('window-all-closed', () => app.quit());
+app.on('will-quit', () => { windowProbe?.dispose(); signals?.dispose(); });

@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS = {
   encounterRate: 'normal',
   showLauncher: true,
   quiet: false, // 勿擾：收起所有寶可夢、暫停遭遇
+  focusMinutes: 25, // 番茄鐘長度（15–60）
 };
 
 export function emptyPuffs() {
@@ -48,8 +49,9 @@ export function defaultSave(now) {
     regenMinutes: 0,
     nextPartnerGiftAt: now + 30 * 60 * 1000,
     eggs: [], // [{ uid, species, form, shiny, steps, need, receivedAt }]
+    eggDay: null, // 今天找過蛋了沒（每天一次機會）
     achievements: {}, // { [id]: 解鎖時間 }
-    focus: { sessions: 0, totalMinutes: 0, streakDays: 0, lastDay: null }, // 番茄鐘
+    focus: { sessions: 0, totalMinutes: 0, streakDays: 0, lastDay: null, active: null }, // 番茄鐘；active＝{ startedAt, minutes }
     weather: null, // { city, lat, lon, enabled }
     sync: null, // { folder, deviceId, rev, lastSyncedRev }
     minigames: { day: null, baked: 0, deluxe: 0 }, // 今天做了幾個泡芙（每天有上限）
@@ -157,6 +159,7 @@ export function migrate(raw, dex, now) {
   s.stats = { ...base.stats };
   for (const [k, v] of Object.entries(raw.stats ?? {})) s.stats[k] = num(v, 0, 0);
   s.eggs = (Array.isArray(raw.eggs) ? raw.eggs : []).map(e => normalizeEgg(e, dex)).filter(Boolean).slice(0, MAX_EGGS);
+  s.eggDay = typeof raw.eggDay === 'string' && DAY_RE.test(raw.eggDay) ? raw.eggDay : null;
   s.achievements = {};
   for (const [id, at] of Object.entries(raw.achievements ?? {})) if (/^[a-z0-9-]{1,40}$/.test(id) && Number.isFinite(at)) s.achievements[id] = at;
   const f = raw.focus ?? {};
@@ -165,7 +168,11 @@ export function migrate(raw, dex, now) {
     totalMinutes: num(f.totalMinutes, 0, 0),
     streakDays: num(f.streakDays, 0, 0),
     lastDay: typeof f.lastDay === 'string' && DAY_RE.test(f.lastDay) ? f.lastDay : null,
+    active: f.active && Number.isFinite(f.active.startedAt) && Number.isFinite(f.active.minutes)
+      ? { startedAt: f.active.startedAt, minutes: Math.round(num(f.active.minutes, 25, 15, 60)) }
+      : null,
   };
+  s.settings.focusMinutes = Math.round(num(s.settings.focusMinutes, 25, 15, 60));
   const w = raw.weather;
   s.weather = w && Number.isFinite(w.lat) && Number.isFinite(w.lon) && Math.abs(w.lat) <= 90 && Math.abs(w.lon) <= 180
     ? { city: str(w.city, 40) ?? '', lat: w.lat, lon: w.lon, enabled: Boolean(w.enabled) }

@@ -41,7 +41,7 @@ export class UI {
     this.minigames = new MinigameHost(this);
     stage.uiHit = (x, y) => this.hitTest(x, y);
     game.on('change', ({ event }) => {
-      if (['tick', 'bag', 'party', 'caught', 'evolved', 'fed', 'heartsUp', 'dexSeen', 'cell', 'settings'].includes(event)) this.refreshSoon();
+      if (['tick', 'bag', 'party', 'caught', 'evolved', 'fed', 'heartsUp', 'dexSeen', 'cell', 'settings', 'focus'].includes(event)) this.refreshSoon();
     });
   }
 
@@ -56,6 +56,7 @@ export class UI {
       <button data-open="play">一起玩</button>
       <button data-open="bag">背包</button><button data-open="aura">氣息</button>
       <button data-open="settings">設定</button><button data-act="quiet">勿擾模式</button>
+      <button data-act="focus">開始專注</button>
     </div>`);
     this.menu.onclick = e => {
       const b = e.target.closest('button');
@@ -63,6 +64,7 @@ export class UI {
       this.audio.sfx('click');
       if (b.dataset.open) this.open(b.dataset.open);
       if (b.dataset.act === 'quiet') this.toggleQuiet();
+      if (b.dataset.act === 'focus') { if (this.game.state.focus.active) this.stopFocus(); else this.startFocus(); }
     };
     this.win = h(`<section class="window hit pix hidden"><header><span class="title"></span><button class="close" title="關閉">✕</button></header><div class="body"></div></section>`);
     this.win.querySelector('.close').onclick = () => this.closePanel();
@@ -78,7 +80,8 @@ export class UI {
     this.toasts = h('<div class="toasts"></div>');
     this.label = h('<div class="label hidden"></div>');
     this.modal = h('<div class="modal hidden"></div>');
-    r.append(this.label, this.bubble, this.encBar, this.picker, this.menu, this.win, this.launcher, this.toasts, this.modal);
+    this.focusHud = h('<div class="focus-hud pix hidden"></div>');
+    r.append(this.focusHud, this.label, this.bubble, this.encBar, this.picker, this.menu, this.win, this.launcher, this.toasts, this.modal);
     this.applySettings();
   }
 
@@ -91,11 +94,13 @@ export class UI {
     const s = this.game.state.settings;
     this.launcher.classList.toggle('hidden', !s.showLauncher);
     this.menu.querySelector('[data-act="quiet"]').textContent = s.quiet ? '叫出寶可夢' : '勿擾模式';
+    this.menu.querySelector('[data-act="focus"]').textContent = this.game.state.focus.active ? '結束專注' : `開始專注（${s.focusMinutes} 分）`;
   }
 
   // ---------- 每一幀：跟著寶可夢移動的元素 ----------
   update() {
     const st = this.stage;
+    this.updateFocusHud();
     const place = (el, devX, devY, { above = true } = {}) => {
       const p = st.toCss(devX, devY);
       const w = el.offsetWidth, hh = el.offsetHeight;
@@ -423,6 +428,7 @@ export class UI {
       <p class="hint">精靈球每 10 分鐘補充 1 顆（最多補到 30）。抓到新的寶可夢也會拿到獎勵。</p>
       <h4>寶可夢泡芙</h4><div class="puffs"></div><p class="hint puffhint">點選泡芙可以放在桌面上當誘餌（持續 10 分鐘）。</p>
       <h4>樹果</h4><div class="balls berries"></div><p class="hint">在「一起玩」摘樹果，拿來做泡芙。</p>
+      ${this.game.state.eggs.length ? `<h4>蛋（${this.game.state.eggs.length}／3）</h4><div class="eggs"></div><p class="hint">移動游標、在電腦前待著，蛋就會慢慢孵化。好了之後會出現在桌面上。</p>` : ''}
       ${bag.items.diancite ? '<h4>重要物品</h4><div class="item">✦ 蒂安希進化石</div>' : ''}
       ${this.game.state.zygardeCells ? `<h4>其他</h4><div class="cells"></div>` : ''}</div>`);
     const balls = root.querySelector('.balls');
@@ -430,6 +436,13 @@ export class UI {
       const el = h(`<div class="item"><span>${BALLS[b].zh}</span><b>×${bag.balls[b]}</b></div>`);
       el.prepend(pixelImg(art.balls[b], 2));
       balls.append(el);
+    }
+    const eggBox = root.querySelector('.eggs');
+    for (const e of this.game.state.eggs) {
+      const pct = Math.floor((e.steps / e.need) * 100);
+      const el = h(`<div class="item egg"><span>${pct >= 100 ? '快要孵化了！' : pct > 66 ? '裡面有動靜…' : pct > 33 ? '偶爾會動一下' : '還要很久'}</span><div class="bar"><i style="width:${pct}%"></i></div></div>`);
+      el.prepend(pixelImg(art.egg(art.TYPE_COLORS[this.dex.get(e.species).types[0]]), 2));
+      eggBox?.append(el);
     }
     const berryBox = root.querySelector('.berries');
     for (const [b, n] of Object.entries(bag.berries)) {
@@ -501,6 +514,7 @@ export class UI {
     return h(`<div class="settings">
       <label>音樂音量 <input type="range" min="0" max="1" step="0.05" data-set="musicVolume" value="${s.musicVolume}"></label>
       <label>音效音量 <input type="range" min="0" max="1" step="0.05" data-set="sfxVolume" value="${s.sfxVolume}"></label>
+      <label>專注時間 <input type="range" min="15" max="60" step="5" data-set="focusMinutes" value="${s.focusMinutes}"> <span class="focusmin">${s.focusMinutes} 分鐘</span></label>
       <label><input type="checkbox" data-set="muted" ${s.muted ? 'checked' : ''}> 靜音</label>
       <div>野生寶可夢出現頻率：${rates}</div>
       <label><input type="checkbox" data-set="showLauncher" ${s.showLauncher ? 'checked' : ''}> 顯示右下角的精靈球按鈕（隱藏後可從系統匣開啟選單）</label>
@@ -588,7 +602,40 @@ export class UI {
 
   onPanelInput(e) {
     const t = e.target;
-    if (t.dataset.set && t.type === 'range') { this.game.state.settings[t.dataset.set] = Number(t.value); this.onSettings?.(); }
+    if (t.dataset.set && t.type === 'range') {
+      this.game.state.settings[t.dataset.set] = Number(t.value);
+      if (t.dataset.set === 'focusMinutes') t.parentElement.querySelector('.focusmin').textContent = `${t.value} 分鐘`;
+      this.onSettings?.();
+    }
+  }
+
+  // ---------- 專注番茄鐘 ----------
+  startFocus() {
+    this.minigames.closeMinigame('focus');
+    this.toggleMenu(false);
+    if (!this.game.startFocus()) return;
+    const m = this.game.state.focus.active.minutes;
+    this.toast(`開始專注 ${m} 分鐘。寶可夢們會安靜地陪你，野生寶可夢也不會來打擾`);
+    this.director.nextSpawnAt = Math.max(this.director.nextSpawnAt, Date.now() + m * 60_000);
+    // 正在跑來跑去的先停下來
+    for (const p of this.stage.pets.values()) if (p.free && !p.perch) p.set('sit', 6);
+    this.applySettings();
+  }
+
+  stopFocus() {
+    this.toggleMenu(false);
+    if (this.game.cancelFocus()) this.toast('專注結束了（沒有完成，下次再試試）');
+    this.applySettings();
+  }
+
+  // 專注中：畫面角落的剩餘時間（不攔截滑鼠）
+  updateFocusHud() {
+    const ms = this.game.state.focus.active ? this.game.focusRemaining() : 0;
+    this.focusHud.classList.toggle('hidden', !ms);
+    if (!ms) return;
+    const sec = Math.ceil(ms / 1000);
+    const text = `專注中 ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+    if (this.focusHud.textContent !== text) this.focusHud.textContent = text;
   }
 
   toggleQuiet(force) {

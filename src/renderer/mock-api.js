@@ -7,7 +7,9 @@ export function createMockApi() {
   const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon';
   const params = new URLSearchParams(location.search);
   const spriteBase = params.get('sprites') ?? SPRITE_BASE;
-  return {
+  // ?windows=[{"hwnd":"1","x":200,"y":300,"w":600,"h":400}]：假裝桌面上有這些視窗（CSS 像素，由上到下）
+  let lastWindows = params.get('windows') ? JSON.parse(params.get('windows')) : null;
+  const api = {
     platform: 'web',
     async loadDexData() { return (await fetch(new URL('../../data/kalos.json', import.meta.url))).json(); },
     async loadSave() {
@@ -35,8 +37,13 @@ export function createMockApi() {
     on(channel, fn) {
       if (!listeners.has(channel)) listeners.set(channel, []);
       listeners.get(channel).push(fn);
+      if (channel === 'windows' && lastWindows) fn(lastWindows); // 跟 main process 一樣：一開始就收到目前的視窗
       return () => {};
     },
-    emit(channel, payload) { for (const fn of listeners.get(channel) ?? []) fn(payload); },
+    emit(channel, payload) {
+      if (channel === 'windows') lastWindows = payload;
+      for (const fn of listeners.get(channel) ?? []) fn(payload);
+    },
   };
+  return api;
 }

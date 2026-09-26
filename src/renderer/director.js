@@ -2,12 +2,16 @@
 import { Pet } from './scene/pet.js';
 import { watchEating } from './scene/behaviors.js';
 import { Spot, WildMon, ThrownBall, Prop } from './scene/wild.js';
+import { EggProp } from './scene/egg.js';
 import { planSpawn, nextSpawnDelay, shouldDropCell, timeOfDay } from '../core/encounter.js';
 import { ringBonus, catchProbability, BALLS } from '../core/capture.js';
 import { shinyChance } from '../core/shiny.js';
 import { spriteKey, inheritForm } from '../core/forms.js';
 import { puffName, hearts, FLAVOR_ZH, parsePuffKey } from '../core/amie.js';
 import * as art from './gfx/art.js';
+
+const TYPING_WATCH_AFTER = 30; // 連續打字幾秒後過來看（秒）
+const TYPING_COOLDOWN = 3 * 60 * 1000; // 猜的，可調整：不要一直跑過來
 
 const LURE_MINUTES = 10;
 
@@ -106,7 +110,11 @@ export class Director {
     const now = Date.now();
     const quiet = this.game.state.settings.quiet;
     const playing = Boolean(this.ui?.minigames.active); // 玩小遊戲的時候不會有野生寶可夢來打擾
-    if (!quiet && !playing && !this.stage.spot && !this.enc && now >= this.nextSpawnAt && this.game.state.starterChosen) this.spawn();
+    const focusing = Boolean(this.game.state.focus.active); // 專注中也不會
+    this.stage.env.focus = focusing;
+    if (focusing && this.game.focusRemaining() <= 0) this.finishFocus();
+    if (!focusing) this.typingReaction(now);
+    if (!quiet && !playing && !focusing && !this.stage.spot && !this.enc && now >= this.nextSpawnAt && this.game.state.starterChosen) this.spawn();
     if (this.enc && !this.enc.throwing && now > this.enc.deadline) this.wildLeaves('等不及，自己跑走了…');
     if (this.lure && now > this.lure.until) {
       this.lure.prop.life = 0;
@@ -115,6 +123,76 @@ export class Director {
       this.ui?.toast('誘餌泡芙的香味散掉了');
     }
     if (this.evolution) this.updateEvolution(dt);
+  }
+
+  // ---------- 孵蛋 ----------
+  eggColor(egg) { return art.TYPE_COLORS[this.dex.get(egg.species).types[0]] ?? '#7ac86a'; }
+
+  // 每 10 秒：游標移動的距離＋有沒有在操作電腦 → 步數
+  tickEggs(seconds = 10) {
+    const px = this.stage.takeCursorTravel();
+    const active = (this.signals.idleSeconds ?? 999) < seconds ? seconds : 0;
+    if (this.game.state.eggs.length) this.game.addEggSteps(px, active);
+  }
+
+  // 好了的蛋出現在桌面上（夥伴旁邊），點一下開始孵化
+  showReadyEggs() {
+    const st = this.stage, S = st.S;
+    if (this.game.state.settings.quiet) return;
+    for (const egg of this.game.readyEggs()) {
+      if (st.props.some(p => p.kind === 'egg' && p.uid === egg.uid)) continue;
+      const near = [...st.pets.values()].find(p => !p.perch && !p.leaving);
+      const x = near ? Math.max(30 * S, Math.min(st.W - 30 * S, near.x + (Math.random() < 0.5 ? -1 : 1) * (near.asset.w / 2 + 16) * S)) : st.W / 2;
+      const y = near ? near.gy : st.H * 0.8;
+      st.props.push(new EggProp(st, { uid: egg.uid, x, y, color: this.eggColor(egg), onHatch: e => this.hatch(e) }));
+      this.ui?.toast('蛋好像動了一下…點一下看看！', { icon: art.egg(this.eggColor(egg), 1) });
+    }
+  }
+
+  hatch(prop) {
+    const st = this.stage;
+    const mon = this.game.hatchEgg(prop.uid, { pos: { x: prop.x / st.W, y: prop.y / st.H } }); // 從蛋的位置出來
+    if (!mon) return;
+    this.syncPets();
+    this.audio.jingle('newEntry', { resumeWith: this.ambientSong() });
+    this.ui?.toast(`蛋孵化了！是${mon.shiny ? '色違的' : ''}${this.dex.name(mon.species)}！`, { icon: art.sparkle, kind: 'dex' });
+    for (const p of st.pets.values()) if (p.uid !== mon.uid && p.free && Math.hypot(p.x - prop.x, p.gy - prop.y) < 300 * st.S) { p.facing = prop.x > p.x ? 1 : -1; p.showEmote('!', 1.2); }
+  }
+
+  // ---------- 專注番茄鐘 ----------
+  finishFocus() {
+    const r = this.game.finishFocus();
+    if (!r) return;
+    this.audio.jingle('newEntry', { resumeWith: this.ambientSong() });
+    this.ui?.toast(`專注 ${r.minutes} 分鐘完成！拿到了${puffName(r.puff)}${r.streak > 1 ? `（連續 ${r.streak} 天）` : ''}`, { icon: art.puff(r.puff), kind: 'dex' });
+    for (const p of this.stage.pets.values()) {
+      if (p.perch || !['idle', 'sit', 'sleep', 'look'].includes(p.state)) continue;
+      p.set('happy', 1.2);
+      p.showEmote('♥', 1.5);
+    }
+  }
+
+  // ---------- 打字反應（不讀鍵盤：看 signals.typing） ----------
+  // 連續打字超過 30 秒：1–2 隻夥伴跑到游標旁邊圍觀
+  typingReaction(now) {
+    const s = this.signals, st = this.stage;
+    if (!s.typing || (s.typingSeconds ?? 0) < TYPING_WATCH_AFTER || now < (this.typingCooldown ?? 0) || !st.pointer.known) return;
+    if (this.enc || this.ui?.minigames.active) return;
+    this.typingCooldown = now + TYPING_COOLDOWN;
+    const free = [...st.pets.values()].filter(p => p.free && !p.partner && !p.perch).sort(() => Math.random() - 0.5).slice(0, Math.random() < 0.5 ? 1 : 2);
+    this.typingWatchers = free.map(p => p.uid); // 這次是誰跑過來（除錯、測試用）
+    const S = st.S;
+    free.forEach((p, i) => {
+      const b = p.bounds();
+      const side = i === 0 ? -1 : 1;
+      p.target = { x: Math.max(b.x0, Math.min(b.x1, st.pointer.x + side * (50 + Math.random() * 40) * S)), y: Math.max(b.y0, Math.min(b.y1, st.pointer.y + (30 + Math.random() * 40) * S)) };
+      p.set('walk');
+      p.onArrive = () => {
+        p.facing = st.pointer.x > p.x ? 1 : -1;
+        p.set('look', 3);
+        p.showEmote(Math.random() < 0.5 ? '♪' : '!', 1.5);
+      };
+    });
   }
 
   scheduleNext() {
@@ -192,7 +270,7 @@ export class Director {
       if (target instanceof Pet) this.ui?.openPetBubble(target);
       else if (target instanceof Spot) this.beginEncounter(target);
       else if (target instanceof WildMon) this.ui?.showEncounter(this.enc);
-      else if (target instanceof Prop) target.onClick?.();
+      else target?.onClick?.(); // 道具、蛋
     });
     st.on('modeClick', target => {
       const m = st.mode;
@@ -222,6 +300,7 @@ export class Director {
     });
     st.on('spotGone', () => { if (!this.enc) this.scheduleNext(); });
     st.on('bond', (a, b, n) => this.game.bond(a.uid, b.uid, n));
+    st.on('perched', () => { this.game.state.stats.perches++; });
     // 超級進化、牽絆變身（只是演出，不會存檔）
     st.on('formChange', (pet, form) => {
       const name = this.game.displayName(pet.mon);
@@ -515,6 +594,11 @@ export class Director {
       this.audio.jingle('newEntry', { resumeWith: this.ambientSong() });
       this.ui?.toast(`${this.game.displayName(this.game.mon(uid))}好像很信任你…獲得了「蒂安希進化石」！現在牠可以超級進化了`, { icon: art.sparkle, kind: 'dex' });
     });
+    g.on('eggFound', ({ egg, parents }) => {
+      const [a, b] = parents.map(u => this.game.displayName(this.game.mon(u)));
+      this.ui?.toast(`${a}和${b}一起找到了一顆蛋！用游標、在電腦前待著，蛋就會慢慢孵化`, { icon: art.egg(this.eggColor(egg)) });
+    });
+    g.on('eggReady', () => this.showReadyEggs());
     g.on('trimExpired', ({ uid }) => {
       const m = this.game.mon(uid);
       if (m) this.ui?.toast(`${this.game.displayName(m)}的毛長回來了`);
