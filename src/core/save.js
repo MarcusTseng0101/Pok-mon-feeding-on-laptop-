@@ -14,6 +14,7 @@ import { defaultTogether, normalizeTogether } from './together.js';
 import { defaultMood, normalizeMood } from './mood.js';
 import { defaultSymbiosis, normalizeSymbiosis } from './symbiosis.js';
 import { normalizeBase, defaultBase, emptyMaterials, MATERIALS } from './base.js';
+import { normalizeOuting } from './outing.js';
 import { normalizeTrip, normalizePostcard, PLACES, POSTCARDS_KEPT, TRIPS_DONE_KEPT } from './trips.js';
 
 // 舊存檔沒有心智：用 uid 產生固定的起始值（每次讀進來都一樣）
@@ -161,6 +162,8 @@ export function normalizeMon(m, dex) {
     mind: normalizeMind(m.mind, seededRng(String(m.uid))), // 需求、最近的想法（core/mind.js）
     memory: normalizeMemory(m.memory), // 記得的事（core/memory.js）
     trip: normalizeTrip(m.trip), // 旅行中（core/trips.js）；null＝在家
+    outing: m.trip ? null : normalizeOuting(m.outing), // 跟你出門中（core/outing.js）；跟旅行互斥
+    outingDone: Number.isFinite(m.outingDone) ? m.outingDone : null, // 最後一次回家的那趟（同步用）
     // 在桌面上的位置（螢幕比例 0–1），由畫面寫入；沒有就讓畫面自己挑位置
     pos: m.pos && Number.isFinite(m.pos.x) && Number.isFinite(m.pos.y) ? { x: num(m.pos.x, 0.5, 0, 1), y: num(m.pos.y, 0.8, 0, 1) } : null,
   };

@@ -93,6 +93,9 @@ export const PLACES = {
   },
 };
 export const PLACE_IDS = Object.keys(PLACES);
+// 跟你出門（core/outing.js）帶回來的明信片：放進同一本相簿，但不是旅行的地點
+export const OUTING_PLACE = 'with-you';
+export const placeZh = id => (id === OUTING_PLACE ? '跟你出門' : PLACES[id]?.zh ?? '');
 
 // ---------- 狀態 ----------
 // mon.trip = { id, place, departedAt, returnAt, seed }（null＝在家）
@@ -120,12 +123,12 @@ export function tripStatus(mon, now) {
 
 export const travelers = state => state.mons.filter(m => m.trip);
 
-// 可以出發嗎：在桌面上、現在沒有別隻在旅行、出發後桌面上還至少有一隻
+// 可以出發嗎：在桌面上、現在沒有別隻在旅行、出發後桌面上還至少有一隻（跟你出門的不在桌面上，也不能去旅行）
 export function canDepart(state, uid) {
   const mon = state.mons.find(m => m.uid === uid);
-  if (!mon || !mon.out || mon.trip) return false;
+  if (!mon || !mon.out || mon.trip || mon.outing) return false;
   if (travelers(state).length) return false;
-  return state.mons.filter(m => m.out && !m.trip && m.uid !== uid).length >= 1;
+  return state.mons.filter(m => m.out && !m.trip && !m.outing && m.uid !== uid).length >= 1;
 }
 
 // ---------- 出發 ----------
@@ -183,7 +186,7 @@ export function rollTrip(trip, { dex, friendName = null, selfName = '' } = {}) {
 }
 
 export function normalizePostcard(p) {
-  if (!p || typeof p !== 'object' || !PLACES[p.place] || typeof p.id !== 'string' || !Number.isFinite(p.at)) return null;
+  if (!p || typeof p !== 'object' || !(PLACES[p.place] || p.place === OUTING_PLACE) || typeof p.id !== 'string' || !Number.isFinite(p.at)) return null;
   return {
     id: p.id.slice(0, 60),
     place: p.place,
