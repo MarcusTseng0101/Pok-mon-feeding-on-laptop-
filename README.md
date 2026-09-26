@@ -27,6 +27,7 @@ npm run dist       # 打包成安裝檔（Windows: NSIS + portable；在各自�
 
 ```bash
 node test/e2e/forms.cjs        # 形態圖片（藍花的花蓓蓓真的是藍色的圖）
+node test/e2e/anim.cjs         # 會動的圖：在動、大小跟原本一樣、走路播得快、兩隻不同步、點得到、下載不到時用原本的圖
 node test/e2e/kalos-forms.cjs  # 野生花色、圖鑑切換、美容、超級進化（變大後不重疊、不存檔）、牽絆變身
 node test/e2e/minigames.cjs    # 五個小遊戲實際玩一遍；每一種結束方式之後，滑鼠都要還給桌面
 node test/e2e/perch.cjs        # 站在視窗上：不會被推下去、跟著視窗走、被甩下來、視窗關掉會掉下來
@@ -47,6 +48,9 @@ node test/e2e/perf.cjs      # 每幀 update + draw 的時間
 每個腳本最後一行是 `PASS <名稱>` 或 `FAIL <名稱>: <原因>`。寶可夢圖會快取在 `.cache/sprites`（不進 repo）。
 
 第一次出現的寶可夢圖會從 GitHub 上的 PokeAPI sprites 下載，之後快取在使用者資料夾，離線也能玩。
+桌面上的寶可夢用的是**會動的圖**（PokeAPI sprites 裡的 Pokémon Showdown 動態圖，跟 X／Y 同一套 3D 模型）：
+尾巴、耳朵、手腳都會動，走路、跑步時播得比較快，睡覺時很慢。大小會縮放成跟原本的圖一樣高。
+會動的圖還沒下載好、或下載不到的時候，先用原本不會動的圖；圖鑑、夥伴頁這些介面還是用原本的圖。
 下載失敗時會先用依屬性顏色產生的替代圖。
 
 ## 怎麼玩

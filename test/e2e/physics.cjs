@@ -8,6 +8,8 @@ run('physics', async ({ page }, check) => {
     const M = await import('/src/renderer/scene/moves.js');
     game.chooseStarter(653);
     for (const id of [713, 659, 700, 701, 668]) { const m = game.createMon(id, {}); m.affection = 200; m.out = true; game.state.mons.push(m); }
+    // 這裡只測碰撞：不讓牠們出門旅行（出門的會從桌面上消失，下面拿舊的 pets 陣列算距離就會算錯）
+    game.canDepart = () => false;
     director.syncPets();
     const t0 = Date.now();
     while (stage.pets.size < 6 && Date.now() - t0 < 10000) await new Promise(r => setTimeout(r, 50));
@@ -51,6 +53,7 @@ run('physics', async ({ page }, check) => {
       for (const q of pets) { const rc = q.rect(); if (!Number.isFinite(q.x + q.gy) || rc.y < -3 || q.gy > stage.H + 2) oob++; }
       for (let i = 0; i < pets.length; i++) for (let j = i + 1; j < pets.length; j++) {
         const x = pets[i], y = pets[j];
+        if (stage.pets.get(x.uid) !== x || stage.pets.get(y.uid) !== y) continue; // 已經不在桌面上
         if (x.floats || y.floats || x.state === 'held') continue;
         const exempt = x.partner === y || y.partner === x || x.hidden || y.hidden || ['habit', 'dig'].includes(x.state) || ['habit', 'dig'].includes(y.state);
         if (!exempt && nd(x, y) < 0.6) deep++;

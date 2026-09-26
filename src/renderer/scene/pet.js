@@ -4,6 +4,7 @@
 // 位置：(x, gy) = 腳底在桌面平面上的位置（裝置像素）；z = 離地高度（美術像素）；alt = 會飄的寶可夢的飄浮高度。
 // 美術像素 × stage.S = 裝置像素。
 import { blit } from '../gfx/pixel.js';
+import { liveAsset } from '../gfx/sprites.js';
 import * as art from '../gfx/art.js';
 import { hearts } from '../../core/amie.js';
 import { spriteKey } from '../../core/forms.js';
@@ -43,6 +44,9 @@ function pickWeighted(list) {
   return choices.find(([, w]) => (r -= w) < 0) ?? choices[0];
 }
 
+// 動畫播放速度（原作的待機動畫；走路、跑步時播快一點，看起來像在邁步）
+const ANIM_SPEED = { walk: 1.5, approach: 1.5, walkTogether: 1.5, run: 2, chase: 2, flee: 2, chaseCursor: 2, pounce: 1.6, dance: 1.6, held: 1.4, sit: 0.7, sleep: 0.3, dizzy: 0.5, shiver: 2.5 };
+
 export class Pet {
   constructor(stage, mon, { x, gy, fromBall = false } = {}) {
     this.stage = stage;
@@ -58,6 +62,7 @@ export class Pet {
     this.vz = 0; // 垂直速度（美術像素／秒，往上為正）
     this.facing = Math.random() < 0.5 ? -1 : 1; // -1 面向左（原圖方向）
     this.t = Math.random() * 10;
+    this.animT = Math.random() * 10; // 動畫播放到哪（走路播快一點、睡覺播慢一點）
     this.state = fromBall ? 'appear' : 'idle';
     this.stateT = 0;
     this.dur = 1 + Math.random() * 2;
@@ -80,7 +85,8 @@ export class Pet {
 
   // 圖片依形態而不同（藍花的花蓓蓓、超級蒂安希…）；battleForm 是對戰中暫時的形態，不存檔
   get spriteKey() { return spriteKey(this.mon.species, this.battleForm ?? this.mon.form); }
-  get asset() { return this.stage.sprites.peek(this.spriteKey, this.mon.shiny); }
+  // 會動的圖載好了就用它（每一隻有自己的播放位置），還沒就先用不會動的圖
+  get asset() { return liveAsset(this, this.stage.sprites, this.spriteKey, this.mon.shiny, this.animT); }
   get S() { return this.stage.S; }
   get types() { return this.stage.dex.get(this.mon.species).types; }
   get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state] ?? PERCH_ACTIONS[this.state] ?? CURSOR_ACTIONS[this.state] ?? TRAVEL_ACTIONS[this.state]; }
@@ -294,6 +300,7 @@ export class Pet {
     this.lastPos = { x: this.x, y: this.gy, dt }; // 碰撞時用來估計速度
     this.hopT = Math.max(0, (this.hopT ?? 0) - dt); // 被撞到時彈一下
     this.t += dt;
+    this.animT += dt * (ANIM_SPEED[this.state] ?? 1);
     this.stateT += dt;
     this.squashT = Math.max(0, this.squashT - dt);
     this.flinchT = Math.max(0, (this.flinchT ?? 0) - dt); // 被招式打到
