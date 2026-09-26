@@ -276,7 +276,7 @@ export class UI {
         <div>性格：${esc(nature.zh)}</div><div>口味：${esc(taste)}</div>
         <div>${this.friendLine(m)}</div>
         <div class="habits">習性：${habitNames(m.species).map(esc).join('、') || '—'}</div>
-        <div class="habits">招式：${movesetFor(this.dex, m.species).map(id => `<span class="move" style="border-color:${art.TYPE_COLORS[MOVES[id].type]}">${esc(MOVES[id].zh)}</span>`).join('')}</div></div></div>
+        <div class="habits">招式：${movesetFor(this.dex, m.species, m).map(id => `<span class="move" style="border-color:${art.TYPE_COLORS[MOVES[id].type]}">${esc(MOVES[id].zh)}</span>`).join('')}</div></div></div>
       <div class="stats">
         <div class="stat"><span>好感</span>${this.heartsHtml(m.affection)}</div>
         ${this.bar('飽足感', m.fullness, MAX, 'full')}
@@ -899,7 +899,7 @@ export class UI {
     const evo = this.game.evolutionStatus(m.uid);
     const n = hearts(m.affection);
     const moves = this.bubbleMoves
-      ? `<div class="btns moves">${movesetFor(this.dex, m.species).map(id => `<button data-move="${id}" style="border-color:${art.TYPE_COLORS[MOVES[id].type]}">${esc(MOVES[id].zh)}</button>`).join('')}</div>`
+      ? `<div class="btns moves">${movesetFor(this.dex, m.species, m).map(id => `<button data-move="${id}" style="border-color:${art.TYPE_COLORS[MOVES[id].type]}">${esc(MOVES[id].zh)}</button>`).join('')}</div>`
       : '';
     this.bubble.innerHTML = `<div class="name">${esc(this.game.displayName(m))} <span class="hearts">${'♥'.repeat(n)}<i>${'♥'.repeat(5 - n)}</i></span></div>
       <div class="btns"><button data-act="feed">餵泡芙</button><button data-act="moves" class="${this.bubbleMoves ? 'sel' : ''}">招式</button><button data-act="info">看看牠</button><button data-act="recall">回球裡</button>

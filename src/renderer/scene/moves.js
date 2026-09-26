@@ -6,12 +6,13 @@
 //   line 藤鞭、吐絲伸過去       area 以自己為中心擴散  rain 從天上落到目標
 //   self 替自己加上保護或能量   portal 在目標那裡打開圓環
 import * as art from '../gfx/art.js';
-import { blit, paint } from '../gfx/pixel.js';
+import { blit } from '../gfx/pixel.js';
 import { meet } from './behaviors.js';
 import { knockFrom, knock } from './physics.js';
 import { duelHitChance } from '../../core/minigames.js';
 import { transform, endDuelForms } from './battleforms.js';
 import * as FX from './movefx.js';
+import { hearts } from '../../core/amie.js';
 
 const T = art.TYPE_COLORS;
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -71,7 +72,8 @@ export const MOVES = {
   kingsshield: { zh: '王者盾牌', type: 'steel', kind: 'self', c: ['#b8b8d0', '#ffffff', '#ffe066'] },
   flashcannon: { zh: '加農光炮', type: 'steel', kind: 'beam', c: ['#ffffff', '#d8e8ff', '#b8b8d0'] },
   fairylock: { zh: '妖精之鎖', type: 'fairy', kind: 'self', c: ['#ffd84a', '#ffb0d0'], img: () => art.key },
-  dragonpulse: { zh: '龍之波動', type: 'dragon', kind: 'beam', c: ['#7038f8', '#a078ff', '#5aa0f0'] },
+  dragonpulse: { zh: '龍之波動', type: 'dragon', kind: 'beam', c: ['#6a40ff', '#b8a0ff', '#58b4ff'] },
+  dracometeor: { zh: '流星群', type: 'dragon', kind: 'meteor', big: true }, // 龍屬性、而且好感滿了才會（跟原作一樣要很親近）
   bite: { zh: '咬住', type: 'dark', kind: 'contact' },
   nightslash: { zh: '暗襲要害', type: 'dark', kind: 'contact', c: ['#3a2a3a', '#ffffff'], slash: true },
   topsyturvy: { zh: '顛倒', type: 'dark', kind: 'portal', c: ['#705848', '#ffe066'], flip: true },
@@ -126,10 +128,11 @@ const SIGNATURE = {
   719: ['diamondstorm', 'moonblast'], 720: ['hyperspacehole', 'psychic'], 721: ['steameruption', 'flamethrower'],
 };
 
-// 最多 4 個：代表招式 → 各屬性的基本招式 → 撞擊
-export function movesetFor(dex, speciesId) {
+// 最多 4 個：（龍屬性而且好感滿了：流星群）→ 代表招式 → 各屬性的基本招式 → 撞擊
+export function movesetFor(dex, speciesId, mon = null) {
   const types = dex.get(speciesId).types;
-  const list = [...(SIGNATURE[speciesId] ?? []), ...types.map(t => TYPE_MOVE[t]), 'tackle'];
+  const draco = mon && types.includes('dragon') && hearts(mon.affection) >= 5 ? ['dracometeor'] : [];
+  const list = [...draco, ...(SIGNATURE[speciesId] ?? []), ...types.map(t => TYPE_MOVE[t]), 'tackle'];
   return [...new Set(list)].filter(id => MOVES[id]).slice(0, 4);
 }
 
@@ -179,6 +182,7 @@ function timeline(def, pet, target) {
     case 'rain': return { dur: 1.4, hit: 0.85 };
     case 'self': return { dur: 1.4, hit: null };
     case 'portal': return { dur: 1.3, hit: 0.75 };
+    case 'meteor': return { dur: 2.6, hit: null }; // 第一顆流星落地才算打中
     default: return { dur: 1, hit: 0.5 };
   }
 }
@@ -205,22 +209,6 @@ export function practicePoint(pet) {
   const b = pet.bounds(), S = pet.S;
   const x = Math.max(b.x0, Math.min(b.x1, pet.x + pet.facing * rnd(90, 150) * S));
   return { x, y: pet.gy - (pet.asset.h * S) / 2 };
-}
-
-// 發射物的像素球（外圈深、中間亮），依顏色快取
-const ORBS = new Map();
-function orb(outer, inner, r) {
-  const key = `${outer}${inner}${r}`;
-  if (!ORBS.has(key)) {
-    const n = r * 2 + 1;
-    ORBS.set(key, paint(n, n, set => {
-      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-        const d = Math.hypot(x - r, y - r);
-        if (d <= r + 0.2) set(x, y, d < r * 0.45 ? '#ffffff' : d < r * 0.8 ? inner : outer);
-      }
-    }));
-  }
-  return ORBS.get(key);
 }
 
 // 招式名稱用淡一點的屬性色，深色的桌布上也看得清楚
@@ -258,7 +246,7 @@ function hit(pet) {
   impact(pet, m.def, at, eff);
   if (isPet(m.target)) m.target.flinchT = 0.4;
   // 擊退：衝撞最大力，擴散的會把旁邊的也一起推開；效果絕佳更遠、沒有效果不會動
-  const power = { contact: 320, projectile: 220, beam: 200, line: 160, rain: 150, portal: 180, area: 260 }[m.def.kind] ?? 0;
+  const power = { contact: 320, projectile: 220, beam: 200, line: 160, rain: 150, portal: 180, area: 260, meteor: 240 }[m.def.kind] ?? 0;
   const mult = (m.def.big || m.def.heavy ? 1.3 : 1) * (eff > 1 ? 1.5 : eff < 1 ? (eff === 0 ? 0 : 0.6) : 1);
   if (m.def.kind === 'area') {
     const S = pet.S, r = (m.def.big ? 110 : 75) * S;
@@ -273,48 +261,87 @@ function hit(pet) {
   m.onHit?.(eff);
 }
 
+// 這一招用的顏色：招式自己有配色就用（極光束是彩虹色），不然用屬性色
+function colorsOf(def) {
+  const tc = FX.TYPE_FX[def.type] ?? FX.TYPE_FX.normal;
+  if (!def.c) return tc;
+  return [def.c[0], def.c[1] ?? tc[1], def.c[2] ?? def.c[1] ?? tc[2]];
+}
+
+// 放招的一開始：兩隻周圍的桌面變暗（照原作：大招會換背景）
+function startDim(pet, m) {
+  const def = m.def, level = FX.dimFor(def);
+  if (!level) return;
+  const S = pet.S, a = center(pet), b = targetPoint(m.target);
+  const self = def.kind === 'self' || def.kind === 'area';
+  const x = self ? a.x : (a.x + b.x) / 2, y = self ? a.y : (a.y + b.y) / 2;
+  const half = self ? 0 : Math.hypot(b.x - a.x, b.y - a.y) / 2;
+  const rx = Math.max(110 * S, half + 90 * S) * (def.kind === 'meteor' ? 1.2 : 1);
+  const fadeIn = 0.25, fadeOut = 0.3;
+  FX.dim(pet.stage, { x, y, rx, ry: rx * (def.kind === 'meteor' ? 0.6 : 0.5), level, fadeIn, fadeOut, hold: Math.max(0.2, m.tl.dur - fadeIn - 0.15), type: def.type, stars: def.kind === 'meteor' });
+}
+
+// 流星群：一顆一顆落下來（每顆落地都爆炸；第一顆算「打中」）
+const METEOR = ['#ff7a2a', '#ffd25a', '#ff3a1a'];
+function dropMeteors(pet, m) {
+  const S = pet.S, st = pet.stage, to = targetPoint(m.target);
+  const gy = isPet(m.target) ? m.target.gy : to.y + 20 * S;
+  [[-20, 0], [24, -3], [-2, 2], [40, 4], [-34, 3], [10, -1]].forEach(([ox, oy], i) => {
+    const tx = to.x + ox * S, ty = gy + oy * S;
+    FX.falling(st, {
+      x0: tx - 150 * S * (Math.random() < 0.5 ? 1 : 0.8), y0: -30 * S, tx, ty, life: 0.42, cols: METEOR, size: 6, tail: 90, delay: i * 0.13,
+      onLand: (x, y) => {
+        FX.landing(st, x, y, METEOR);
+        st.shake(5, 0.28);
+        st.hitStop(0.03);
+        st.audio.sfx('land');
+        if (!pet.moveCtx || pet.moveCtx !== m) return;
+        if (!m.hitDone) hit(pet);
+        else if (isPet(m.target)) { knockFrom(m.target, x, y, 90); m.target.flinchT = 0.2; }
+      },
+    });
+  });
+}
+
 export const MOVE_ACTIONS = {
   move: {
     update(pet, dt, done) {
       const m = pet.moveCtx;
       if (!m) { pet.set('idle', 1); return; }
-      const t = pet.stateT, def = m.def, S = pet.S, c = def.c ?? [T[def.type], '#ffffff'];
+      const t = pet.stateT, def = m.def, S = pet.S, st = pet.stage, c = def.c ?? [T[def.type], '#ffffff'], cols = colorsOf(def);
       const from = pet.mouth(), to = targetPoint(m.target);
       if (isPet(m.target) && m.target.leaving) m.target = to;
-      // 蓄力：光從四周吸進嘴巴（擴散、替自己加能量的吸到身體中間）
-      if (def.kind !== 'contact' && t < 0.3) {
+      if (!m.started) { m.started = true; startDim(pet, m); }
+      // 蓄力：光團從四周螺旋吸進嘴巴（擴散、替自己加能量的吸到身體中間），中間越來越亮
+      if (!['contact', 'meteor'].includes(def.kind) && t < 0.3) {
         const at = ['area', 'self'].includes(def.kind) ? center(pet) : from;
-        FX.chargeUp(pet, at, c, dt);
-        if (!m.charged) { m.charged = true; FX.glow(pet.stage, at.x, at.y, c[0], (def.big ? 30 : 20) * S, { life: 0.4, grow: true, fadeIn: true, alpha: 0.6 }); }
+        FX.charge(st, at, cols, t, dt, { big: def.big });
+        if (!m.charged) { m.charged = true; FX.chargeCore(st, at, cols[0], { big: def.big }); }
       }
       switch (def.kind) {
         case 'projectile': {
+          // 發光的核心＋外暈，一路留下光團；多發的錯開 0.08 秒出發、一起到
           const n = def.many ? 3 : 1;
           const want = t > 0.3 ? Math.min(n, 1 + Math.floor((t - 0.3) / 0.08)) : 0;
           while (m.emitted < want) {
             m.emitted++;
-            const life = m.tl.travel, dx = to.x - from.x, dy = to.y - from.y;
-            const extra = (n - m.emitted) * 0.08; // 同一串的後面幾發晚一點出發，一起到
-            const L = Math.max(0.05, life - extra);
-            const img = def.img ? def.img() : orb(c[0], c[1] ?? c[0], def.big ? 5 : 3);
-            FX.glow(pet.stage, from.x, from.y, c[0], (def.big ? 16 : 10) * S, { life: L, alpha: 0.55, vx: dx / L, vy: dy / L }); // 發光
-            pet.stage.fx.add({ img, x: from.x, y: from.y, vx: dx / L, vy: dy / L, life: L, fade: false, scale: def.big ? 2 : 1 });
-            if (m.emitted === 1) FX.hitSpark(pet.stage, from.x, from.y, c[1] ?? '#ffffff', def.big ? 14 : 10, 6); // 發射的瞬間
-            // 大顆的旁邊加一圈小粒子
-            if (def.big) for (let i = 0; i < 6; i++) pet.stage.fx.add({ rect: c[(i + 1) % c.length], size: S / 2, x: from.x + rnd(-6, 6) * S, y: from.y + rnd(-6, 6) * S, vx: dx / L, vy: dy / L, life: L });
-          }
-          // 飛行中留下一點尾巴
-          if (t > 0.35 && t < m.tl.hit && Math.random() < dt * 60) {
-            const u = (t - 0.35) / Math.max(0.05, m.tl.hit - 0.35);
-            burst(pet, from.x + (to.x - from.x) * u, from.y + (to.y - from.y) * u, c, { n: def.big ? 3 : 2, speed: 14, spread: 6.3, g: 0, life: 0.35, size: S });
+            const L = Math.max(0.05, m.tl.travel - (n - m.emitted) * 0.08);
+            FX.projectile(st, from, to, L, cols, { big: def.big, img: def.img?.() ?? null });
           }
           if (t > m.tl.hit) hit(pet);
           break;
         }
         case 'beam':
-          // 光束本身在 drawOver 畫；打到以後目標那裡一直噴火花
-          if (t > m.tl.hit && t < 1.0 && Math.random() < dt * 40) burst(pet, to.x + rnd(-6, 6) * S, to.y + rnd(-6, 6) * S, c, { n: 2, speed: 90, spread: 6.3, g: 60, life: 0.35, size: S });
-          if (t > 0.3 && t < 1.0 && m.emitted === 0) { m.emitted = 1; FX.glow(pet.stage, from.x, from.y, c[0], 26 * S, { life: 0.75, alpha: 0.5 }); }
+          if (t > 0.3 && !m.beamed) {
+            // 光束伸出去的時候：沿路一串光團錯開冒出再散開，脈衝環一直往前送
+            m.beamed = true;
+            for (let i = 0; i < 6; i++) FX.later(st, i * 0.03, () => {
+              const f = pet.mouth(), g = targetPoint(m.target), k = (i + 1) / 7;
+              FX.blob(st, { x: f.x + (g.x - f.x) * k, y: f.y + (g.y - f.y) * k, s0: 10, s1: 34, a0: 0.9, a1: 0, life: 0.55, col: cols[i % 2 ? 2 : 0], wisp: true });
+            });
+            if (!def.zigzag) for (let i = 0; i < 9; i++) FX.pulseRing(st, () => pet.mouth(), () => targetPoint(m.target), cols[1], 0.02 + i * 0.07);
+          }
+          if (t > m.tl.hit && t < 1.0 && Math.random() < dt * 40) FX.sparks(st, to.x, to.y, [cols[1], '#ffffff'], 2, 180);
           if (t > m.tl.hit) hit(pet);
           break;
         case 'contact': {
@@ -333,52 +360,68 @@ export const MOVE_ACTIONS = {
           off.x = ox;
           off.y = oy;
           if (def.jump) pet.z = t < T1 ? Math.sin((t / T1) * Math.PI * 0.9) * 40 : 0;
-          if (def.trail && t < T1 && Math.random() < dt * 40) burst(pet, center(pet).x, center(pet).y, c, { n: 1, speed: 10, g: -10, life: 0.4 });
-          // 衝刺：身後留下殘影和速度線
+          // 衝刺：身後留下殘影和速度線；勇鳥猛攻全身包著火
           if (t > 0.05 && t < T1) {
             m.ghostT = (m.ghostT ?? 0) - dt;
-            if (m.ghostT <= 0) { m.ghostT = 0.045; FX.afterimage(pet); }
+            if (m.ghostT <= 0) {
+              m.ghostT = 0.045;
+              FX.afterimage(pet);
+              if (def.trail) { const cc = center(pet); FX.blob(st, { x: cc.x, y: cc.y, s0: pet.asset.w * 0.9, s1: pet.asset.w * 0.5, a0: 0.8, a1: 0, life: 0.3, col: pick(cols), wisp: true }); }
+            }
             if (Math.random() < dt * 25) FX.streaks(pet);
           }
-          if (def.slash && t > T1 && !m.slashed) { m.slashed = true; FX.slash(pet.stage, to.x, to.y, '#ffffff', { r: 26, dir: pet.facing, cross: true }); }
-          if (def.jump && t > T1 && !m.landed) { m.landed = true; FX.shockwave(pet.stage, pet.x, pet.gy, '#e0c090', 70, { flat: 0.35, thick: 4 }); }
+          if (def.slash && t > T1 && !m.slashed) { m.slashed = true; FX.slash(st, to.x, to.y, '#ffffff', { r: 26, dir: pet.facing, cross: true }); }
+          if (def.jump && t > T1 && !m.landed) { m.landed = true; FX.shockwave(st, pet.x, pet.gy, '#e0c090', 70, { flat: 0.35, thick: 4 }); FX.smoke(st, pet.x, pet.gy, 30); }
           if (def.sneak && t < T1) pet.moveAlpha = 0.35; else pet.moveAlpha = 1;
           if (t > T1) hit(pet);
           if (def.hits && t > T1 && t < T1 + 0.3 && Math.random() < dt * 12) smallImpact(pet, def, to);
           break;
         }
-        case 'line':
+        case 'line': {
+          // 藤鞭、吐絲的尖端發光
+          const k = t < 0.2 ? 0 : t < 0.5 ? (t - 0.2) / 0.3 : t < 0.8 ? 1 : Math.max(0, 1 - (t - 0.8) / 0.3);
+          if (k > 0 && Math.random() < dt * 30) FX.blob(st, { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k, s0: 10, s1: 4, a0: 0.8, a1: 0, life: 0.2, col: cols[1] });
           if (t > m.tl.hit) hit(pet);
           break;
+        }
         case 'area': {
           const rings = def.rings ?? 2;
           const n = Math.floor((t - 0.2) / 0.18);
+          const cc = center(pet), gy = def.ground ? pet.gy : cc.y;
           if (t > 0.2 && n < rings && n >= m.emitted) {
             m.emitted = n + 1;
-            const cc = center(pet);
-            FX.shockwave(pet.stage, cc.x, def.ground ? pet.gy : cc.y, c[n % c.length], def.big ? 120 : 85, { thick: def.big ? 6 : 4, flat: def.ground ? 0.35 : 0.8, inner: c[(n + 1) % c.length], life: 0.55 });
+            FX.shockwave(st, cc.x, gy, cols[n % cols.length], def.big ? 120 : 85, { thick: def.big ? 5 : 4, flat: def.ground ? 0.35 : 0.8, life: 0.55 });
             if (n === 0) {
-              if (!def.soft) FX.rays(pet.stage, cc.x, cc.y, c[0], def.big ? 140 : 100, { n: 16, life: 0.6 });
-              FX.glow(pet.stage, cc.x, cc.y, c[0], (def.big ? 80 : 55) * S, { life: 0.5, alpha: def.soft ? 0.35 : 0.6 });
-              if (def.ground || def.big) pet.stage.shake(def.big ? 5 : 4, 0.4);
+              if (!def.soft) FX.rays(st, cc.x, cc.y, cols[0], def.big ? 140 : 100, { n: 16, life: 0.6 });
+              FX.blob(st, { x: cc.x, y: cc.y, s0: 30, s1: def.big ? 100 : 70, a0: def.soft ? 0.4 : 0.8, a1: 0, life: 0.5, col: cols[0] });
+              // 一圈光團往外擴散
+              for (let i = 0; i < 12; i++) {
+                const a = (i / 12) * Math.PI * 2, v = (def.big ? 170 : 130) * S;
+                FX.blob(st, { x: cc.x, y: gy, vx: Math.cos(a) * v, vy: Math.sin(a) * v * (def.ground ? 0.35 : 0.8), s0: 10, s1: 26, a0: 0.8, a1: 0, life: 0.6, col: cols[i % 3], wisp: true });
+              }
+              if (def.ground || def.big) st.shake(def.big ? 5 : 4, 0.4);
             }
           }
           if (t > 0.2 && t < 1.0 && Math.random() < dt * (def.soft ? 20 : 30)) {
-            const cc = center(pet), a = Math.random() * Math.PI * 2;
-            if (def.hearts) pet.stage.fx.add({ img: art.heartSmall, x: cc.x, y: cc.y, vx: Math.cos(a) * 70 * S, vy: Math.sin(a) * 50 * S, life: 0.8 });
-            else if (def.petals) pet.stage.fx.add({ rect: pick(c), size: S, x: cc.x, y: cc.y, vx: Math.cos(a) * 70 * S, vy: Math.sin(a) * 40 * S, g: 20 * S, life: 1, wobble: true });
-            else if (def.swirl) pet.stage.fx.add({ rect: pick(c), size: S / 2, x: cc.x + Math.cos(a) * 30 * S, y: cc.y + Math.sin(a) * 18 * S, vx: -Math.sin(a) * 90 * S, vy: Math.cos(a) * 50 * S, life: 0.5 });
-            else burst(pet, def.ground ? pet.x : cc.x, def.ground ? pet.gy : cc.y, c, { n: 1, speed: def.soft ? 25 : 70, spread: 6.3, g: def.ground ? 200 : def.soft ? -10 : 0, life: def.soft ? 1.4 : 0.5, wobble: def.soft });
-            if (def.sparkle && Math.random() < 0.3) pet.stage.fx.sparkles(cc.x + rnd(-30, 30) * S, cc.y + rnd(-20, 20) * S, S, 1, 2);
+            const a = Math.random() * Math.PI * 2;
+            if (def.hearts) st.fx.add({ img: art.heartSmall, x: cc.x, y: cc.y, vx: Math.cos(a) * 70 * S, vy: Math.sin(a) * 50 * S, life: 0.8 });
+            else if (def.petals) st.fx.add({ rect: pick(c), size: S, x: cc.x, y: cc.y, vx: Math.cos(a) * 70 * S, vy: Math.sin(a) * 40 * S, g: 20 * S, life: 1, wobble: true });
+            else if (def.swirl) FX.blob(st, { x: cc.x + Math.cos(a) * 30 * S, y: cc.y + Math.sin(a) * 18 * S, vx: -Math.sin(a) * 110 * S, vy: Math.cos(a) * 60 * S, s0: 8, s1: 3, a0: 0.9, a1: 0, life: 0.5, col: pick(cols) });
+            else FX.blob(st, { x: def.ground ? pet.x : cc.x, y: gy, vx: Math.cos(a) * (def.soft ? 25 : 90) * S, vy: Math.sin(a) * (def.soft ? 25 : 60) * S, s0: def.soft ? 10 : 8, s1: def.soft ? 18 : 3, a0: 0.7, a1: 0, life: def.soft ? 1.2 : 0.5, col: pick(cols), wisp: def.soft });
+            if (def.sparkle && Math.random() < 0.3) st.fx.sparkles(cc.x + rnd(-30, 30) * S, cc.y + rnd(-20, 20) * S, S, 1, 2);
           }
           if (t > m.tl.hit) hit(pet);
           break;
         }
         case 'rain':
-          if (t > 0.3 && t < 1.1 && Math.random() < dt * 40) {
-            const x = to.x + rnd(-24, 24) * S;
-            pet.stage.fx.add({ rect: pick(c), size: pick([2 * S, 3 * S]), x, y: to.y - 110 * S, vy: 320 * S, life: 110 / 320, fade: false });
-            FX.glow(pet.stage, x, to.y - 110 * S, c[0], 8 * S, { life: 110 / 320, alpha: 0.4, vy: 320 * S });
+          // 從天上砸下來的冰塊、光箭：帶尾巴，落地冒一團光
+          if (t > 0.3 && t < 1.05) {
+            m.dropT = (m.dropT ?? 0) - dt;
+            if (m.dropT <= 0) {
+              m.dropT = 0.06;
+              const x = to.x + rnd(-26, 26) * S, y = to.y + rnd(-4, 14) * S;
+              FX.falling(st, { x0: x - 30 * S, y0: to.y - 140 * S, tx: x, ty: y, life: 0.3, cols, size: 3, tail: 46, onLand: (lx, ly) => FX.explode(st, lx, ly, cols, { n: 2, size: 8, spread: 4, life: 0.3 }) });
+            }
           }
           if (t > m.tl.hit) hit(pet);
           break;
@@ -386,25 +429,47 @@ export const MOVE_ACTIONS = {
           const cc = center(pet);
           if (t > 0.2 && m.emitted < 3 && t > 0.2 + m.emitted * 0.35) {
             m.emitted++;
-            FX.shockwave(pet.stage, cc.x, cc.y, pick(c), pet.asset.w / 2 + 16, { thick: 3, flat: 0.9, inner: '#ffffff' });
-            FX.glow(pet.stage, cc.x, cc.y, c[0], (pet.asset.w / 2 + 24) * S, { life: 0.5, alpha: 0.45 });
+            FX.shockwave(st, cc.x, cc.y, pick(cols), pet.asset.w / 2 + 16, { thick: 3, flat: 0.9 });
+            FX.blob(st, { x: cc.x, y: cc.y, s0: pet.asset.w, s1: pet.asset.w * 1.8, a0: 0.6, a1: 0, life: 0.5, col: cols[0] });
           }
-          // 光柱往上升
-          if (t > 0.2 && t < 1.2 && Math.random() < dt * 30) pet.stage.fx.add({ rect: pick(c), size: S, x: cc.x + rnd(-1, 1) * (pet.asset.w / 2) * S, y: pet.gy, vy: -rnd(80, 160) * S, life: 0.5 });
-          if (Math.random() < dt * 20) {
-            if (def.img) pet.stage.fx.add({ img: def.img(), x: cc.x + rnd(-20, 20) * S, y: cc.y + rnd(-16, 16) * S, vy: -15 * S, life: 0.8 });
-            else burst(pet, cc.x + rnd(-16, 16) * S, cc.y + rnd(-16, 16) * S, c, { n: 1, speed: 10, g: -15, life: 0.8 });
-          }
+          // 全身冒出往上升的光
+          if (t > 0.15 && t < 1.2 && Math.random() < dt * 40) FX.blob(st, { x: cc.x + rnd(-1, 1) * (pet.asset.w / 2) * S, y: pet.gy - rnd(0, pet.asset.h * 0.5) * S, vy: -rnd(60, 130) * S, s0: rnd(6, 10), s1: 2, a0: 0.9, a1: 0, life: 0.55, col: pick(cols), wisp: true });
+          if (def.img && Math.random() < dt * 12) st.fx.add({ img: def.img(), x: cc.x + rnd(-20, 20) * S, y: cc.y + rnd(-16, 16) * S, vy: -15 * S, life: 0.8 });
           break;
         }
         case 'portal': {
-          if (t > 0.3 && t < 1.1 && Math.random() < dt * 20) burst(pet, to.x + rnd(-14, 14) * S, to.y + rnd(-14, 14) * S, c, { n: 1, speed: 20, spread: 6.3, g: 0, life: 0.4 });
-          if (def.rings && t > 0.3 && m.emitted < 3 && t > 0.3 + m.emitted * 0.15) { m.emitted++; FX.shockwave(pet.stage, to.x, to.y, pick(c), 34 - m.emitted * 8, { thick: 3, inner: '#ffffff' }); }
-          if (t > 0.3 && !m.portalGlow) { m.portalGlow = true; FX.glow(pet.stage, to.x, to.y, c[0], 40 * S, { life: 0.9, alpha: 0.5, grow: true, fadeIn: true }); }
+          // 目標那裡的光越來越大，光團從四周吸進去，打中時爆開
+          if (t > 0.3 && !m.portalGlow) { m.portalGlow = true; FX.blob(st, { x: to.x, y: to.y, s0: 10, s1: 60, a0: 0.3, a1: 0.9, life: m.tl.hit - 0.3, col: cols[0], ease: 'in' }); }
+          if (t > 0.3 && t < m.tl.hit && Math.random() < dt * 40) {
+            const a = rnd(0, Math.PI * 2), d = rnd(30, 50) * S, L = 0.3;
+            FX.blob(st, { x: to.x + Math.cos(a) * d, y: to.y + Math.sin(a) * d, vx: -Math.cos(a) * d / L, vy: -Math.sin(a) * d / L, s0: 8, s1: 4, a0: 0.2, a1: 1, life: L, col: pick(cols), ease: 'in' });
+          }
+          if (def.rings && t > 0.3 && m.emitted < 3 && t > 0.3 + m.emitted * 0.15) { m.emitted++; FX.shockwave(st, to.x, to.y, pick(cols), 34 - m.emitted * 8, { thick: 3 }); }
           if (t > m.tl.hit) {
             if (!m.hitDone && def.flip && isPet(m.target)) m.target.flipT = 0.9; // 顛倒：對方倒過來一下
             hit(pet);
           }
+          break;
+        }
+        case 'meteor': {
+          // 流星群：全身發出橘光 → 朝天空射出光球 → 6 顆流星錯開落下
+          const cc = center(pet);
+          if (t > 0.05 && t < 0.72) {
+            m.auraT = (m.auraT ?? 0) - dt;
+            if (m.auraT <= 0) {
+              m.auraT = 0.05;
+              FX.blob(st, { x: cc.x, y: cc.y, s0: pet.asset.w * 1.4, s1: pet.asset.w * 1.8, a0: 0.45, a1: 0, life: 0.2, col: METEOR[0] });
+              FX.blob(st, { x: cc.x + rnd(-0.5, 0.5) * pet.asset.w * S, y: pet.gy - rnd(0, pet.asset.h) * S, vy: -rnd(60, 120) * S, s0: 6, s1: 2, a0: 1, a1: 0, life: 0.5, col: pick(METEOR) });
+            }
+          }
+          if (t > 0.62 && !m.launched) {
+            m.launched = true;
+            FX.projectile(st, from, { x: from.x + pet.facing * 20 * S, y: -40 * S }, 0.38, METEOR, { big: true });
+            st.shake(2, 0.12);
+            st.audio.sfx('hit');
+          }
+          if (t > 1.0 && !m.dropped) { m.dropped = true; dropMeteors(pet, m); }
+          if (t > 2.0 && !m.hitDone) hit(pet); // 保險：流星沒落地（例如特效被清掉）也要算打中
           break;
         }
       }
@@ -422,6 +487,7 @@ export const MOVE_ACTIONS = {
       const m = pet.moveCtx;
       if (!m) return;
       const t = pet.stateT;
+      if (m.def.kind === 'meteor') { if (t < 0.62) { p.sx = 1.04; p.sy = 1.04; } else if (t < 0.9) p.rot = -pet.facing * 0.15; return; }
       if (t < 0.3) { p.sx = 1.06; p.sy = 0.94; } // 蓄力
       else if (m.def.kind === 'self') { p.sy = 1.06; }
       else if (m.def.kind !== 'contact') p.rot = pet.facing * 0.08;
@@ -434,16 +500,11 @@ export const MOVE_ACTIONS = {
       if (!m) return;
       const S = pet.S, t = pet.stateT, def = m.def;
       if (def.kind === 'beam') {
-        // 伸出去（0.3–0.45 秒）、維持、最後變細消失
+        // 伸出去（0.3–0.42 秒）、維持、最後變細消失
         const from = pet.mouth(), to = targetPoint(m.target);
-        const k = t < 0.3 ? 0 : Math.min(1, (t - 0.3) / 0.15);
-        const fade = t > 0.95 ? Math.max(0, 1 - (t - 0.95) / 0.15) : 1;
-        if (k > 0 && fade > 0) {
-          ctx.save();
-          ctx.globalAlpha = fade;
-          FX.drawBeam(ctx, from, to, S, def.c ?? [T[def.type], '#ffffff'], k, t, { zigzag: def.zigzag, width: (def.big ? 7 : 5) * fade });
-          ctx.restore();
-        }
+        const k = t < 0.3 ? 0 : Math.min(1, (t - 0.3) / 0.12);
+        const fade = t > 0.95 ? Math.max(0, 1 - (t - 0.95) / 0.2) : 1;
+        FX.drawBeam(ctx, from, to, S, colorsOf(def), k, t, { zigzag: def.zigzag, width: def.big ? 6 : 4.5, fade });
       }
       if (def.kind === 'line') {
         // 藤鞭／吐絲：伸出去再收回來
@@ -515,7 +576,7 @@ function nextTurn(d) {
   const atk = d.turn % 2 ? d.b : d.a, def = atk === d.a ? d.b : d.a;
   if (atk.state !== 'duel' || def.state !== 'duel') { endDuel(d); return; }
   d.turn++;
-  const moves = movesetFor(atk.stage.dex, atk.mon.species);
+  const moves = movesetFor(atk.stage.dex, atk.mon.species, atk.mon);
   // 超級特訓的成果：訓練得比對方多，比較容易打中（最多 ±15%）
   if (Math.random() > duelHitChance(atk.mon.training, def.mon.training)) {
     const S = def.S, side = Math.random() < 0.5 ? -1 : 1;
@@ -562,7 +623,7 @@ function endDuel(d, pet) {
 export function moveOptions(pet, others) {
   const h = pet.mon.affection;
   const list = [
-    ['practice', 4, () => useMove(pet, pick(movesetFor(pet.stage.dex, pet.mon.species)), practicePoint(pet))],
+    ['practice', 4, () => useMove(pet, pick(movesetFor(pet.stage.dex, pet.mon.species, pet.mon)), practicePoint(pet))],
   ];
   if (others.length && h >= 50) {
     list.push(['duel', 4, () => {

@@ -10,6 +10,7 @@ import { WeatherFx } from './weatherfx.js';
 import { blit } from '../gfx/pixel.js';
 import * as art from '../gfx/art.js';
 import { FurnitureTarget } from './base.js';
+import { updateDim, drawDim } from './movefx.js';
 
 const THOUGHT_HOVER = 0.6; // 秒
 
@@ -325,6 +326,7 @@ export class Stage {
     for (const d of this.decals) d.t += dt;
     this.decals = this.decals.filter(d => d.t < d.life);
     this.fx.update(dt);
+    updateDim(this, dt); // 放招時的局部變暗
     this.weatherFx.update(dt);
     this.updateFeeding(dt);
     this.minigame?.update(dt); // 小遊戲（ui/minigames/host.js）
@@ -368,6 +370,7 @@ export class Stage {
       blit(ctx, d.img, d.x - (d.img.width * S) / 2, d.y - d.img.height * S, S, { alpha });
     }
     for (const p of this.props) p.draw(ctx);
+    drawDim(ctx, this); // 放招時兩隻周圍的桌面變暗（畫在寶可夢後面）
     this.minigame?.active?.ctl?.drawUnder?.(ctx); // 小遊戲畫在夥伴後面的東西（樹果樹…）
     const pets = [...this.pets.values()].sort((a, b) => this.drawOrder(a) - this.drawOrder(b));
     // 地上的夥伴畫在氣息點後面（看起來像站在草叢後），飄浮的畫在前面

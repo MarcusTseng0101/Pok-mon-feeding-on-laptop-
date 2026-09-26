@@ -42,8 +42,13 @@ export class Fx {
   text(x, y, str, S, color = '#ffffff') { this.add({ text: str, color, x, y, vy: -20 * S, life: 1.2, S }); }
 
   update(dt) {
-    for (const p of this.parts) {
+    // run：時間到了做一件事（錯開時間用）；tick：每一幀自己的邏輯（留尾巴、到達時觸發）；t < 0：還沒開始
+    for (let i = 0; i < this.parts.length; i++) {
+      const p = this.parts[i];
       p.t += dt;
+      if (p.t < 0) continue;
+      if (p.run) { const f = p.run; p.run = null; f(); continue; }
+      p.tick?.(p, dt);
       p.vy += p.g * dt;
       p.x += p.vx * dt + (p.wobble ? Math.sin(p.t * 8) * 0.6 : 0);
       p.y += p.vy * dt;
