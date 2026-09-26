@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('kalos', {
   writeSave: data => ipcRenderer.invoke('save:write', data),
   getSprite: (id, shiny) => ipcRenderer.invoke('sprite:get', id, shiny),
   getAnimSprite: (id, shiny) => ipcRenderer.invoke('sprite:anim', id, shiny),
+  getTrainerSprite: name => ipcRenderer.invoke('trainer:get', name),
   getSignals: () => ipcRenderer.invoke('signals:get'),
   searchCity: city => ipcRenderer.invoke('weather:search', city),
   getWeather: (lat, lon) => ipcRenderer.invoke('weather:current', lat, lon),

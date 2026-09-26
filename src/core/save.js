@@ -6,6 +6,7 @@ import { canonicalForm, formsOf } from './forms.js';
 import { normalizeMind } from './mind.js';
 import { normalizeMemory } from './memory.js';
 import { normalizeLetters, defaultLetters } from './letters.js';
+import { normalizeStory, defaultStory } from './story.js';
 import { normalizeBase, defaultBase, emptyMaterials, MATERIALS } from './base.js';
 import { normalizeTrip, normalizePostcard, PLACES, POSTCARDS_KEPT, TRIPS_DONE_KEPT } from './trips.js';
 
@@ -76,6 +77,7 @@ export function defaultSave(now) {
     tripsDone: [], // 已經結算的旅行 id（同步時用：不會在另一台電腦再結算一次）
     placesVisited: {}, // { [地點]: 第一次去的時間 }
     letters: defaultLetters(), // 夥伴寫給你的信（core/letters.js）
+    story: defaultStory(), // 主線故事（core/story.js）
     base: defaultBase(now), // 秘密基地（core/base.js）：一開始有帳篷＋一張小床
     minigames: { day: null, baked: 0, deluxe: 0 }, // 今天做了幾個泡芙（每天有上限）
     stats: {
@@ -192,6 +194,7 @@ export function migrate(raw, dex, now) {
   s.tripsDone = (Array.isArray(raw.tripsDone) ? raw.tripsDone : []).filter(id => typeof id === 'string' && id.length <= 60).slice(-TRIPS_DONE_KEPT);
   s.base = normalizeBase(raw.base, now);
   s.letters = normalizeLetters(raw.letters);
+  s.story = normalizeStory(raw.story);
   s.settings.birthday = typeof s.settings.birthday === 'string' && /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s.settings.birthday) ? s.settings.birthday : null;
   s.placesVisited = Object.fromEntries(Object.entries(raw.placesVisited && typeof raw.placesVisited === 'object' ? raw.placesVisited : {}).filter(([k, v]) => PLACES[k] && Number.isFinite(v)));
   s.hatchedEggs = (Array.isArray(raw.hatchedEggs) ? raw.hatchedEggs : []).filter(u => typeof u === 'string' && u.length <= 40).slice(-200);

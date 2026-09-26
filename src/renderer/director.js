@@ -195,6 +195,70 @@ export class Director {
   }
 
   // ---------- 信 ----------
+  // ---------- 主線故事（core/story.js）----------
+  // 每 10 秒看一次：時間到了、你在、而且沒有在做別的事（專注、勿擾、小遊戲、遭遇）才開始下一件
+  tickStory({ force = false } = {}) {
+    const ui = this.ui, g = this.game;
+    if (!ui?.holo || this.storyBusy || ui.holo.busy) return false;
+    if (this.enc || this.stage.minigame || g.state.focus.active || g.state.settings.quiet) return false;
+    if (!ui.modal.classList.contains('hidden')) return false;
+    const ev = g.storyNext({ force });
+    if (!ev) return false;
+    this.playStory(ev);
+    return true;
+  }
+
+  async playStory(ev) {
+    this.storyBusy = true;
+    const g = this.game;
+    if (ev.kind === 'letter') {
+      g.storyLetter(ev);
+      g.storyDone(ev.id);
+      this.storyBusy = false;
+      return;
+    }
+    if (ev.kind === 'visit') { this.spawnVisitor(ev); return; } // 點他才開始說話；在那之前不會發生別的事
+    const r = await this.ui.holo.play(ev, { onLine: who => this.storyReact(ev, who) });
+    g.storyDone(ev.id, { choice: r.choice });
+    this.storyBusy = false;
+  }
+
+  // 有人說話：夥伴轉頭看投影（廣播在正中間，通訊器在左下角）
+  storyReact(ev, who) {
+    const st = this.stage, first = !this.storyReacted?.has(ev.id);
+    (this.storyReacted ??= new Set()).add(ev.id);
+    for (const p of st.pets.values()) {
+      if (!p.free || p.perch) continue;
+      p.facing = ev.kind === 'broadcast' ? (p.x < st.W / 2 ? 1 : -1) : -1;
+      p.set('look', 2.5);
+      if (first) p.showEmote(ev.kind === 'broadcast' ? '?' : '!', 1.2);
+    }
+  }
+
+  // 來拜訪的人：站在秘密基地另一邊，點他才開始對話；說完慢慢走掉
+  spawnVisitor(ev) {
+    const st = this.stage, S = st.S, who = ev.lines[0][0];
+    const spot = () => {
+      const L = st.baseView?.layout();
+      if (!L) return { x: st.W * 0.3, y: st.H - 12 * S };
+      const right = this.game.state.base?.side === 'right';
+      return { x: right ? L.x + L.w * 0.25 : L.x + L.w * 0.75, y: L.y + L.h * 0.55 };
+    };
+    const prop = new Prop(st, { kind: 'npc', ...spot(), onClick: async () => {
+      if (prop.talking) return;
+      prop.talking = true;
+      await this.ui.holo.play(ev, { onLine: w => this.storyReact(ev, w) });
+      this.game.storyDone(ev.id);
+      prop.life = prop.t + 0.5; // 慢慢消失
+      this.storyBusy = false;
+    } });
+    prop.img = this.ui.portraits.peekFigure(who);
+    this.ui.portraits.get(who).then(() => { prop.img = this.ui.portraits.peekFigure(who); });
+    st.props.push(prop);
+    this.visitor = prop;
+    this.ui?.toast(`${ev.lines[0][0] === 'az' ? '有一個很高的人' : '有人'}站在秘密基地旁邊……`);
+  }
+
   // 桌面上常駐的信箱：放在秘密基地院子靠螢幕中間的那一側；有沒看的信就立旗子
   refreshMail() {
     const st = this.stage;

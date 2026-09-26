@@ -6,6 +6,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createStore } from './store.js';
 import { createSpriteCache } from './sprites.js';
+import { createTrainerCache } from './trainers.js';
 import { createSignals } from './signals.js';
 import { trayImage } from './tray-icon.js';
 import { createWindowProbe } from './windows.js';
@@ -190,6 +191,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('save:write', (_e, data) => store.save(data));
   ipcMain.handle('sprite:get', (_e, key, shiny) => getSprite(String(key), Boolean(shiny)));
   ipcMain.handle('sprite:anim', (_e, key, shiny) => getAnimSprite(String(key), Boolean(shiny)));
+  const getTrainer = createTrainerCache(path.join(app.getPath('userData'), 'trainers'));
+  ipcMain.handle('trainer:get', (_e, name) => getTrainer(String(name)));
   ipcMain.handle('signals:get', () => signals?.snapshot());
   ipcMain.handle('app:loginItem', (_e, on) => {
     if (typeof on === 'boolean') app.setLoginItemSettings({ openAtLogin: on });

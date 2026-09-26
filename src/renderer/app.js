@@ -87,6 +87,7 @@ async function main() {
       director.syncPets();
       director.scheduleNext();
       ui.toast(`${dex.name(id)}來到你的桌面了！試著用游標來回摸摸牠吧`);
+      setTimeout(() => director.tickStory(), 45_000); // 過一下，博士就會打來（序章）
       save();
     });
   } else {
@@ -94,6 +95,7 @@ async function main() {
     if (away > 60) ui.toast('好久不見！夥伴們都在等你');
     setTimeout(() => director.showReadyEggs(), 2000); // 上次關掉時已經可以孵的蛋
     director.refreshMail(); // 還沒打開的信（包括離開很久時寫的「你不在的時候…」）
+    setTimeout(() => director.tickStory(), 8000); // 錯過的故事
   }
   sprites.prefetchAll();
 
@@ -106,6 +108,7 @@ async function main() {
     game.tick();
     director.updateEnv();
     director.refreshMusic();
+    director.tickStory(); // 主線故事：時間到了就演下一件事
   }, 10_000);
 
   let last = performance.now();

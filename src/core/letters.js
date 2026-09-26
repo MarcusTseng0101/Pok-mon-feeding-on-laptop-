@@ -18,6 +18,7 @@ export const KINDS = {
   trip: { zh: '旅行回來' },
   birthday: { zh: '生日快樂' },
   hearts: { zh: '最喜歡你' },
+  story: { zh: '故事' }, // 主線故事裡的人寄來的（core/story.js）；uid 是空的、from 是登場人物
 };
 
 const pick = (list, rng) => list[Math.floor(rng() * list.length)];
@@ -142,7 +143,7 @@ export function normalizeLetters(raw) {
     .filter(l => l && typeof l.id === 'string' && KINDS[l.kind] && Number.isFinite(l.at) && typeof l.text === 'string')
     .map(l => ({
       id: l.id.slice(0, 60), uid: str(l.uid, 40), name: str(l.name, 12), species: Number.isInteger(l.species) ? l.species : 0,
-      kind: l.kind, at: l.at, text: l.text.slice(0, 600), opened: Boolean(l.opened),
+      kind: l.kind, at: l.at, text: l.text.slice(0, 600), opened: Boolean(l.opened), ...(typeof l.from === 'string' ? { from: l.from.slice(0, 20) } : {}),
       refs: (Array.isArray(l.refs) ? l.refs : []).filter(r => r && typeof r.k === 'string' && Number.isFinite(r.at)).slice(0, 3).map(r => ({ k: r.k.slice(0, 24), at: r.at })),
     }))
     .sort((a, b) => a.at - b.at)
