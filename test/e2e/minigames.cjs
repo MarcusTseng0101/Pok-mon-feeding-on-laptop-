@@ -206,7 +206,8 @@ run('minigames', async ({ page, shot }, check) => {
   await wait(1200);
   const puzzle = await ev(() => ({ text: window.__kalos.ui.minigames.body.textContent, enjoy: window.__kalos.game.state.mons[0].enjoyment }));
   check(/拼好了/.test(puzzle.text), `拼圖沒完成：${puzzle.text}`);
-  check(puzzle.enjoy === Math.min(255, enjoyBefore + 20), `拼圖滿足感：${enjoyBefore} → ${puzzle.enjoy}`);
+  // 拼的時候剛好跨過整分鐘會自然消耗一點點（每分鐘的 tick），所以容許不到 0.5 的差
+  check(Math.abs(puzzle.enjoy - Math.min(255, enjoyBefore + 20)) < 0.5, `拼圖滿足感：${enjoyBefore} → ${puzzle.enjoy}`);
   await page.click('.minigame [data-close]');
   await released('拼圖（按關閉）');
   // 結束方式：拼到一半按 Esc
