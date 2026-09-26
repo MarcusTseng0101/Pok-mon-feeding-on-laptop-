@@ -94,7 +94,8 @@ export function afterChoice(pet, [name, , , cat]) {
   };
   const thought = M.reason(cat, lv, Math.random, ctx);
   const delta = M.satisfy(mind, cat, { name, food: lv.food });
-  if (delta.fullness || delta.enjoyment) game?.mindDelta(pet.uid, delta);
+  // 小遊戲進行中：獎勵由小遊戲決定，自己做的事不再加減數值
+  if ((delta.fullness || delta.enjoyment) && !st.minigame?.active) game?.mindDelta(pet.uid, delta);
   if (cat === 'social' && otherPet?.mon.mind) M.socialized(otherPet.mon.mind);
   M.think(mind, thought, now);
   pet.thought = { ...thought, cat, at: pet.t };
