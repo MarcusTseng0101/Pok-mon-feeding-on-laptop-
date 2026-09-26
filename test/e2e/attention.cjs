@@ -48,7 +48,7 @@ async function test({ page }, check) {
       if (m === 30) game.emit('trimExpired', { uid: uids[0] });
       if (m === 40) game.emit('letter', { id: 'sim-letter', name: '哈力栗' });
       if (m === 50 && !storyAsked) { storyAsked = director.tickStory(); }
-      if (m === focusAt) game.state.focus.active = { startedAt: now, minutes: 50 };
+      if (m === focusAt) game.state.focus.active = { startedAt: now, minutes: 60 }; // 比 50 長：模擬自己在 focusEnd 關掉，app 的計時器不會搶先「專注完成」
       if (m === focusEnd) game.state.focus.active = null;
       if (m >= focusAt && m < focusEnd && director.attnLog.some(e => e.granted && e.at === now)) focusGranted++;
       // 故事的電話打來了：把對話點完
