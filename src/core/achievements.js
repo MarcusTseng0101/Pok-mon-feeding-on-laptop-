@@ -39,6 +39,10 @@ export const ACHIEVEMENTS = [
   { id: 'egg-1', name: '新生命', desc: '孵出第一顆蛋', check: s => (s.stats.eggsHatched ?? 0) >= 1 },
   { id: 'egg-5', name: '育寶屋的常客', desc: '孵出 5 顆蛋', check: s => (s.stats.eggsHatched ?? 0) >= 5 },
   { id: 'perch-10', name: '視窗上的風景', desc: '夥伴站上視窗 10 次', check: s => (s.stats.perches ?? 0) >= 10 },
+  // 旅行
+  { id: 'trip-1', name: '第一次出遠門', desc: '夥伴第一次旅行回來', check: s => (s.stats.trips ?? 0) >= 1 },
+  { id: 'trip-places-6', name: '卡洛斯漫遊', desc: '明信片收集了 6 個地方', check: s => Object.keys(s.placesVisited ?? {}).length >= 6 },
+  { id: 'trip-places-12', name: '走遍卡洛斯', desc: '12 個地方的明信片全部收集', check: s => Object.keys(s.placesVisited ?? {}).length >= 12 },
   // 卡洛斯的形態
   { id: 'flabebe-5', name: '五色花園', desc: '收服 5 種花色的花蓓蓓一族', check: s => [669, 670, 671].some(id => formsCaught(s, id) >= 5) },
   { id: 'furfrou-9', name: '美容大師', desc: '多麗米亞的 9 種造型都剪過', check: s => formsCaught(s, 676) - (s.dex[676]?.forms?.[defaultForm(676)]?.caught ? 1 : 0) >= FORMS[676].keys.length - 1 },

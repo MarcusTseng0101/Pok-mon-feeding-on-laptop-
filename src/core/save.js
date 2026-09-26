@@ -5,6 +5,7 @@ import { FLAVORS, TIER_ORDER, BERRIES, puffKey } from './amie.js';
 import { canonicalForm, formsOf } from './forms.js';
 import { normalizeMind } from './mind.js';
 import { normalizeMemory } from './memory.js';
+import { normalizeTrip, normalizePostcard, PLACES, POSTCARDS_KEPT, TRIPS_DONE_KEPT } from './trips.js';
 
 // 舊存檔沒有心智：用 uid 產生固定的起始值（每次讀進來都一樣）
 function seededRng(seed) {
@@ -67,10 +68,13 @@ export function defaultSave(now) {
     weather: null, // { city, lat, lon, enabled }
     sync: null, // { folder, deviceId, rev, lastSyncedRev, origin, lastBag, ledger }（見 core/sync.js）
     hatchedEggs: [], // 已經孵化的蛋（同步時用：別台電腦的存檔裡還有這顆蛋也不會再出現）
+    postcards: [], // 旅行帶回來的明信片 [{ id, place, seed, at, uid, name, diary }]
+    tripsDone: [], // 已經結算的旅行 id（同步時用：不會在另一台電腦再結算一次）
+    placesVisited: {}, // { [地點]: 第一次去的時間 }
     minigames: { day: null, baked: 0, deluxe: 0 }, // 今天做了幾個泡芙（每天有上限）
     stats: {
       encounters: 0, throws: 0, catches: 0, puffsFed: 0, strokes: 0, evolutions: 0, shinies: 0,
-      berriesPicked: 0, puffsBaked: 0, eggsHatched: 0, focusSessions: 0, perches: 0,
+      berriesPicked: 0, puffsBaked: 0, eggsHatched: 0, focusSessions: 0, perches: 0, trips: 0,
     },
   };
 }
@@ -135,6 +139,7 @@ export function normalizeMon(m, dex) {
     training: normalizeTraining(m.training),
     mind: normalizeMind(m.mind, seededRng(String(m.uid))), // 需求、最近的想法（core/mind.js）
     memory: normalizeMemory(m.memory), // 記得的事（core/memory.js）
+    trip: normalizeTrip(m.trip), // 旅行中（core/trips.js）；null＝在家
     // 在桌面上的位置（螢幕比例 0–1），由畫面寫入；沒有就讓畫面自己挑位置
     pos: m.pos && Number.isFinite(m.pos.x) && Number.isFinite(m.pos.y) ? { x: num(m.pos.x, 0.5, 0, 1), y: num(m.pos.y, 0.8, 0, 1) } : null,
   };
@@ -175,6 +180,9 @@ export function migrate(raw, dex, now) {
   s.stats = { ...base.stats };
   for (const [k, v] of Object.entries(raw.stats ?? {})) s.stats[k] = num(v, 0, 0);
   s.eggs = (Array.isArray(raw.eggs) ? raw.eggs : []).map(e => normalizeEgg(e, dex)).filter(Boolean).slice(0, MAX_EGGS);
+  s.postcards = (Array.isArray(raw.postcards) ? raw.postcards : []).map(normalizePostcard).filter(Boolean).slice(-POSTCARDS_KEPT);
+  s.tripsDone = (Array.isArray(raw.tripsDone) ? raw.tripsDone : []).filter(id => typeof id === 'string' && id.length <= 60).slice(-TRIPS_DONE_KEPT);
+  s.placesVisited = Object.fromEntries(Object.entries(raw.placesVisited && typeof raw.placesVisited === 'object' ? raw.placesVisited : {}).filter(([k, v]) => PLACES[k] && Number.isFinite(v)));
   s.hatchedEggs = (Array.isArray(raw.hatchedEggs) ? raw.hatchedEggs : []).filter(u => typeof u === 'string' && u.length <= 40).slice(-200);
   s.eggDay = typeof raw.eggDay === 'string' && DAY_RE.test(raw.eggDay) ? raw.eggDay : null;
   s.achievements = {};

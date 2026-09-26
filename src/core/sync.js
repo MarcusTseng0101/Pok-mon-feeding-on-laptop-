@@ -8,6 +8,8 @@
 //   圖鑑       每個計數取最大、時間取最早；形態也一樣
 //   感情、統計  取最大（統計不能相加，不然每次同步都會重複累加）；競爭心也取最大
 //   記憶       同一隻寶可夢兩邊記得的事取聯集（依時間排序，保留上限內最新的）
+//   旅行       同一隻的旅行取出發時間比較晚的；結算過的（tripsDone）不會再結算；明信片取聯集
+//              禮物只在結算的那台電腦加進背包，另一台透過背包的 ledger 收到
 //   獎章       聯集（時間取最早）
 //   蛋         依 uid 取聯集，但已經孵化的（hatchedEggs）不會再出現
 //   背包       每台電腦各自記「自己造成的變化量」（ledger），總數＝起點＋所有電腦的變化量。
@@ -15,6 +17,7 @@
 //   設定、同步資訊、夥伴在桌面上的位置、正在進行的專注、天氣：每台電腦各自保留，不合併
 
 import { mergeMemory } from './memory.js';
+import { mergeTrip, mergePostcards, mergeTripsDone } from './trips.js';
 
 export const SYNC_DIR = 'kalos-amie';
 export const DEVICE_RE = /^[a-z0-9]{6,32}$/;
@@ -106,6 +109,7 @@ function mergeMon(a, b) {
   m.nicknameAt = nickFrom.nicknameAt ?? null;
   m.tasteKnown = a.tasteKnown || b.tasteKnown;
   m.memory = mergeMemory(a.memory, b.memory); // 兩台電腦各自記得的事都留著
+  m.trip = mergeTrip(a.trip, b.trip, new Set()); // 已經結算過的在 mergeShared 裡拿掉
   return m;
 }
 
@@ -163,6 +167,12 @@ export function mergeShared(local, remote) {
   out.rivalries = maxMap(local.rivalries, remote.rivalries);
   out.stats = maxMap(local.stats, remote.stats);
   out.achievements = minMap(local.achievements, remote.achievements);
+  // 旅行：結算過的（任何一台）就不會再結算；明信片取聯集；去過的地點取最早
+  out.tripsDone = mergeTripsDone(local.tripsDone, remote.tripsDone);
+  const tripsDone = new Set(out.tripsDone);
+  for (const m of out.mons) if (m.trip && tripsDone.has(m.trip.id)) m.trip = null;
+  out.postcards = mergePostcards(local.postcards, remote.postcards);
+  out.placesVisited = minMap(local.placesVisited, remote.placesVisited);
   out.achievementRewards = { fancy: local.achievementRewards.fancy || remote.achievementRewards.fancy, pokeBall: local.achievementRewards.pokeBall || remote.achievementRewards.pokeBall };
   out.pendingVivillon = (local.pendingVivillon.length >= remote.pendingVivillon.length ? local : remote).pendingVivillon.slice();
   // 蛋：聯集，已經孵化的不要
