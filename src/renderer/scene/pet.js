@@ -219,7 +219,8 @@ export class Pet {
   }
 
   // 可以被其他夥伴找去玩／被打斷的狀態
-  get free() { return ['idle', 'walk', 'sit', 'look', 'stretch'].includes(this.state) && !this.leaving; }
+  // reserved：正在過去陪你（晚睡時走到游標旁邊），別隻不能在半路找牠玩
+  get free() { return ['idle', 'walk', 'sit', 'look', 'stretch'].includes(this.state) && !this.leaving && !this.reserved; }
 
   // ---------- 反應 ----------
   onStroke(result) {
@@ -338,7 +339,14 @@ export class Pet {
       case 'run': {
         const speed = (this.state === 'run' ? RUN_SPEED : WALK_SPEED) * S;
         // 路被別隻擋住太久就放棄
-        if (this.state === 'walk' && this.stateT > (this.walkLimit ?? 15)) { this.onArrive = null; this.set('idle', 1); break; }
+        // 已經很近了（被別隻擋住最後幾步）就當作到了，不然放棄
+        if (this.state === 'walk' && this.stateT > (this.walkLimit ?? 15)) {
+          const arrive = Math.hypot(this.target.x - this.x, this.target.y - this.gy) < 40 * S ? this.onArrive : null;
+          this.onArrive = null;
+          this.set('idle', 1);
+          arrive?.();
+          break;
+        }
         if (this.moveTo(this.target.x, this.target.y, speed, dt)) {
           if (this.state === 'run' && this.stateT < this.dur) { this.target = this.randomPoint(60, 200); break; } // 暴衝：一直換方向
           const arrive = this.onArrive;

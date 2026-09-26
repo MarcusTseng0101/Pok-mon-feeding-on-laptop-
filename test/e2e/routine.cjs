@@ -63,6 +63,8 @@ async function test({ page, shot }, check) {
   const night = await page.evaluate(async () => {
     const { game, director, stage } = window.__kalos;
     game.state.routine.bedtime = null;
+    // （PR-B 以後）「第一次一起熬夜」的里程碑比晚睡的反應優先，會先用掉這小時的額度（us.cjs 測）；這裡只看晚睡
+    if (game.state.together) game.state.together.milestones.push({ id: 'late-night', at: Date.now() });
     window.__toasts.length = 0;
     const evs = director.routineTick();
     await new Promise(r => setTimeout(r, 300));
@@ -70,9 +72,14 @@ async function test({ page, shot }, check) {
     return { evs, toast: window.__toasts.find(t => /早點休息/.test(t)), pet: director.bedtimePet, yawns };
   });
   check(night.evs.includes('bedtime') && night.toast && night.pet, `晚睡的反應不對：${JSON.stringify(night)}`);
-  await page.waitForFunction(uid => { const p = window.__kalos.stage.pets.get(uid); return p && p.state === 'sit'; }, night.pet, { timeout: 15000 }).catch(() => {});
-  const sat = await page.evaluate(uid => { const { stage } = window.__kalos, p = stage.pets.get(uid); return { state: p.state, d: Math.round(Math.hypot(p.x - stage.pointer.x, p.gy - stage.pointer.y) / stage.dpr), best: p.mon.affection }; }, night.pet);
-  check(sat.state === 'sit' && sat.d < 200 && sat.best === 200, `最喜歡你的那隻沒有坐到游標旁邊：${JSON.stringify(sat)}`);
+  // 走到了、坐下的那一刻（之後可能被別隻找去玩，那沒關係）
+  await page.waitForFunction(() => window.__kalos.director.bedtimeSat, null, { timeout: 20000 }).catch(() => {});
+  const sat = await page.evaluate(uid => {
+    const { stage, director } = window.__kalos, s = director.bedtimeSat, p = stage.pets.get(uid);
+    return s ? { same: s.uid === uid, d: Math.round(Math.hypot(s.x - stage.pointer.x, s.y - stage.pointer.y) / stage.dpr), best: p?.mon.affection }
+      : { none: true, state: p?.state, t: p?.target && Math.round(Math.hypot(p.target.x - p.x, p.target.y - p.gy) / stage.dpr), known: stage.pointer.known, log: director.attnLog.slice(-4).map(e => [e.id, e.granted]) };
+  }, night.pet);
+  check(sat && !sat.none && sat.same && sat.d < 200 && sat.best === 200, `最喜歡你的那隻沒有坐到游標旁邊：${JSON.stringify(sat)}`);
   await shot('routine-bedtime');
 
   // 4) 專注兩小時：已經專注 100 分鐘，再完成一段 25 分鐘 → 慶祝
