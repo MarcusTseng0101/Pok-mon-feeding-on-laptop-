@@ -3,6 +3,15 @@
 
 import { FLAVORS, TIER_ORDER, BERRIES, puffKey } from './amie.js';
 import { canonicalForm, formsOf } from './forms.js';
+import { normalizeMind } from './mind.js';
+import { normalizeMemory } from './memory.js';
+
+// 舊存檔沒有心智：用 uid 產生固定的起始值（每次讀進來都一樣）
+function seededRng(seed) {
+  let h = 2166136261;
+  for (const c of seed) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+}
 
 export const SAVE_VERSION = 2; // v2：形態、樹果、蛋、成就、專注、天氣、同步
 export const MAX_OUT = 6;
@@ -46,6 +55,7 @@ export function defaultSave(now) {
     shinyCharm: false,
     chain: { species: null, count: 0 }, // 同種連鎖捕獲
     bonds: {}, // 夥伴之間的感情 { 'uidA|uidB': 0–255 }
+    rivalries: {}, // 夥伴之間的競爭心（切磋輸贏的次數）{ 'uidA|uidB': 0–99 }
     regenMinutes: 0,
     nextPartnerGiftAt: now + 30 * 60 * 1000,
     eggs: [], // [{ uid, species, form, shiny, steps, need, receivedAt }]
@@ -123,6 +133,8 @@ export function normalizeMon(m, dex) {
     form: canonicalForm(m.species, m.form), // null＝預設形態
     trimAt: Number.isFinite(m.trimAt) ? m.trimAt : null, // 多麗米亞剪毛的時間
     training: normalizeTraining(m.training),
+    mind: normalizeMind(m.mind, seededRng(String(m.uid))), // 需求、最近的想法（core/mind.js）
+    memory: normalizeMemory(m.memory), // 記得的事（core/memory.js）
     // 在桌面上的位置（螢幕比例 0–1），由畫面寫入；沒有就讓畫面自己挑位置
     pos: m.pos && Number.isFinite(m.pos.x) && Number.isFinite(m.pos.y) ? { x: num(m.pos.x, 0.5, 0, 1), y: num(m.pos.y, 0.8, 0, 1) } : null,
   };
@@ -214,6 +226,11 @@ export function migrate(raw, dex, now) {
   for (const [k, v] of Object.entries(raw.bonds ?? {})) {
     const [a, b] = k.split('|');
     if (uids.has(a) && uids.has(b) && a !== b) s.bonds[a < b ? `${a}|${b}` : `${b}|${a}`] = num(v, 0, 0, 255);
+  }
+  s.rivalries = {};
+  for (const [k, v] of Object.entries(raw.rivalries ?? {})) {
+    const [a, b] = k.split('|');
+    if (uids.has(a) && uids.has(b) && a !== b) s.rivalries[a < b ? `${a}|${b}` : `${b}|${a}`] = num(v, 0, 0, 99);
   }
   s.starterChosen = Boolean(raw.starterChosen) || s.mons.length > 0;
   return s;
