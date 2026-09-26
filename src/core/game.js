@@ -8,6 +8,7 @@ import { MAX_OUT, MAX_EGGS, normalizeTraining, TRAINING_STATS, TRAINING_MAX, TRA
 import * as mg from './minigames.js';
 import * as focus from './focus.js';
 import * as eggs from './eggs.js';
+import { newlyUnlocked, pendingRewards } from './achievements.js';
 import { canonicalForm, inheritForm, defaultForm, FORMS } from './forms.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
 
@@ -22,6 +23,7 @@ export const bondLevel = points => BOND_LEVELS.reduce((lv, l, i) => (points >= l
 export const bondKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
 const MIN = 60 * 1000;
+const NO_ACHIEVEMENT_CHECK = new Set(['achievement', 'vivillonReward', 'change', 'tick']);
 const DAY = 24 * 60 * MIN;
 export const TRIM_DAYS = 5; // 剪毛後幾天長回來（原作）
 const TRIM_AFFECTION = 10; // 猜的，可調整
@@ -50,6 +52,27 @@ export class Game {
   emit(event, payload) {
     for (const fn of this.listeners.get(event) ?? []) fn(payload);
     if (event !== 'change') for (const fn of this.listeners.get('change') ?? []) fn({ event, payload });
+    // 任何事情發生後都檢查一次獎章（26 個純函式，很便宜）；獎章自己的事件不再檢查，避免無限迴圈
+    if (!NO_ACHIEVEMENT_CHECK.has(event)) this.checkAchievements();
+  }
+
+  // ---- 獎章 ----
+  checkAchievements() {
+    if (this.checkingAchievements) return;
+    this.checkingAchievements = true;
+    try {
+      for (const id of newlyUnlocked(this.state)) {
+        this.state.achievements[id] = this.now();
+        this.emit('achievement', { id });
+      }
+      for (const form of pendingRewards(this.state)) {
+        this.state.achievementRewards[form === 'fancy' ? 'fancy' : 'pokeBall'] = true;
+        this.state.pendingVivillon.push(form);
+        this.emit('vivillonReward', { form });
+      }
+    } finally {
+      this.checkingAchievements = false;
+    }
   }
 
   // ---- 查詢 ----
@@ -100,6 +123,7 @@ export class Game {
     this.expireTrims();
     this.checkItems(); // 陪伴也會加好感
     this.maybeFindEgg();
+    this.checkAchievements();
     this.emit('tick');
   }
 
@@ -382,6 +406,7 @@ export class Game {
     const i = this.state.eggs.findIndex(e => e.uid === uid && e.steps >= e.need);
     if (i < 0) return null;
     const [egg] = this.state.eggs.splice(i, 1);
+    this.state.hatchedEggs = [...this.state.hatchedEggs, egg.uid].slice(-200); // 同步時別台電腦的舊存檔不會把牠變回蛋
     const mon = this.createMon(egg.species, { shiny: egg.shiny, form: egg.form, ball: 'poke' });
     mon.affection = eggs.HATCH_AFFECTION;
     if (pos) mon.pos = pos;
@@ -484,6 +509,8 @@ export class Game {
     d.caught++;
     d.firstCaughtAt ??= t;
     const mon = this.createMon(wild.speciesId, { shiny: wild.shiny, nature: wild.nature, ball, form: wild.form });
+    // 成就獎勵的特別花紋：抓到了就用掉
+    if (FORMS[wild.speciesId]?.family === 'vivillon' && wild.form && wild.form === this.state.pendingVivillon[0]) this.state.pendingVivillon.shift();
     this.recordForm(wild.speciesId, wild.form, 'caught');
     // 餵過牠喜歡或討厭的泡芙，抓到時就已經知道牠的口味
     if (wild.puff === 'liked' || wild.puff === 'disliked') mon.tasteKnown = true;
@@ -518,6 +545,7 @@ export class Game {
       uid: `${this.now().toString(36)}${Math.floor(this.rng() * 1e9).toString(36)}`,
       species,
       nickname: null,
+      nicknameAt: null,
       nature: nature ?? this.rng.pick(this.dex.natures).slug,
       shiny,
       ball,
@@ -597,6 +625,7 @@ export class Game {
     if (!mon) return;
     const trimmed = (name ?? '').trim().slice(0, 12);
     mon.nickname = trimmed && trimmed !== this.dex.name(mon.species) ? trimmed : null;
+    mon.nicknameAt = this.now();
     this.emit('party', { uid });
   }
 

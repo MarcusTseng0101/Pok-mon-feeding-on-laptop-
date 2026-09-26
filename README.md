@@ -31,6 +31,7 @@ node test/e2e/kalos-forms.cjs  # 野生花色、圖鑑切換、美容、超級�
 node test/e2e/minigames.cjs    # 五個小遊戲實際玩一遍；每一種結束方式之後，滑鼠都要還給桌面
 node test/e2e/perch.cjs        # 站在視窗上：不會被推下去、跟著視窗走、被甩下來、視窗關掉會掉下來
 node test/e2e/desktop.cjs      # 番茄鐘、打字反應、孵蛋
+node test/e2e/world.cjs        # 天氣（不會攔截滑鼠、查不到沿用上次）、獎章、同步資料夾（合併、不重複加）
 node test/e2e/habits.cjs    # 72 種寶可夢的每一個習性都能跑完、不會跑出螢幕
 node test/e2e/physics.cjs   # 碰撞與擊退：沒有重疊、撞球、重量差
 node test/e2e/perf.cjs      # 每幀 update + draw 的時間
@@ -162,6 +163,9 @@ node test/e2e/perf.cjs      # 每幀 update + draw 的時間
 
 這些只讀取系統閒置時間、電源狀態與 CPU 負載。
 
+**會連網的只有三件事**：下載寶可夢圖片（GitHub 上的 PokeAPI）、你自己設定城市之後查天氣（Open-Meteo，不用 IP 猜位置）、
+你自己選了同步資料夾之後讀寫那個資料夾（只寫 `kalos-amie/save.<這台電腦>.json`，不上傳到任何伺服器）。
+
 **隱私**：遊戲只讀其他視窗的**位置和大小**（讓寶可夢站在標題列上），**不讀視窗標題、程式名稱或內容，也不讀按鍵**。
 「好像在打字」是用「系統閒置時間 < 1 秒，但游標 2 秒沒動」推測的，不讀鍵盤。
 
@@ -193,6 +197,18 @@ node test/e2e/perf.cjs      # 每幀 update + draw 的時間
 - **孵蛋**：感情是「最好的朋友」的兩隻都在桌面上時，每天有一次機會找到蛋（最多 3 顆）。
   移動游標、在電腦前待著就會累積步數，大部分 1–2 天孵化。好了之後蛋會出現在桌面上，點一下看牠孵化。
   孵出來的是父母其中一隻的最初型態（花色、花紋會遺傳），傳說和幻之寶可夢不會生蛋
+
+### 天氣、獎章、兩台電腦同步
+
+- **天氣**：設定裡輸入城市（例如「中壢」）。每 30 分鐘查一次目前的天氣：
+  下雨時水屬性 ×2、黏美兒 ×4；晴天火、草 ×1.5；下雪冰 ×2；打雷電 ×2。下雨下雪時畫面上有一層淡淡的雨／雪（不會擋住點擊）。
+  查不到（沒網路）就沿用上一次的天氣
+- **獎章**：選單的「獎章」，26 個（圖鑑、色違、交流、小遊戲、專注、孵蛋、形態、傳說）。
+  收集 20 個之後，下一隻粉蝶蟲會是**幻彩花紋**；全部收集是**球球花紋**（原作的配信限定花紋）
+- **兩台電腦同步**：設定裡「選同步資料夾」，選一個你自己的雲端同步資料夾（Google Drive、OneDrive、Dropbox…），
+  另一台電腦選同一個資料夾，每 5 分鐘（還有關掉程式時）同步一次。不是「整份蓋掉」，而是逐項合併：
+  兩邊抓到的寶可夢都會在、圖鑑取比較多的、背包的東西是兩邊各自的增減加起來（同步幾次都不會重複加）。
+  第二台電腦加入時可以選「用資料夾裡的存檔」或「兩份合在一起」
 
 ### 一起玩（小遊戲）
 
@@ -276,11 +292,13 @@ src/main/                    Electron 主程序
   main.js                    透明置頂視窗、滑鼠穿透、游標輪詢、系統匣、IPC
   store.js                   存檔（先寫暫存檔再 rename，保留一份 .bak）
   sprites.js                 寶可夢圖下載與快取（圖片 key 先驗證格式才拿來組路徑）
+  syncfiles.js               同步資料夾的讀寫（只碰 kalos-amie/save.<裝置>.json）
   windows.js                 其他視窗的位置（Windows；只讀位置和大小，還沒接進遊戲）
   signals.js                 閒置時間、電源、CPU → 遭遇的「氣息」
   preload.cjs                給 renderer 的窄介面（contextIsolation + sandbox）
 src/core/minigames.js        小遊戲的計分與獎勵（純函式）
 src/core/perch.js focus.js eggs.js   視窗頂邊、番茄鐘、孵蛋的規則（eggdata.js 由 scripts/build-eggs.mjs 產生）
+src/core/weather.js achievements.js sync.js   天氣、獎章、同步的合併規則
 src/renderer/                畫面
   app.js                     進入點與主迴圈
   director.js                把規則、舞台、介面串起來（遭遇流程、進化演出、誘餌）

@@ -6,6 +6,7 @@ import { hearts } from './amie.js';
 import { shinyChance, chainSpawnMult } from './shiny.js';
 import { FORMS, canonicalForm } from './forms.js';
 import { vivillonForTimeZone } from './vivillon.js';
+import { WEATHER_MODS, weatherMultiplier } from './weather.js';
 
 export const FLAVOR_TYPES = {
   sweet: ['fairy', 'normal'],
@@ -33,7 +34,7 @@ const SPOT_BIAS = {
   night: { grass: 0.8, puddle: 1, sky: 0.7, rock: 1, dusk: 2 },
 };
 
-// ctx: { hour, weekday(0=日), cpuHot, justPluggedIn, returnedFromIdle, lure: flavor|null, lureTier }
+// ctx: { hour, weekday(0=日), cpuHot, justPluggedIn, returnedFromIdle, lure: flavor|null, lureTier, weather: 'rain'|'sun'|…|null }
 // 回傳目前生效的「氣息」，UI 會把 zh 列出來讓玩家知道現在容易遇到什麼。
 export function activeModifiers(ctx, dex) {
   const mods = [];
@@ -47,6 +48,7 @@ export function activeModifiers(ctx, dex) {
   if (ctx.cpuHot) mods.push({ id: 'cpuHot', zh: '電腦好燙：火屬性的寶可夢被熱氣吸引過來', mult: byType(['fire'], 3) });
   if (ctx.justPluggedIn) mods.push({ id: 'plugged', zh: '剛接上電源：電屬性的寶可夢聚集過來', mult: byType(['electric'], 4) });
   if (ctx.returnedFromIdle) mods.push({ id: 'welcome', zh: '你回來了：好奇的超能力寶可夢在偷看', mult: byType(['psychic'], 3) });
+  if (WEATHER_MODS[ctx.weather]) mods.push({ id: `weather-${ctx.weather}`, zh: WEATHER_MODS[ctx.weather].zh, mult: id => weatherMultiplier(ctx.weather, dex.get(id).types, id) });
   if (ctx.lure) mods.push({ id: 'lure', zh: `泡芙誘餌：喜歡這個香味的寶可夢會靠近（${FLAVOR_TYPES[ctx.lure].map(t => dex.typeName(t)).join('、')}）`, mult: byType(FLAVOR_TYPES[ctx.lure], 3) });
   return mods;
 }

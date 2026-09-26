@@ -8,6 +8,7 @@ import { AudioEngine } from './audio/audio.js';
 import { Stage } from './scene/stage.js';
 import { Director } from './director.js';
 import { UI } from './ui/ui.js';
+import { SyncController } from './sync.js';
 
 const params = new URLSearchParams(location.search);
 const DEV = params.get('dev') === '1';
@@ -25,7 +26,9 @@ async function main() {
   const director = new Director({ stage, game, dex, sprites, audio, api, rng, dev: DEV });
   const ui = new UI({ root: document.getElementById('ui'), game, dex, sprites, audio, stage, director, api, dev: DEV });
   director.ui = ui;
-  window.__kalos = { game, stage, director, ui, audio, dex, api }; // 方便除錯
+  const sync = new SyncController({ game, api, dex, director, ui });
+  ui.sync = sync;
+  window.__kalos = { game, stage, director, ui, audio, dex, api, sync }; // 方便除錯
 
   // ---- 存檔：有變動就在 3 秒內寫入，另外每 30 秒保底一次 ----
   let dirty = false;
@@ -33,7 +36,12 @@ async function main() {
   game.on('change', () => { dirty = true; });
   setInterval(() => { if (dirty) save(); }, 3000);
   setInterval(save, 30_000);
-  api.on('flush', async () => { await save(); api.flushed(); });
+  api.on('flush', async () => {
+    // 關掉之前：同步一次（最多等 1 秒，不要讓程式關不掉），再存檔
+    await Promise.race([sync.run(true), new Promise(r => setTimeout(r, 1000))]).catch(() => {});
+    await save();
+    api.flushed();
+  });
 
   ui.onReset = async () => {
     game.state = defaultSave(Date.now());
@@ -55,7 +63,7 @@ async function main() {
 
   api.on('command', cmd => {
     if (cmd === 'menu') ui.toggleMenu(true);
-    else if (['party', 'dex', 'play', 'bag', 'aura', 'settings'].includes(cmd)) ui.open(cmd);
+    else if (['party', 'dex', 'play', 'medals', 'bag', 'aura', 'settings'].includes(cmd)) ui.open(cmd);
     else if (cmd === 'toggleMute') { game.setSetting('muted', !game.state.settings.muted); }
     else if (cmd === 'toggleQuiet') ui.toggleQuiet();
     else if (cmd === 'focusStart') ui.startFocus();
@@ -88,8 +96,12 @@ async function main() {
   }
   sprites.prefetchAll();
 
+  director.refreshWeather(true);
+  sync.run(true);
   setInterval(() => {
+    sync.run(); // 自己會控制成 5 分鐘一次
     director.tickEggs(10);
+    director.refreshWeather(); // 自己會控制成 30 分鐘一次
     game.tick();
     director.updateEnv();
     director.refreshMusic();

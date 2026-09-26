@@ -6,6 +6,7 @@ import { Fx } from './fx.js';
 import { Pet } from './pet.js';
 import { resolveCollisions } from './physics.js';
 import { applyWindows } from './perching.js';
+import { WeatherFx } from './weatherfx.js';
 import { blit } from '../gfx/pixel.js';
 import * as art from '../gfx/art.js';
 
@@ -25,6 +26,7 @@ export class Stage {
     this.decals = []; // 地上的裝飾（花、鑽石、根…），畫在夥伴後面，不能點
     this.windows = []; // 其他視窗的位置（裝置像素，由上到下），只有位置和大小
     this.ledges = []; // 看得到、可以站的視窗頂邊
+    this.weatherFx = new WeatherFx(this); // 下雨、下雪（只是畫面，不接收滑鼠）
     this.pointer = { x: 0, y: 0, known: false };
     this.mode = null; // { type: 'feed', puff, target } | { type: 'aim', ball }
     this.env = { sleepy: false, userActive: true };
@@ -246,7 +248,7 @@ export class Stage {
     const dt = Math.min(0.1, (now - (this.lastFrame ?? now)) / 1000);
     this.lastFrame = now;
     // 沒什麼在動的時候 30fps 就夠了，省電
-    const busy = now < this.busyUntil || this.drag?.held || this.mode || this.balls.length || this.wild || this.minigame;
+    const busy = now < this.busyUntil || this.drag?.held || this.mode || this.balls.length || this.wild || this.minigame || this.weatherFx.fade > 0;
     this.accum = (this.accum ?? 0) + dt;
     if (!busy && now - this.lastDraw < 30) return;
     const step = this.accum;
@@ -270,6 +272,7 @@ export class Stage {
     for (const d of this.decals) d.t += dt;
     this.decals = this.decals.filter(d => d.t < d.life);
     this.fx.update(dt);
+    this.weatherFx.update(dt);
     this.updateFeeding(dt);
     this.minigame?.update(dt); // 小遊戲（ui/minigames/host.js）
     this.refreshInteractive();
@@ -312,6 +315,7 @@ export class Stage {
     for (const b of this.balls) b.draw(ctx);
     for (const p of pets) if (p.state === 'held') p.draw(ctx);
     this.minigame?.draw(ctx);
+    this.weatherFx.draw(ctx);
     this.fx.draw(ctx, S);
     if (this.mode?.type === 'feed' && this.pointer.known) {
       const img = art.puff(this.mode.puff);

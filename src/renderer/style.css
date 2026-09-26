@@ -326,3 +326,23 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .bag .egg { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 6px; align-items: center; }
 .bag .egg canvas { grid-row: span 2; }
 .bag .egg .bar { height: 6px; }
+
+/* 天氣設定 */
+.settings fieldset.weather { border: 2px solid var(--panel-2); padding: 6px 8px; margin: 8px 0; }
+.settings .cityrow { display: flex; gap: 6px; margin: 4px 0; }
+.settings .cityrow input { flex: 1; }
+.settings fieldset.weather > button { display: block; width: 100%; text-align: left; margin: 2px 0; }
+
+/* 獎章 */
+.medals { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+.medals .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; overflow-y: auto; }
+.medals .medal { display: flex; gap: 8px; align-items: center; padding: 6px; background: var(--panel-2); opacity: 0.6; }
+.medals .medal.got { opacity: 1; }
+.medals .medal b { display: block; font-size: 13px; }
+.medals .medal small { display: block; font-size: 11px; color: var(--muted); }
+.medals .medal .date { color: #c08800; }
+.settings fieldset.sync { border: 2px solid var(--panel-2); padding: 6px 8px; margin: 8px 0; }
+.settings fieldset.sync .why { color: #c0506a; font-size: 12px; }
+.dialog.ask .choices { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.dialog.ask .choices button { text-align: left; }
+.dialog.ask .choices small { display: block; font-size: 11px; opacity: 0.8; }

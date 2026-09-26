@@ -1,6 +1,6 @@
 // Electron 主程序：一個覆蓋整個工作區、完全透明、永遠在最上層的視窗。
 // 滑鼠平常會穿透到下面的視窗；只有游標停在寶可夢或介面上時，renderer 才會要求接收點擊。
-import { app, BrowserWindow, ipcMain, screen, Tray, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, Tray, Menu, net, dialog } from 'electron';
 import path from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,8 @@ import { createSpriteCache } from './sprites.js';
 import { createSignals } from './signals.js';
 import { trayImage } from './tray-icon.js';
 import { createWindowProbe } from './windows.js';
+import { geocodingUrl, forecastUrl, parseGeocoding, parseForecast } from '../core/weather.js';
+import { listSyncFiles, writeSyncFile } from './syncfiles.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DEV = process.env.KALOS_DEV === '1';
@@ -134,6 +136,20 @@ function startWindowWatch() {
   tick();
 }
 
+// 天氣（Open-Meteo，不需要 key）。只查使用者自己輸入的城市；失敗就回傳 null，畫面會沿用上一次的結果
+async function fetchJson(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10_000);
+  try {
+    const res = await net.fetch(url, { signal: ctrl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function send(command) {
   win?.webContents.send('command', command);
 }
@@ -179,6 +195,21 @@ app.whenReady().then(async () => {
     buildTray();
     return app.getLoginItemSettings().openAtLogin;
   });
+  ipcMain.handle('weather:search', async (_e, city) => {
+    if (typeof city !== 'string' || !city.trim() || city.length > 40) return [];
+    return parseGeocoding(await fetchJson(geocodingUrl(city.trim())));
+  });
+  ipcMain.handle('weather:current', async (_e, lat, lon) => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    return parseForecast(await fetchJson(forecastUrl(lat, lon)));
+  });
+  // 同步資料夾：選資料夾用系統對話框；讀寫只會碰 <資料夾>/kalos-amie/save.<裝置>.json
+  ipcMain.handle('sync:pick', async () => {
+    const r = await dialog.showOpenDialog(win, { title: '選一個同步資料夾（例如 Google Drive、OneDrive、Dropbox 裡的資料夾）', properties: ['openDirectory', 'createDirectory'] });
+    return r.canceled ? null : r.filePaths[0] ?? null;
+  });
+  ipcMain.handle('sync:list', (_e, folder, selfId) => listSyncFiles(folder, selfId).catch(err => ({ error: err.message })));
+  ipcMain.handle('sync:write', (_e, folder, deviceId, data) => writeSyncFile(folder, deviceId, data).then(() => true, err => ({ error: err.message })));
   ipcMain.on('mouse:interactive', (_e, on) => win?.setIgnoreMouseEvents(!on, { forward: true }));
   ipcMain.on('window:focus', () => win?.focus());
   ipcMain.on('tray:update', (_e, s) => { Object.assign(trayState, s); buildTray(); });
