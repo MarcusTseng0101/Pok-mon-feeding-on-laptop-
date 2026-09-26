@@ -444,7 +444,7 @@ function react(defender, eff) {
 }
 
 function startDuel(a, b) {
-  const d = { a, b, turn: 0, turns: 4, over: false, cool: 0.5 };
+  const d = { a, b, turn: 0, turns: 4, over: false, cool: 0.5, hits: new Map() }; // hits：打中的效果加總（決定輸贏）
   a.duel = b.duel = d;
   a.partner = b; b.partner = a;
   a.set('duel', 30); b.set('duel', 30);
@@ -480,14 +480,23 @@ function nextTurn(d) {
     return;
   }
   useMove(atk, pick(moves), def, {
-    onHit: eff => { react(def, eff); maybeBondForm(d, atk, eff); },
+    onHit: eff => { react(def, eff); maybeBondForm(d, atk, eff); d.hits.set(atk, (d.hits.get(atk) ?? 0) + eff); },
     onEnd: () => { if (d.over) { atk.set('idle', 1); return; } atk.set('duel', 30); d.cool = 0.45; },
   });
 }
 
 function finishDuel(d) {
   d.over = true;
-  for (const p of [d.a, d.b]) { p.duel = null; p.partner = null; if (p.state === 'duel') { p.set('happy', 0.6); p.showEmote('♪', 1.2); } }
+  // 打中比較多（效果加總比較高）的贏；一樣就是平手
+  const ha = d.hits.get(d.a) ?? 0, hb = d.hits.get(d.b) ?? 0;
+  const winner = ha > hb ? d.a : hb > ha ? d.b : null;
+  const loser = winner && (winner === d.a ? d.b : d.a);
+  for (const p of [d.a, d.b]) {
+    p.duel = null; p.partner = null;
+    if (p.state !== 'duel') continue;
+    if (p === loser) { p.set('sit', 1.2); p.showEmote('…', 1.4); } else { p.set('happy', 0.6); p.showEmote('♪', 1.2); }
+  }
+  if (winner) d.a.stage.fire('duelResult', winner, loser);
   d.a.stage.fx.hearts((d.a.x + d.b.x) / 2, Math.min(d.a.head().y, d.b.head().y), d.a.S, 3);
   d.a.stage.fire('bond', d.a, d.b, 3);
   endDuelForms(d.a, d.b);

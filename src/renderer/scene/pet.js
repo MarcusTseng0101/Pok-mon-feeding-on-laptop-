@@ -14,6 +14,7 @@ import { SOCIAL_ACTIONS, groupOptions, maybeComfort } from './social.js';
 import { integrateKnock } from './physics.js';
 import { updateForm, drawForm } from './battleforms.js';
 import { PERCH_ACTIONS, perchBounds, perchedChoices, perchOption } from './perching.js';
+import { tag, weigh, afterChoice, tickMind } from './mindlink.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
@@ -294,6 +295,7 @@ export class Pet {
     this.flinchT = Math.max(0, (this.flinchT ?? 0) - dt); // 被招式打到
     this.flipT = Math.max(0, (this.flipT ?? 0) - dt); // 被「顛倒」倒過來
     updateForm(this, dt); // 超級進化、牽絆變身
+    tickMind(this, dt); // 需求隨時間變化（每秒一次）
     if (this.emote && this.t > this.emote.until) this.emote = null;
     const p = st.pointer;
     const near = p.known && Math.abs(p.x - this.x) < 260 * (S / 2) && Math.abs(p.y - this.y) < 300 * (S / 2);
@@ -505,33 +507,52 @@ export class Pet {
     }
   }
 
+  // 抽一個選項來做，然後讓心智想一個理由（選項是 [名稱, 權重, 動作, 類別]）
+  choose(choices) {
+    const c = pickWeighted(weigh(this, choices));
+    c[2]();
+    afterChoice(this, c);
+  }
+
   decide() {
     const st = this.stage;
     this.onArrive = null;
-    if (this.perch) { pickWeighted(perchedChoices(this))[2](); return; } // 站在視窗上：只做安靜的事或跳下來
-    if (st.env.focus) { pickWeighted(focusChoices(this))[2](); return; } // 專注中：安靜地陪你
+    if (this.perch) { this.choose(tag(perchedChoices(this), 'explore')); return; } // 站在視窗上：只做安靜的事或跳下來
+    if (st.env.focus) { this.choose(tag(focusChoices(this), 'rest')); return; } // 專注中：安靜地陪你
     // 站在視窗上、正在往上跳的不算（不會被拉去玩）
     const others = [...st.pets.values()].filter(o => o !== this && o.free && !o.partner && !o.perch && o.state !== 'perchUp');
     if (st.env.sleepy) {
       // 想睡了：有其他夥伴在睡的話靠過去一起睡
       const cuddle = socialOptions(this, others).find(([n]) => n === 'cuddle');
-      if (cuddle && Math.random() < 0.6) { cuddle[2](); return; }
-      this.set(Math.random() < 0.3 ? 'stretch' : 'sleep', 1.2);
+      if (cuddle && Math.random() < 0.6) { cuddle[2](); afterChoice(this, [...cuddle, 'social']); return; }
+      const nap = Math.random() < 0.3 ? 'stretch' : 'nap';
+      this.set(nap === 'stretch' ? 'stretch' : 'sleep', 1.2);
       if (this.state === 'stretch') this.showEmote('…', 1);
+      afterChoice(this, [nap, 1, null, 'rest']);
       return;
     }
     const h = hearts(this.mon.affection);
     const settings = st.game?.state.settings;
     const musicOn = settings && !settings.muted && settings.musicVolume > 0.05;
-    if (this.mon.fullness < 30 && Math.random() < 0.2) { this.showEmote(art.puff('sweet-basic'), 2); this.set('idle', 2); return; }
 
     const rp = (a, b) => a + Math.random() * (b - a);
-    const choices = [
+    const choices = tag([
       ['walk', 30, () => { this.target = this.randomPoint(50, 320); this.set('walk'); }],
       ['idle', 14, () => this.set('idle', rp(2, 6))],
       ['look', 7, () => { this.set('look', rp(1.6, 2.6)); if (Math.random() < 0.5) this.showEmote('?', 1.2); }],
       ['sit', 7, () => this.set('sit', rp(3, 8))],
       ['stretch', 4, () => { this.set('stretch', 1.2); if (Math.random() < 0.5) this.showEmote('…', 1); }],
+      // 肚子餓：跟你討泡芙，或自己去附近找找有沒有樹果
+      ['beg', this.mon.fullness < 30 ? 4 : 0, () => { this.showEmote(art.puff('sweet-basic'), 2); this.set('idle', 2); }],
+      ['hungry', this.mon.fullness < 100 ? 5 : 0, () => {
+        this.target = this.randomPoint(40, 160);
+        this.set('walk');
+        this.onArrive = () => {
+          if (this.floats) { this.set('look', 1.6); this.showEmote('♪', 1); return; }
+          this.target = this.randomPoint(10, 30);
+          this.set('forage', rp(2.5, 3.5));
+        };
+      }],
       ['shiver', 2, () => this.set('shiver', 0.6)],
       ['follow', h >= 3 && st.pointer.known && st.env.userActive ? 9 : 0, () => this.set('follow', rp(3, 7))],
       ['run', this.mon.enjoyment > 120 || h >= 2 ? 4 : 1, () => { this.target = this.randomPoint(80, 260); this.set('run', rp(2.5, 4.5)); }],
@@ -547,14 +568,15 @@ export class Pet {
         o.showEmote('♪', 0.8);
         st.fire('bond', this, o, 2);
       }],
-      ...soloOptions(this),
-      ...socialOptions(this, others),
-      ...habitOptions(this, others), // 這一種寶可夢專屬的習性
-      ...moveOptions(this, others), // 練習招式、切磋
-      ...groupOptions(this, others.filter(o => !o.group)), // 一群一起玩、好朋友之間
-      ...perchOption(this), // 跳到其他視窗的標題列上
-    ];
-    pickWeighted(choices)[2]();
+    ], 'rest').concat(
+      tag(soloOptions(this), 'play'),
+      tag(socialOptions(this, others), 'social'),
+      tag(habitOptions(this, others), 'habit'), // 這一種寶可夢專屬的習性
+      tag(moveOptions(this, others), 'train'), // 練習招式、切磋
+      tag(groupOptions(this, others.filter(o => !o.group)), 'social'), // 一群一起玩、好朋友之間
+      tag(perchOption(this), 'explore'), // 跳到其他視窗的標題列上
+    );
+    this.choose(choices);
   }
 
   draw(ctx) {

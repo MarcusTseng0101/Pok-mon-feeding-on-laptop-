@@ -605,6 +605,14 @@ export class Game {
   bondOf(uidA, uidB) { return this.state.bonds[bondKey(uidA, uidB)] ?? 0; }
   rivalryOf(uidA, uidB) { return this.state.rivalries[bondKey(uidA, uidB)] ?? 0; }
 
+  // 心智帶來的小變化（自己找到樹果吃、玩得開心）
+  mindDelta(uid, { fullness = 0, enjoyment = 0 } = {}) {
+    const mon = this.mon(uid);
+    if (!mon) return;
+    mon.fullness = Math.min(amie.MAX, Math.max(0, mon.fullness + fullness));
+    mon.enjoyment = Math.min(amie.MAX, Math.max(0, mon.enjoyment + enjoyment));
+  }
+
   // ---- 記憶 ----
   remember(uid, event) {
     const mon = this.mon(uid);

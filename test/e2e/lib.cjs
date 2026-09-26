@@ -52,12 +52,14 @@ function serve() {
 }
 
 // query：額外的網址參數（例如 { windows: '...' }）
-async function open({ query = {}, fresh = true, viewport = { width: 1280, height: 720 } } = {}) {
+// init：在網頁任何程式執行之前先跑的函式（例如把 Math.random 換成固定種子的版本），initArg 是傳給它的參數
+async function open({ query = {}, fresh = true, viewport = { width: 1280, height: 720 }, init = null, initArg } = {}) {
   const { chromium } = loadPlaywright();
   const server = await serve();
   const base = `http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport, deviceScaleFactor: 1 });
+  if (init) await page.addInitScript(init, initArg);
   const errors = [];
   page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });

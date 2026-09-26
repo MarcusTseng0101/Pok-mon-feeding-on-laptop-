@@ -218,14 +218,15 @@ export const REASONS = {
 const CITES = { energy: 'need', comfort: 'need', curiosity: 'need', fun: 'need', food: 'need', lonely: 'need', friend: 'relation', rival: 'relation', memory: 'memory' };
 export const citesOf = key => CITES[key.split('.')[1]] ?? null;
 
+// 需求低於大約 60 就會在理由裡說出來（門檻是猜的，可以調）
 // ctx：{ other: { name, bond, rivalry }（有對象時）, recentFed, recentStroke, playedWithOther }
 export function reason(category, lv, rng, ctx = {}) {
   const other = ctx.other;
   let sub;
   switch (category) {
-    case 'rest': sub = lv.energy < 50 ? 'energy' : lv.comfort < 50 ? 'comfort' : 'calm'; break;
-    case 'explore': sub = lv.curiosity < 55 ? 'curiosity' : 'calm'; break;
-    case 'play': sub = ctx.recentFed || ctx.recentStroke ? 'memory' : lv.fun < 50 ? 'fun' : 'happy'; break;
+    case 'rest': sub = lv.energy < 60 ? 'energy' : lv.comfort < 60 ? 'comfort' : 'calm'; break;
+    case 'explore': sub = lv.curiosity < 65 ? 'curiosity' : 'calm'; break;
+    case 'play': sub = ctx.recentFed || ctx.recentStroke ? 'memory' : lv.fun < 55 ? 'fun' : 'happy'; break;
     case 'social':
       if (!other) { sub = null; break; }
       sub = other.rivalry >= 2 && other.rivalry * 20 > other.bond ? 'rival'
@@ -233,7 +234,7 @@ export function reason(category, lv, rng, ctx = {}) {
         : other.bond >= 60 ? 'friend'
         : lv.social < 50 ? 'lonely' : 'calm';
       break;
-    case 'habit': sub = lv.curiosity < 50 ? 'curiosity' : 'self'; break;
+    case 'habit': sub = lv.curiosity < 55 ? 'curiosity' : 'self'; break;
     case 'train': sub = other && other.rivalry >= 1 ? 'rival' : 'drive'; break;
     case 'need': sub = 'food'; break;
     default: sub = null;
