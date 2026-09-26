@@ -426,7 +426,8 @@ export class Pet {
         if (done) { this.set('idle', 1); this.showEmote('✦', 0.8); }
         break;
       case 'trip':
-        if (done) this.set('idle', 1);
+        // 站起來：本來要走去哪裡（床、你旁邊、果實…）就繼續走過去，不會忘記
+        if (done) { if (this.onArrive && this.target) this.set('walk'); else this.set('idle', 1); }
         break;
       case 'greet':
         if (this.partner) this.facing = this.partner.x > this.x ? 1 : -1;
