@@ -1,6 +1,6 @@
 // 明信片：卡洛斯 12 個地點的像素風景（全部用程式畫，沒有外部圖檔）。
 // 同一個地點＋種子每次畫出來都一樣（雲、星星、花的位置由種子決定）。
-import { paint } from './pixel.js';
+import { paint, makeCanvas } from './pixel.js';
 
 export const W = 64, H = 40;
 const K = '#2a2030';
@@ -125,6 +125,21 @@ const SCENES = {
     t.rect(6, 27, 52, 11, '#c8a877'); t.rect(6, 27, 52, 1, '#ffffff'); t.rect(31, 27, 1, 11, '#ffffff'); t.disc(32, 32, 3, '#c8a877');
     for (let x = 32 - 3; x <= 32 + 3; x++) for (let y = 29; y <= 35; y++) if (Math.abs((x - 32) ** 2 + (y - 32) ** 2 - 9) < 3) set(x, y, '#ffffff');
   },
+  // 跟你出門（core/outing.js）：一條小路，上面有你的腳印和牠的小腳印並排走著
+  'with-you'(set, t, r) {
+    const dusk = r() < 0.5;
+    t.sky(dusk ? '#ffb87a' : '#6ab8ff', dusk ? '#ffe2b0' : '#bfe4ff', 22);
+    t.cloud(6 + Math.floor(r() * 20), 5 + Math.floor(r() * 5));
+    for (let i = 0; i < 7; i++) { const x = i * 9 + Math.floor(r() * 4), h = 5 + Math.floor(r() * 9); t.rect(x, 22 - h, 7, h, dusk ? '#8a6a8a' : '#9aa8c8'); } // 遠遠的城市
+    t.rect(0, 22, W, 18, '#8fcf6a');
+    for (let y = 22; y < H; y++) { const half = 3 + Math.floor((y - 22) * 0.9); t.rect(32 - half, y, half * 2, 1, '#e8d2a0'); } // 小路
+    for (let k = 0; k < 5; k++) { // 腳印：你的（大）和牠的（小）
+      const y = 37 - k * 3, spread = 1 + Math.floor((y - 22) * 0.35);
+      set(32 - spread - (k % 2), y, '#a08058'); set(32 - spread - (k % 2) + 1, y, '#a08058');
+      set(32 + spread + (k % 2), y, '#a08058');
+    }
+    for (let i = 0; i < 6; i++) set(Math.floor(r() * W), 25 + Math.floor(r() * 14), ['#ff6fa5', '#ffe066', '#ffffff'][i % 3]); // 路邊的小花
+  },
 };
 
 const cache = new Map();
@@ -155,3 +170,21 @@ export const mini = paint(10, 7, set => {
   for (let x = 2; x < 8; x++) { set(x, 2, '#6ab8ff'); set(x, 3, '#6fbf5a'); }
   set(7, 4, '#e8404a');
 });
+
+// 跟你出門（core/outing.js）時留在桌面上的紙條：寫著「跟你出門了」，右上角一個小腳印
+let outNote = null;
+export function outingNote() {
+  if (outNote) return outNote;
+  const w = 72, h = 15; // Cubic11 是 11px 的像素字：用原本的大小才清楚
+  const c = makeCanvas(w, h), ctx = c.getContext('2d');
+  ctx.drawImage(paint(w, h, set => {
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) set(x, y, x === 0 || y === 0 || x === w - 1 || y === h - 1 ? K : '#fff6c8');
+    for (const [x, y] of [[64, 4], [66, 4], [63, 6], [67, 6], [65, 7], [64, 8], [65, 8], [66, 8]]) set(x, y, '#e8404a'); // 小腳印
+  }), 0, 0);
+  ctx.font = '11px Cubic11, monospace';
+  ctx.fillStyle = K;
+  ctx.textBaseline = 'top';
+  ctx.fillText('跟你出門了', 3, 2);
+  outNote = c;
+  return c;
+}

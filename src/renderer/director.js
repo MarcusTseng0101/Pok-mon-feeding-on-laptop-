@@ -15,6 +15,7 @@ import { Garden } from './scene/garden.js';
 import * as art from './gfx/art.js';
 import { socialized } from '../core/mind.js';
 import { PLACES } from '../core/trips.js';
+import { FORGOT_LINE, POSTCARD_AFTER, durationZh } from '../core/outing.js';
 import { startDepart, startReturn } from './scene/travel.js';
 import { BaseView } from './scene/base.js';
 import { FURNITURE, STAGES } from '../core/base.js';
@@ -36,6 +37,7 @@ const TYPING_WATCH_AFTER = 30; // 連續打字幾秒後過來看（秒）
 const TYPING_COOLDOWN = 3 * 60 * 1000; // 猜的，可調整：不要一直跑過來
 
 const LURE_MINUTES = 10;
+const EDGE = 24; // 拖到離螢幕左右邊緣幾 px 以內放開，就是帶牠出門（猜的，可調整）
 
 const BASE_PROBLEM = { full: '這一階的基地擺不下更多家具了，升級看看', 'no-medal': '獎盃的數量不能超過獎章', materials: '材料不夠', blocked: '這裡放不下' };
 
@@ -208,8 +210,8 @@ export class Director {
     const g = this.game;
     if (!g.state.settings.phone || !this.api.phoneSnapshot) return null;
     const keyOf = m => `${spriteKey(m.species, m.form)}${m.shiny ? ':s' : ''}`;
-    const data = phoneSnapshot(g.state, { now: Date.now(), nameOf: m => g.displayName(m), speciesName: id => this.dex.name(id), spriteKeyOf: keyOf });
-    for (const k of new Set([...data.pets, ...data.trips].map(p => p.pic))) {
+    const data = phoneSnapshot(g.state, { now: Date.now(), nameOf: m => g.displayName(m), speciesName: id => this.dex.name(id), spriteKeyOf: keyOf, weather: this.homeWeather() });
+    for (const k of new Set([...data.pets, ...data.trips, ...(data.outing ? [data.outing] : [])].map(p => p.pic))) {
       const [key, s] = k.split(':');
       try { data.pics[k] = this.sprites.peek(key, s === 's').canvas.toDataURL('image/png'); } catch { /* 還沒載好：下次 */ }
     }
@@ -277,7 +279,7 @@ export class Director {
     for (const uid of [...this.stage.pets.keys()]) if (!want.has(uid) && this.stage.pets.get(uid).state !== 'depart') this.stage.removePet(uid);
     const outs = this.game.homeMons();
     outs.forEach((mon, i) => {
-      if (!want.has(mon.uid) || this.stage.pets.has(mon.uid) || this.game.tripStatus(mon.uid) === 'back') return;
+      if (!want.has(mon.uid) || this.stage.pets.has(mon.uid) || this.game.tripStatus(mon.uid) === 'back' || this.returning?.has(mon.uid)) return;
       // 回到上次關掉時的位置；新出來的平均分散在螢幕上，不要擠在一起
       const st = this.stage;
       const pos = mon.pos
@@ -309,7 +311,8 @@ export class Director {
     }
     if (this.evolution) this.updateEvolution(dt);
     this.tripT = (this.tripT ?? 0) + dt;
-    if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); this.drainAttention(); this.refreshLife(); }
+    if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); this.refreshOutings(); this.drainAttention(); this.refreshLife(); }
+    this.edgeHint();
     this.lifeAmbient(dt);
     if (!this.dayChecked) { this.dayChecked = true; this.refreshDay(); }
     this.moodTick(dt);
@@ -517,6 +520,108 @@ export class Director {
       }
     }
     for (const [uid, prop] of this.notes) if (!this.game.mon(uid)?.trip) { prop.life = 0; this.notes.delete(uid); }
+  }
+
+  // ---------- 跟你出門（core/outing.js）----------
+  // 家裡那邊（設定的城市）現在的天氣；沒設定就不知道
+  homeWeather() { return this.game.state.weather?.enabled ? this.weather ?? null : null; }
+
+  // 游標在螢幕左右邊緣（拖著夥伴過去放開就是帶牠出門）
+  atEdge() {
+    const st = this.stage, edge = EDGE * st.dpr;
+    return st.pointer.known && (st.pointer.x <= edge || st.pointer.x >= st.W - edge);
+  }
+
+  // 拖著夥伴靠近邊緣：說一次「放開就帶牠出門」（每次拖一次最多說一次）
+  edgeHint() {
+    const d = this.stage.drag;
+    if (!d?.held) { this.edgeHinted = false; return; }
+    if (this.edgeHinted || !this.atEdge() || !this.game.canGoOut(d.pet.uid)) return;
+    this.edgeHinted = true;
+    this.ui?.toast(`放開就帶${this.game.displayName(d.pet.mon)}出門`, { icon: cards.outingNote() });
+  }
+
+  // 帶牠出門（拖到邊緣放開、或夥伴頁的「帶牠出門」）：牠揮揮手走出螢幕，原來的地方留一張紙條
+  takeOut(uid, { from = null } = {}) {
+    const pet = this.stage.pets.get(uid), mon = this.game.mon(uid);
+    if (!this.game.canGoOut(uid)) return false;
+    if (this.ui?.minigames.active || this.evolution || pet?.inBattle || pet?.state === 'evolving') {
+      this.ui?.toast('現在不太方便出門，等一下再說');
+      return false;
+    }
+    if (pet) { pet.tripFrom = from ?? { x: pet.x, y: pet.gy }; this.walkOut(pet); } // 先走，再改狀態（不然會被當成不在桌面上直接收走）
+    this.game.goOut(uid);
+    this.audio.sfx('click');
+    this.ui?.toast(`${this.game.displayName(mon)}跟你出門了！回來時點牠留下的紙條`, { icon: cards.outingNote() });
+    return true;
+  }
+
+  walkOut(pet) {
+    pet.z = 0; pet.vx = 0; pet.vy = 0; pet.vz = 0; // 從手上放下來就直接走，不用先掉下去
+    pet.endPlay();
+    if (pet.state !== 'depart') startDepart(pet);
+  }
+
+  // 每秒：出門中的留一張紙條；已經回家的拿掉紙條；別台電腦帶出門的（同步）也走出去
+  refreshOutings() {
+    const st = this.stage, mon = this.game.outingMon();
+    this.outNotes ??= new Map();
+    for (const [uid, prop] of this.outNotes) if (uid !== mon?.uid) { prop.life = 0; this.outNotes.delete(uid); }
+    if (!mon) return;
+    const pet = st.pets.get(mon.uid);
+    if (pet) { if (!['depart', 'held', 'fall'].includes(pet.state)) this.walkOut(pet); return; }
+    if (this.outNotes.has(mon.uid) || this.game.state.settings.quiet) return;
+    const pos = mon.pos ? { x: mon.pos.x * st.W, y: mon.pos.y * st.H } : { x: st.W * 0.5, y: st.H * 0.7 };
+    // 紙條不要貼在螢幕邊邊（拖出去放開的地方），放在牠原來待的地方
+    const m = 60 * st.S;
+    const prop = new Prop(st, { kind: 'npc', x: Math.min(st.W - m, Math.max(m, pos.x)), y: Math.min(st.H - 4 * st.S, Math.max(m, pos.y)), onClick: () => this.bringBack(mon.uid) });
+    prop.img = cards.outingNote(); // Prop 的 'npc' 用外面給的圖
+    prop.outing = mon.uid;
+    st.props.push(prop);
+    this.outNotes.set(mon.uid, prop);
+  }
+
+  // 回來了（點紙條、或夥伴頁的「回來了」）
+  bringBack(uid) {
+    this.audio.resume();
+    return this.game.comeBack(uid, { weather: this.homeWeather() });
+  }
+
+  // 回家的演出：從比較近的邊邊跑回紙條的地方；有明信片就給你看，忘了帶回來的說一句話
+  onOutingBack({ uid, postcard, auto, minutes }) {
+    const st = this.stage, mon = this.game.mon(uid), note = this.outNotes?.get(uid);
+    const to = note ? { x: note.x, y: note.y } : mon?.pos ? { x: mon.pos.x * st.W, y: mon.pos.y * st.H } : { x: st.W / 2, y: st.H * 0.7 };
+    if (note) { note.life = 0; this.outNotes.delete(uid); }
+    if (!mon || this.game.state.settings.quiet || st.pets.has(uid)) return;
+    (this.returning ??= new Set()).add(uid);
+    this.sprites.get(spriteKey(mon.species, mon.form), mon.shiny).then(() => {
+      this.returning.delete(uid);
+      if (st.pets.has(uid) || !this.game.mon(uid)?.out || this.game.mon(uid).outing) return;
+      const pet = st.addPet(mon, { x: to.x, gy: to.y });
+      const side = to.x < st.W / 2 ? -1 : 1;
+      pet.x = side < 0 ? -pet.asset.w * pet.S : st.W + pet.asset.w * pet.S;
+      pet.returnTo = to;
+      pet.set('tripReturn', 999);
+      pet.runningHome = true; // 測試用：正在跑回來
+      const t0 = performance.now();
+      const arrived = () => {
+        if (pet.state === 'tripReturn' && performance.now() - t0 < 8000 && st.pets.get(uid) === pet) { setTimeout(arrived, 100); return; }
+        pet.runningHome = false;
+        if (postcard) {
+          this.audio.sfx('collect');
+          pet.set('happy', 0.8);
+          pet.showEmote('♥', 1.4);
+          this.ui?.showPostcard({ postcard });
+        } else if (auto) {
+          pet.showEmote('?', 1.6);
+          this.interrupt({ id: `outing-forgot:${uid}`, kind: 'gift' }, () => this.ui?.toast(`${this.game.displayName(mon)}：「${FORGOT_LINE}」`, { icon: cards.outingNote() }));
+        } else {
+          pet.showEmote('♪', 1.2);
+          this.ui?.toast(`${this.game.displayName(mon)}跟你出門 ${durationZh(minutes)}，好開心！（出門 ${POSTCARD_AFTER / 60_000} 分鐘以上會帶明信片回來）`);
+        }
+      };
+      arrived();
+    });
   }
 
   noteClicked(uid) {
@@ -961,8 +1066,11 @@ export class Director {
       else if (st.mode) this.setMode(null);
       else this.ui?.closeAll();
     });
-    st.on('petPicked', () => this.ui?.closeBubble());
+    st.on('petPicked', pet => { pet.pickedFrom = { x: pet.x, y: pet.gy }; this.ui?.closeBubble(); });
     st.on('petReleased', (pet, { wasUpsideDown }) => {
+      // 跟你出門：放在螢幕左右邊緣 → 帶牠出門；已經在出門路上被拎起來 → 繼續走
+      if (pet.mon.outing) { this.walkOut(pet); return; }
+      if (this.atEdge() && this.game.canGoOut(pet.uid)) { this.takeOut(pet.uid, { from: pet.pickedFrom }); return; }
       if (wasUpsideDown && this.game.evolutionStatus(pet.uid, { heldUpsideDown: true })?.ready) {
         this.startEvolution(pet, { heldUpsideDown: true });
       }
@@ -988,6 +1096,7 @@ export class Director {
       if (f && mon) mon.pos = { x: Math.min(1, Math.max(0, f.x / this.stage.W)), y: Math.min(1, Math.max(0, f.y / this.stage.H)) };
       this.stage.pets.delete(pet.uid);
       this.refreshTrips();
+      this.refreshOutings();
     });
     st.on('duelResult', (w, l) => this.game.duelResult(w.uid, l.uid));
     st.on('perched', () => { this.game.state.stats.perches++; });
@@ -1268,6 +1377,7 @@ export class Director {
   // ---------- 遊戲事件 ----------
   bindGame() {
     const g = this.game;
+    g.on('outingBack', e => this.onOutingBack(e));
     g.on('heartsUp', ({ uid, hearts: n }) => {
       const pet = this.stage.pets.get(uid);
       if (pet) {
