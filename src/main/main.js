@@ -9,7 +9,7 @@ import { createSpriteCache } from './sprites.js';
 import { createSignals } from './signals.js';
 import { trayImage } from './tray-icon.js';
 import { createWindowProbe } from './windows.js';
-import { geocodingUrl, forecastUrl, parseGeocoding, parseForecast } from '../core/weather.js';
+import { forecastUrl, parseForecast, searchPlaces } from '../core/weather.js';
 import { listSyncFiles, writeSyncFile } from './syncfiles.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -196,8 +196,8 @@ app.whenReady().then(async () => {
     return app.getLoginItemSettings().openAtLogin;
   });
   ipcMain.handle('weather:search', async (_e, city) => {
-    if (typeof city !== 'string' || !city.trim() || city.length > 40) return [];
-    return parseGeocoding(await fetchJson(geocodingUrl(city.trim())));
+    if (typeof city !== 'string' || !city.trim() || city.length > 40) return { places: [], offline: false };
+    return searchPlaces(city, fetchJson);
   });
   ipcMain.handle('weather:current', async (_e, lat, lon) => {
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;

@@ -48,3 +48,62 @@ test('天氣影響遭遇：雨天水屬性 ×2、黏美兒 ×4 以上；晴天�
   assert.ok(near(ratio('cloud', 656), 1), '多雲沒有加成');
   assert.ok(activeModifiers(ctx({ weather: 'rain' }), dex).some(m => m.id === 'weather-rain'), '氣息會列出天氣');
 });
+
+// ---------- 搜尋城市：「台中東區」要找得到 ----------
+// 假的 Open-Meteo：只認得 GeoNames 裡真的有的名字
+function fakeGeo(db, calls = []) {
+  return async url => {
+    const q = decodeURIComponent(new URL(url).searchParams.get('name'));
+    calls.push(q);
+    return { results: db[q] ?? [] };
+  };
+}
+const TAICHUNG = { name: '臺中市', admin1: '臺中市', country: '臺灣', latitude: 24.1469, longitude: 120.6839 };
+const EAST_TC = { name: '東區', admin1: '臺中市', country: '臺灣', latitude: 24.1367, longitude: 120.6947 };
+const EAST_TN = { name: '東區', admin1: '臺南市', country: '臺灣', latitude: 22.98, longitude: 120.22 };
+
+test('splitPlace 把城市和區拆開', () => {
+  assert.deepEqual(w.splitPlace('台中東區'), { city: '台中', place: '東區' });
+  assert.deepEqual(w.splitPlace('臺中市東區'), { city: '台中', place: '東區' });
+  assert.deepEqual(w.splitPlace('台中 東區'), { city: '台中', place: '東區' });
+  assert.deepEqual(w.splitPlace('桃園市中壢區'), { city: '桃園', place: '中壢區' });
+  assert.deepEqual(w.splitPlace('Zhongli, Taoyuan'), { city: 'Taoyuan', place: 'Zhongli' });
+  assert.deepEqual(w.splitPlace('中壢'), { city: null, place: null });
+  assert.deepEqual(w.splitPlace('New York'), { city: null, place: null });
+});
+
+test('台中東區：先找台中的東區，不能拿到台南的東區', async () => {
+  const calls = [];
+  const r = await w.searchPlaces('台中東區', fakeGeo({ 東區: [EAST_TN, EAST_TC] }, calls));
+  assert.equal(r.places.length, 1);
+  assert.equal(r.places[0].lat, EAST_TC.latitude);
+  assert.deepEqual(calls, ['台中東區', '臺中東區', '東區']);
+});
+
+test('東區查不到時退回城市，並說明', async () => {
+  const r = await w.searchPlaces('台中東區', fakeGeo({ 臺中市: [TAICHUNG] }));
+  assert.equal(r.places[0].name, '臺中市');
+  assert.match(r.note, /找不到「東區」，改用「台中」/);
+  // 中文都查不到時用英文名
+  const r2 = await w.searchPlaces('台中東區', fakeGeo({ Taichung: [{ ...TAICHUNG, name: 'Taichung' }] }));
+  assert.equal(r2.places[0].name, 'Taichung');
+});
+
+test('原本就查得到的不多打 API；連不上網路要分得出來', async () => {
+  const calls = [];
+  const r = await w.searchPlaces('中壢', fakeGeo({ 中壢: [{ name: '中壢', admin1: '桃園市', country: '臺灣', latitude: 24.96, longitude: 121.22 }] }, calls));
+  assert.equal(r.places.length, 1);
+  assert.deepEqual(calls, ['中壢']);
+  assert.equal(r.offline, false);
+  const off = await w.searchPlaces('台中東區', async () => null);
+  assert.deepEqual(off, { places: [], offline: true });
+  const none = await w.searchPlaces('xyzzy', fakeGeo({}));
+  assert.deepEqual(none, { places: [], offline: false });
+});
+
+test('查詢次數有上限', async () => {
+  const calls = [];
+  await w.searchPlaces('台中東區', fakeGeo({}, calls));
+  assert.ok(calls.length <= 8, calls.join());
+  assert.ok(calls.includes('Taichung'), '英文名要在上限之內');
+});
