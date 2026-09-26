@@ -16,6 +16,8 @@ export const EVENT_KINDS = {
   'caught-new': { w: 3, zh: e => `新朋友${e.data?.name ?? ''}來了` },
   'user-away': { w: 4, zh: e => `等你等了${e.data?.hours ?? '好幾'}個小時` },
   'user-back': { w: 2, zh: () => '你回來了' },
+  'cursor-surprised': { w: 2, zh: () => '坐在箭頭旁邊，它突然跑掉嚇了我一跳' },
+  'saw-peeker': { w: 2, zh: e => `看到${e.data?.name ?? '誰'}從螢幕邊邊探頭` },
 };
 
 const clampText = v => (typeof v === 'string' ? v.slice(0, 24) : undefined);

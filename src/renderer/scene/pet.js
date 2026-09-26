@@ -15,6 +15,7 @@ import { integrateKnock } from './physics.js';
 import { updateForm, drawForm } from './battleforms.js';
 import { PERCH_ACTIONS, perchBounds, perchedChoices, perchOption } from './perching.js';
 import { tag, weigh, afterChoice, tickMind } from './mindlink.js';
+import { CURSOR_ACTIONS, cursorOptions, wantsToPounce, startPounce, besideCursor } from './cursor.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
@@ -79,7 +80,7 @@ export class Pet {
   get asset() { return this.stage.sprites.peek(this.spriteKey, this.mon.shiny); }
   get S() { return this.stage.S; }
   get types() { return this.stage.dex.get(this.mon.species).types; }
-  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state] ?? PERCH_ACTIONS[this.state]; }
+  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state] ?? PERCH_ACTIONS[this.state] ?? CURSOR_ACTIONS[this.state]; }
   // 圖的腳底在螢幕上的 y（含飄浮與離地高度，不含走路的上下晃動）
   get y() { return this.gy - (this.alt + this.z) * this.S; }
   restY() { return this.gy - this.alt * this.S; }
@@ -296,6 +297,7 @@ export class Pet {
     this.flipT = Math.max(0, (this.flipT ?? 0) - dt); // 被「顛倒」倒過來
     updateForm(this, dt); // 超級進化、牽絆變身
     tickMind(this, dt); // 需求隨時間變化（每秒一次）
+    if (wantsToPounce(this, dt)) this.choose(tag([['pounce', 1, () => startPounce(this)]], 'cursor')); // 游標在附近晃：撲過去
     if (this.emote && this.t > this.emote.until) this.emote = null;
     const p = st.pointer;
     const near = p.known && Math.abs(p.x - this.x) < 260 * (S / 2) && Math.abs(p.y - this.y) < 300 * (S / 2);
@@ -341,8 +343,9 @@ export class Pet {
       }
       case 'follow': {
         if (!p.known || done) { this.set('idle', 2); break; }
-        // 走到游標下方一點點的地方
-        if (this.moveTo(p.x, p.y + 10 * S + this.alt * S, WALK_SPEED * S * 1.8, dt)) this.facing = p.x > this.x ? 1 : -1;
+        // 走到游標旁邊（不停在游標正下方：那樣會蓋住游標、把你的點擊吃掉）
+        const t = besideCursor(this);
+        if (this.moveTo(t.x, t.y + this.alt * S, WALK_SPEED * S * 1.8, dt)) this.facing = p.x > this.x ? 1 : -1;
         break;
       }
       case 'chase':
@@ -575,6 +578,7 @@ export class Pet {
       tag(moveOptions(this, others), 'train'), // 練習招式、切磋
       tag(groupOptions(this, others.filter(o => !o.group)), 'social'), // 一群一起玩、好朋友之間
       tag(perchOption(this), 'explore'), // 跳到其他視窗的標題列上
+      tag(cursorOptions(this), 'cursor'), // 追游標、坐在游標旁邊
     );
     this.choose(choices);
   }

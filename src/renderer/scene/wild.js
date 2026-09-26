@@ -95,6 +95,85 @@ export class Spot {
   }
 }
 
+// ---------- 探頭：野生寶可夢從螢幕左右邊緣只露出半個身體 ----------
+// 游標慢慢靠近、停在牠旁邊 1.5 秒 → 牠走進桌面（接著是一般的遭遇）；游標衝太快 → 牠縮回去跑掉。
+// 探頭的寶可夢點不到（hit 永遠是 false），所以不會讓視窗攔截滑鼠。
+export const PEEK_NEAR = 80; // CSS 像素
+export const PEEK_SLOW = 250; // CSS 像素／秒：比這快就會嚇跑
+export const PEEK_WAIT = 1.5; // 秒
+export class PeekSpot extends Spot {
+  constructor(stage, plan, opts) {
+    super(stage, plan, opts);
+    const S = stage.S;
+    this.side = Math.random() < 0.5 ? -1 : 1; // 左邊或右邊
+    this.x = this.side < 0 ? 0 : stage.W;
+    this.floats = stage.dex.floats(plan.speciesId);
+    this.groundY = stage.H * (0.35 + Math.random() * 0.45);
+    this.baseY = this.y = this.groundY - (this.floats ? 50 * S : 0);
+    this.calmT = 0;
+    this.state = 'peek'; // peek → come（走進來）或 scared（縮回去）
+    this.show = 0; // 露出多少（0–1）
+  }
+
+  get asset() { return this.stage.sprites.peek(spriteKey(this.plan.speciesId, this.plan.form), this.plan.shiny); }
+  // 走進來以後站的位置
+  get enterX() { return this.side < 0 ? 90 * this.stage.S : this.stage.W - 90 * this.stage.S; }
+
+  // 看得到的那一半
+  rect() {
+    const a = this.asset, S = this.stage.S, w = a.w * S, h = a.h * S;
+    const vis = w * 0.5 * this.show;
+    return { x: this.side < 0 ? 0 : this.stage.W - vis, y: Math.round(this.y - h), w: vis, h };
+  }
+
+  hit() { return false; }
+
+  update(dt) {
+    const st = this.stage, S = st.S, p = st.pointer;
+    this.t += dt;
+    this.alpha = 1;
+    if (this.state === 'scared') {
+      this.show = Math.max(0, this.show - dt * 4);
+      if (this.show <= 0) this.gone = true;
+      return;
+    }
+    if (this.state === 'come') return;
+    // 一下探出來、一下縮回去一點
+    const target = 0.55 + Math.sin(this.t * 1.3) * 0.2;
+    this.show += (target - this.show) * Math.min(1, dt * 3);
+    this.y = this.baseY + (this.floats ? Math.round(Math.sin(this.t * 2) * 2) * S : 0);
+    if (this.t > this.life) { this.state = 'scared'; return; } // 等太久：自己走掉
+    if (!p.known) { this.calmT = Math.max(0, this.calmT - dt); return; }
+    const r = this.rect();
+    const cx = Math.max(r.x, Math.min(r.x + r.w, p.x)), cy = Math.max(r.y, Math.min(r.y + r.h, p.y));
+    const d = Math.hypot(p.x - cx, p.y - cy) / st.dpr;
+    if (d > PEEK_NEAR) { this.calmT = Math.max(0, this.calmT - dt); return; }
+    if ((st.pointerSpeed?.() ?? 0) / st.dpr > PEEK_SLOW) {
+      this.state = 'scared';
+      st.fire('peekScared', this);
+      return;
+    }
+    this.calmT += dt;
+    if (this.calmT >= PEEK_WAIT) {
+      this.state = 'come';
+      st.fire('peekCome', this);
+    }
+  }
+
+  draw(ctx) {
+    const a = this.asset, S = this.stage.S;
+    if (!a || this.show <= 0) return;
+    const w = a.w * S, vis = w * 0.5 * this.show;
+    // 身體的一半在螢幕外面，臉朝桌面（圖本來是朝左的）
+    blit(ctx, a.canvas, this.side < 0 ? vis - w : this.stage.W - vis, this.y - a.h * S, S, { flipX: this.side < 0 });
+    if (this.state === 'peek' && (this.t % 4) < 1.2) {
+      const q = art.emotes[this.calmT > 0 ? '♪' : '?'];
+      const hx = this.side < 0 ? Math.max(q.width * S, vis / 2) : this.stage.W - Math.max(q.width * S, vis / 2);
+      blit(ctx, q, hx - (q.width * S) / 2, this.y - (a.h + q.height + 3) * S, S);
+    }
+  }
+}
+
 // ---------- 野生寶可夢 ----------
 export class WildMon {
   constructor(stage, encounter, spot) {
@@ -120,6 +199,16 @@ export class WildMon {
     this.eating = null;
     this.gone = false;
     this.alpha = 1;
+    if (spot instanceof PeekSpot) {
+      // 探頭的：從螢幕邊緣走進來
+      this.walkFrom = spot.side < 0 ? -(a.w * S) / 2 : stage.W + (a.w * S) / 2;
+      this.walkTo = spot.enterX;
+      this.x = this.walkFrom;
+      this.facing = spot.side < 0 ? 1 : -1;
+      this.groundY = Math.max((a.h + this.alt + 8) * S, Math.min(stage.H - 3 * S, spot.groundY));
+      this.y = this.restY();
+      this.state = 'walkIn';
+    }
     if (encounter.shiny) { stage.fx.sparkles(this.x, this.y - 30 * S, S, 16, 40); stage.fx.stars(this.x, this.y - 30 * S, S, 8); }
   }
 
@@ -157,6 +246,13 @@ export class WildMon {
       st.fx.sparkles(r.x + Math.random() * r.w, r.y + Math.random() * r.h, S, 1, 3);
     }
     switch (this.state) {
+      case 'walkIn': {
+        const k = Math.min(1, this.stateT / 1.2);
+        this.x = this.walkFrom + (this.walkTo - this.walkFrom) * k;
+        this.y = this.restY() - (Math.floor(this.stateT * 6) % 2) * S;
+        if (k >= 1) this.set('idle');
+        break;
+      }
       case 'emerge': {
         // 從氣息點跳出來
         const k = Math.min(1, this.stateT / 0.5);

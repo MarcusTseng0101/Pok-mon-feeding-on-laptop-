@@ -1,11 +1,11 @@
 // 導演：把遊戲規則（core/）和舞台演出（scene/）、介面（ui/）串起來。
 import { Pet } from './scene/pet.js';
 import { watchEating } from './scene/behaviors.js';
-import { Spot, WildMon, ThrownBall, Prop } from './scene/wild.js';
+import { Spot, PeekSpot, WildMon, ThrownBall, Prop } from './scene/wild.js';
 import { EggProp } from './scene/egg.js';
 import { REFRESH_MS } from '../core/weather.js';
 import { ACHIEVEMENTS } from '../core/achievements.js';
-import { planSpawn, nextSpawnDelay, shouldDropCell, timeOfDay } from '../core/encounter.js';
+import { planSpawn, nextSpawnDelay, shouldDropCell, timeOfDay, shouldPeek } from '../core/encounter.js';
 import { ringBonus, catchProbability, BALLS } from '../core/capture.js';
 import { shinyChance } from '../core/shiny.js';
 import { spriteKey, inheritForm } from '../core/forms.js';
@@ -26,6 +26,7 @@ export class Director {
     this.enc = null; // 目前的遭遇 { wild(core), entity, deadline, throwing }
     this.lure = null; // { puff, flavor, until, prop }
     this.evolution = null;
+    this.spawnKinds = []; // 最近幾次是一般氣息點還是探頭
     this.nextSpawnAt = Date.now() + (dev ? 5000 : 60_000); // 開啟後一分鐘內先來一隻
     this.bindStage();
     this.bindGame();
@@ -239,7 +240,13 @@ export class Director {
     await this.sprites.get(spriteKey(plan.speciesId, plan.form), plan.shiny); // 先載好，點下去才不會看到替代圖
     if (this.stage.spot || this.enc) return;
     const life = this.dev ? 60 : plan.special ? 300 : 180;
-    this.stage.spot = new Spot(this.stage, plan, { life });
+    // 每 3 次出現最多 1 次用「探頭」的方式（同一個出現時間，不會變多）
+    const peek = forcePlan ? forcePlan.spot === 'peek' : shouldPeek(this.spawnKinds, plan, Math.random);
+    this.spawnKinds = [...this.spawnKinds, peek ? 'peek' : 'spot'].slice(-10);
+    if (peek) {
+      this.stage.spot = new PeekSpot(this.stage, { ...plan, spot: 'peek' }, { life });
+      this.noticePeeker(this.stage.spot);
+    } else this.stage.spot = new Spot(this.stage, plan, { life });
     if (plan.special) this.ui?.toast('好像有什麼不尋常的氣息…', { icon: art.sparkle });
     if (shouldDropCell(this.game.state, this.rng)) this.dropCell();
   }
@@ -332,6 +339,9 @@ export class Director {
       }
     });
     st.on('spotGone', () => { if (!this.enc) this.scheduleNext(); });
+    // 探頭：慢慢靠近 → 走進來；太快 → 嚇跑（還沒開始遭遇，所以不會中斷連鎖）
+    st.on('peekCome', spot => { if (this.stage.spot === spot && !this.enc) this.beginEncounter(spot); });
+    st.on('peekScared', () => this.ui?.toast('嚇跑了…下次慢慢靠近牠試試'));
     st.on('bond', (a, b, n) => {
       this.game.bond(a.uid, b.uid, n);
       this.game.playedTogether(a.uid, b.uid); // 兩邊都記得跟誰玩過
@@ -425,6 +435,18 @@ export class Director {
     }
     this.petsReact(entity, wild.shiny ? '✦' : '!');
     this.ui?.showEncounter(this.enc);
+  }
+
+  // 有野生寶可夢從邊邊探頭：離牠最近的夥伴會注意到（看過去、記住）
+  noticePeeker(spot) {
+    const pets = [...this.stage.pets.values()].filter(p => p.free && !p.partner && !p.perch);
+    const pet = pets.sort((a, b) => Math.abs(a.x - spot.x) - Math.abs(b.x - spot.x))[0];
+    if (!pet) return;
+    pet.facing = spot.side < 0 ? -1 : 1;
+    pet.set('look', 2.5);
+    pet.showEmote('?', 1.5);
+    pet.thought = { key: 'explore.peeker', text: '外面好像有誰在看？', cat: 'explore', at: pet.t };
+    this.game.remember(pet.uid, { k: 'saw-peeker', data: { name: this.dex.name(spot.plan.speciesId) } });
   }
 
   // 夥伴們看向野生寶可夢／替捕獲歡呼／看牠離開
