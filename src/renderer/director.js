@@ -439,11 +439,13 @@ export class Director {
 
   // 有野生寶可夢從邊邊探頭：離牠最近的夥伴會注意到（看過去、記住）
   noticePeeker(spot) {
-    const pets = [...this.stage.pets.values()].filter(p => p.free && !p.partner && !p.perch);
+    const pets = [...this.stage.pets.values()].filter(p => !p.leaving && p.state !== 'held' && p.state !== 'evolving');
     const pet = pets.sort((a, b) => Math.abs(a.x - spot.x) - Math.abs(b.x - spot.x))[0];
     if (!pet) return;
-    pet.facing = spot.side < 0 ? -1 : 1;
-    pet.set('look', 2.5);
+    if (pet.free && !pet.partner && !pet.perch) { // 正在忙的就不轉頭，但一樣會注意到、記住
+      pet.facing = spot.side < 0 ? -1 : 1;
+      pet.set('look', 2.5);
+    }
     pet.showEmote('?', 1.5);
     pet.thought = { key: 'explore.peeker', text: '外面好像有誰在看？', cat: 'explore', at: pet.t };
     this.game.remember(pet.uid, { k: 'saw-peeker', data: { name: this.dex.name(spot.plan.speciesId) } });
