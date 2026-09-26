@@ -177,7 +177,7 @@ export class Director {
       if (!st.pointer.known || st.pointerStill < 8 || [...st.pets.values()].some(p => p.state === 'cursorSit')) return;
       // 最親近的那隻（正在忙的就等下一次）
       const p = [...st.pets.values()].filter(q => !q.leaving && !q.perch && !q.inBattle).sort((a, b) => b.mon.affection - a.mon.affection)[0];
-      if (p?.free && !p.partner) { p.cursorSit = { seated: false, side: null }; p.set('cursorSit', 60); this.companion = p.uid; }
+      if (p?.free) { p.endPlay(); p.cursorSit = { seated: false, side: null }; p.set('cursorSit', 60); this.companion = p.uid; } // 正在跟別隻玩也先放下
     }
   }
 

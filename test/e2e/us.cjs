@@ -60,8 +60,10 @@ async function test({ page, shot }, check) {
     for (const p of stage.pets.values()) p.set('idle', 3);
     game.setMood('stressed');
     director.moodT = 100;
+    const dbg = { still: stage.pointerStill, known: stage.pointer.known, states: [...stage.pets.values()].map(p => [p.mon.affection, p.state, p.free]) };
     director.moodTick(0.1);
     const uid = director.companion;
+    if (!uid) return { dbg };
     const t0 = Date.now();
     while (Date.now() - t0 < 12000 && stage.pets.get(uid)?.cursorSit?.seated !== true) await new Promise(r => setTimeout(r, 100));
     const p = stage.pets.get(uid);
