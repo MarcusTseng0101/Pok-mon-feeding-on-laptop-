@@ -239,7 +239,7 @@ export class Stage {
     const dt = Math.min(0.1, (now - (this.lastFrame ?? now)) / 1000);
     this.lastFrame = now;
     // 沒什麼在動的時候 30fps 就夠了，省電
-    const busy = now < this.busyUntil || this.drag?.held || this.mode || this.balls.length || this.wild;
+    const busy = now < this.busyUntil || this.drag?.held || this.mode || this.balls.length || this.wild || this.minigame;
     this.accum = (this.accum ?? 0) + dt;
     if (!busy && now - this.lastDraw < 30) return;
     const step = this.accum;
@@ -264,6 +264,7 @@ export class Stage {
     this.decals = this.decals.filter(d => d.t < d.life);
     this.fx.update(dt);
     this.updateFeeding(dt);
+    this.minigame?.update(dt); // 小遊戲（ui/minigames/host.js）
     this.refreshInteractive();
   }
 
@@ -293,6 +294,7 @@ export class Stage {
       blit(ctx, d.img, d.x - (d.img.width * S) / 2, d.y - d.img.height * S, S, { alpha });
     }
     for (const p of this.props) p.draw(ctx);
+    this.minigame?.active?.ctl?.drawUnder?.(ctx); // 小遊戲畫在夥伴後面的東西（樹果樹…）
     const pets = [...this.pets.values()].sort((a, b) => this.drawOrder(a) - this.drawOrder(b));
     // 地上的夥伴畫在氣息點後面（看起來像站在草叢後），飄浮的畫在前面
     for (const p of pets) if (p.state !== 'held' && !p.floats) p.draw(ctx);
@@ -302,6 +304,7 @@ export class Stage {
     if (this.mode?.type === 'aim' && this.wild?.visible && this.wild.state === 'idle') this.wild.drawRing(ctx, this.mode.ringColor ?? '#7ee06a');
     for (const b of this.balls) b.draw(ctx);
     for (const p of pets) if (p.state === 'held') p.draw(ctx);
+    this.minigame?.draw(ctx);
     this.fx.draw(ctx, S);
     if (this.mode?.type === 'feed' && this.pointer.known) {
       const img = art.puff(this.mode.puff);

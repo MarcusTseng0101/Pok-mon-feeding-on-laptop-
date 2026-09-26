@@ -2,7 +2,7 @@
 // 所有可以點的元素都要有 .hit，舞台才知道游標在介面上時要接收滑鼠。
 import * as art from '../gfx/art.js';
 import { makeCanvas } from '../gfx/pixel.js';
-import { hearts, puffName, FLAVORS, TIER_ORDER, TIERS, FLAVOR_ZH, TASTE_ZH, puffKey, MAX } from '../../core/amie.js';
+import { hearts, puffName, FLAVORS, TIER_ORDER, TIERS, FLAVOR_ZH, TASTE_ZH, puffKey, MAX, BERRY_ZH } from '../../core/amie.js';
 import { BALLS, BALL_ORDER } from '../../core/capture.js';
 import { activeModifiers, FLAVOR_TYPES, RATES } from '../../core/encounter.js';
 import { requirement } from '../../core/evolution.js';
@@ -14,6 +14,8 @@ import { FORMS, spriteKey, formName, formsOf, defaultForm } from '../../core/for
 import { habitNames } from '../scene/habits.js';
 import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
 import { transform as transformForm, revert as revertForm } from '../scene/battleforms.js';
+import { MinigameHost } from './minigames/host.js';
+import { GAMES, GAME_ORDER } from './minigames/games.js';
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
@@ -36,6 +38,7 @@ export class UI {
     this.selectedDex = null;
     this.bubblePet = null;
     this.build();
+    this.minigames = new MinigameHost(this);
     stage.uiHit = (x, y) => this.hitTest(x, y);
     game.on('change', ({ event }) => {
       if (['tick', 'bag', 'party', 'caught', 'evolved', 'fed', 'heartsUp', 'dexSeen', 'cell', 'settings'].includes(event)) this.refreshSoon();
@@ -50,6 +53,7 @@ export class UI {
     this.launcher.onclick = () => this.toggleMenu();
     this.menu = h(`<div class="menu hit pix hidden">
       <button data-open="party">夥伴</button><button data-open="dex">圖鑑</button>
+      <button data-open="play">一起玩</button>
       <button data-open="bag">背包</button><button data-open="aura">氣息</button>
       <button data-open="settings">設定</button><button data-act="quiet">勿擾模式</button>
     </div>`);
@@ -141,6 +145,7 @@ export class UI {
   }
 
   open(name) {
+    this.minigames?.closeMinigame('panel'); // 小遊戲玩到一半打開別的視窗：先結束遊戲
     this.toggleMenu(false);
     this.closePicker();
     this.panel = name;
@@ -177,7 +182,7 @@ export class UI {
   }
 
   renderPanel() {
-    const titles = { party: '夥伴', dex: '卡洛斯圖鑑', bag: '背包', aura: '氣息', settings: '設定' };
+    const titles = { party: '夥伴', dex: '卡洛斯圖鑑', play: '一起玩', bag: '背包', aura: '氣息', settings: '設定' };
     this.win.querySelector('.title').textContent = titles[this.panel];
     const body = this.win.querySelector('.body');
     const scroll = body.querySelector('.scroll')?.scrollTop;
@@ -383,6 +388,30 @@ export class UI {
     return `<div class="forms"><div class="hint">${label}：見過 ${seen.length}・抓到 ${caught.length}／${all.length}${f.visible ? '' : '（進化成彩粉蝶才看得到花紋）'}</div><div class="chips">${chips}</div></div>`;
   }
 
+  // ---------- 一起玩（小遊戲） ----------
+  playPartner() {
+    return this.game.mon(this.playUid) ?? this.game.outMons()[0] ?? this.game.state.mons[0] ?? null;
+  }
+
+  render_play() {
+    const mons = this.game.state.mons;
+    if (!mons.length) return h('<p class="empty">還沒有夥伴。</p>');
+    const partner = this.playPartner();
+    const berries = this.game.state.bag.berries;
+    const root = h(`<div class="play">
+      <label class="partner">和誰一起玩：<select data-partner>${mons.map(m => `<option value="${m.uid}" ${m.uid === partner?.uid ? 'selected' : ''}>${esc(this.game.displayName(m))}${m.out ? '' : '（在球裡）'}</option>`).join('')}</select></label>
+      <div class="games scroll"></div>
+      <p class="hint">樹果：${Object.entries(berries).map(([b, n]) => `${BERRY_ZH[b]} ${n}`).join('・')}</p></div>`);
+    const list = root.querySelector('.games');
+    for (const name of GAME_ORDER) {
+      const g = GAMES[name];
+      const why = this.minigames.blocked(name, partner?.uid);
+      list.append(h(`<div class="game"><div><b>${g.title}</b><p class="hint">${esc(g.desc)}</p>${why ? `<p class="why">${esc(why)}</p>` : ''}</div>
+        <button class="primary" data-play="${name}" ${why ? 'disabled' : ''}>玩</button></div>`));
+    }
+    return root;
+  }
+
   habitatOf(id) {
     return { 716: 'rock', 717: 'sky', 718: 'rock', 719: 'rock', 720: 'ring', 721: 'puddle' }[id] ?? this.dex.habitat(id);
   }
@@ -393,12 +422,20 @@ export class UI {
     const root = h(`<div class="bag"><h4>精靈球</h4><div class="balls"></div>
       <p class="hint">精靈球每 10 分鐘補充 1 顆（最多補到 30）。抓到新的寶可夢也會拿到獎勵。</p>
       <h4>寶可夢泡芙</h4><div class="puffs"></div><p class="hint puffhint">點選泡芙可以放在桌面上當誘餌（持續 10 分鐘）。</p>
+      <h4>樹果</h4><div class="balls berries"></div><p class="hint">在「一起玩」摘樹果，拿來做泡芙。</p>
+      ${bag.items.diancite ? '<h4>重要物品</h4><div class="item">✦ 蒂安希進化石</div>' : ''}
       ${this.game.state.zygardeCells ? `<h4>其他</h4><div class="cells"></div>` : ''}</div>`);
     const balls = root.querySelector('.balls');
     for (const b of BALL_ORDER) {
       const el = h(`<div class="item"><span>${BALLS[b].zh}</span><b>×${bag.balls[b]}</b></div>`);
       el.prepend(pixelImg(art.balls[b], 2));
       balls.append(el);
+    }
+    const berryBox = root.querySelector('.berries');
+    for (const [b, n] of Object.entries(bag.berries)) {
+      const el = h(`<div class="item"><span>${BERRY_ZH[b]}</span><b>×${n}</b></div>`);
+      el.prepend(pixelImg(art.berries[b], 2));
+      berryBox.append(el);
     }
     const puffs = root.querySelector('.puffs');
     puffs.append(h('<span></span>'));
@@ -485,6 +522,7 @@ export class UI {
       if (this.game.state.dex[id]?.seen) { this.selectedDex = id; this.dexForm = null; this.audio.sfx('click'); this.renderPanel(); }
       return;
     }
+    if (t.dataset.play) { this.minigames.open(t.dataset.play, this.playPartner()?.uid); return; }
     if (t.dataset.dexform) { this.dexForm = t.dataset.dexform; this.audio.sfx('click'); this.renderPanel(); return; }
     if (t.dataset.style) {
       const puff = this.cheapestPuff();
@@ -544,6 +582,7 @@ export class UI {
     }
     if (t.dataset.login !== undefined) this.api.setLoginItem(t.checked);
     if (t.matches('.nick input')) this.game.rename(t.dataset.uid, t.value);
+    if (t.dataset.partner !== undefined) { this.playUid = t.value; this.renderPanel(); }
     this.onSettings?.();
   }
 
@@ -554,6 +593,7 @@ export class UI {
 
   toggleQuiet(force) {
     const q = force ?? !this.game.state.settings.quiet;
+    if (q) this.minigames.closeMinigame('quiet');
     this.game.setSetting('quiet', q);
     if (q && this.director.enc) this.director.runAway();
     this.director.syncPets();

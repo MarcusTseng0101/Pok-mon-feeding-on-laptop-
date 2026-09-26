@@ -8,7 +8,8 @@
 import * as art from '../gfx/art.js';
 import { blit, paint } from '../gfx/pixel.js';
 import { meet } from './behaviors.js';
-import { knockFrom } from './physics.js';
+import { knockFrom, knock } from './physics.js';
+import { duelHitChance } from '../../core/minigames.js';
 import { transform, endDuelForms } from './battleforms.js';
 
 const T = art.TYPE_COLORS;
@@ -308,8 +309,14 @@ export const MOVE_ACTIONS = {
           const dir = to.x > back.x ? 1 : -1;
           const tx = to.x - dir * reach, tgy = isPet(m.target) ? m.target.gy : back.gy;
           const k = t < T1 ? t / T1 : Math.max(0, 1 - (t - T1) / (pet.dur - T1));
-          pet.x = back.x + (tx - back.x) * k;
-          pet.gy = back.gy + (tgy - back.gy) * k;
+          // 只加上「這一幀衝刺位移的變化量」，不直接設定位置：
+          // 這樣碰撞推開、擊退的效果會留著，結束時也不會瞬間跳回起點（跳回去可能正好壓在別隻身上）
+          const ox = (tx - back.x) * k, oy = (tgy - back.gy) * k;
+          const off = (m.off ??= { x: 0, y: 0 });
+          pet.x += ox - off.x;
+          pet.gy += oy - off.y;
+          off.x = ox;
+          off.y = oy;
           if (def.jump) pet.z = t < T1 ? Math.sin((t / T1) * Math.PI * 0.9) * 40 : 0;
           if (def.trail && t < T1 && Math.random() < dt * 40) burst(pet, center(pet).x, center(pet).y, c, { n: 1, speed: 10, g: -10, life: 0.4 });
           if (def.sneak && t < T1) pet.moveAlpha = 0.35; else pet.moveAlpha = 1;
@@ -368,7 +375,8 @@ export const MOVE_ACTIONS = {
       if (done) {
         pet.z = 0;
         pet.moveAlpha = 1;
-        if (def.kind === 'contact') { pet.x = m.from.x; pet.gy = m.from.gy; }
+        if (def.kind === 'contact' && m.off) { pet.x -= m.off.x; pet.gy -= m.off.y; } // 收回還沒走完的衝刺位移
+        pet.clamp();
         const end = m.onEnd;
         pet.moveCtx = null;
         if (end) end(); else pet.set('idle', rnd(1, 2));
@@ -460,6 +468,17 @@ function nextTurn(d) {
   if (atk.state !== 'duel' || def.state !== 'duel') { endDuel(d); return; }
   d.turn++;
   const moves = movesetFor(atk.stage.dex, atk.mon.species);
+  // 超級特訓的成果：訓練得比對方多，比較容易打中（最多 ±15%）
+  if (Math.random() > duelHitChance(atk.mon.training, def.mon.training)) {
+    const S = def.S, side = Math.random() < 0.5 ? -1 : 1;
+    def.hopT = 0.35;
+    knock(def, side * 220 * S, 0);
+    def.stage.fx.text(def.head().x, def.head().y - 18 * S, '躲開了！', S, '#8ec5ff');
+    useMove(atk, pick(moves), { x: def.x - side * 30 * S, y: def.gy - (def.asset.h * S) / 2 }, { // 打到剛剛站的地方旁邊
+      onEnd: () => { if (d.over) { atk.set('idle', 1); return; } atk.set('duel', 30); d.cool = 0.45; },
+    });
+    return;
+  }
   useMove(atk, pick(moves), def, {
     onHit: eff => { react(def, eff); maybeBondForm(d, atk, eff); },
     onEnd: () => { if (d.over) { atk.set('idle', 1); return; } atk.set('duel', 30); d.cool = 0.45; },

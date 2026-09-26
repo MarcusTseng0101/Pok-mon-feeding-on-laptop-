@@ -25,7 +25,7 @@ async function main() {
   const director = new Director({ stage, game, dex, sprites, audio, api, rng, dev: DEV });
   const ui = new UI({ root: document.getElementById('ui'), game, dex, sprites, audio, stage, director, api, dev: DEV });
   director.ui = ui;
-  window.__kalos = { game, stage, director, ui, audio, dex }; // 方便除錯
+  window.__kalos = { game, stage, director, ui, audio, dex, api }; // 方便除錯
 
   // ---- 存檔：有變動就在 3 秒內寫入，另外每 30 秒保底一次 ----
   let dirty = false;
@@ -53,7 +53,7 @@ async function main() {
 
   api.on('command', cmd => {
     if (cmd === 'menu') ui.toggleMenu(true);
-    else if (['party', 'dex', 'bag', 'aura', 'settings'].includes(cmd)) ui.open(cmd);
+    else if (['party', 'dex', 'play', 'bag', 'aura', 'settings'].includes(cmd)) ui.open(cmd);
     else if (cmd === 'toggleMute') { game.setSetting('muted', !game.state.settings.muted); }
     else if (cmd === 'toggleQuiet') ui.toggleQuiet();
   });

@@ -86,11 +86,23 @@ export function resolveCollisions(stage, dt) {
       nx /= len; ny /= len;
       const depth = 1 - nd;
       const ma = mass(a), mb = mass(b), sum = ma + mb;
-      // 輕的被推比較多；一幀只修正一部分，看起來是軟軟地擠開
-      const push = Math.min(1, depth) * 0.6;
-      a.x -= nx * rx * push * (mb / sum); a.gy -= ny * ry * push * (mb / sum);
-      b.x += nx * rx * push * (ma / sum); b.gy += ny * ry * push * (ma / sum);
+      // 輕的被推比較多；一般碰到只修正一部分，看起來是軟軟地擠開。
+      // 疊得很深（招式、互動剛結束時）就一次推開，不要讓人看到穿模好幾幀
+      const push = Math.min(1, depth) * (nd < 0.6 ? 1 : 0.6);
+      const wa = { x: -nx * rx * push * (mb / sum), y: -ny * ry * push * (mb / sum) };
+      const wb = { x: nx * rx * push * (ma / sum), y: ny * ry * push * (ma / sum) };
+      const a0 = { x: a.x, y: a.gy }, b0 = { x: b.x, y: b.gy };
+      a.x += wa.x; a.gy += wa.y;
+      b.x += wb.x; b.gy += wb.y;
       a.clamp(); b.clamp(); // 被擠到螢幕邊邊就停在邊上
+      // 被邊緣擋住、推不動的份量，改由另一隻多退一點（不然貼著邊的兩隻會卡在一起好幾幀）
+      const lostA = { x: wa.x - (a.x - a0.x), y: wa.y - (a.gy - a0.y) };
+      const lostB = { x: wb.x - (b.x - b0.x), y: wb.y - (b.gy - b0.y) };
+      if (lostA.x || lostA.y || lostB.x || lostB.y) {
+        b.x -= lostA.x; b.gy -= lostA.y;
+        a.x -= lostB.x; a.gy -= lostB.y;
+        a.clamp(); b.clamp();
+      }
 
       // 相對速度：被丟出去的（fall）用 vx/vy，其他用擊退速度＋這一幀的移動
       const va = velocity(a), vb = velocity(b);

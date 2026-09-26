@@ -5,6 +5,7 @@ const { run } = require('./lib.cjs');
 run('physics', async ({ page }, check) => {
   const r = await page.evaluate(async () => {
     const { game, director, stage } = window.__kalos;
+    const M = await import('/src/renderer/scene/moves.js');
     game.chooseStarter(653);
     for (const id of [713, 659, 700, 701, 668]) { const m = game.createMon(id, {}); m.affection = 200; m.out = true; game.state.mons.push(m); }
     director.syncPets();
@@ -57,6 +58,29 @@ run('physics', async ({ page }, check) => {
     }
     out.deep = deep;
     out.oob = oob;
+    // 貼著螢幕邊緣疊在一起：推不動的那一邊由另一隻多退，1 幀內分開
+    reset();
+    const [e1, e2] = [P[653], P[659]];
+    for (const q of pets) if (q !== e1 && q !== e2) { q.x = 200; q.gy = 200 + Math.random() * 300; }
+    out.edge = {};
+    for (const [name, place] of [['bottom', b => [600, b.y1, 601, b.y1 - 3]], ['corner', b => [b.x0, b.y1, b.x0 + 3, b.y1 - 3]], ['right', b => [b.x1, 400, b.x1, 404]]]) {
+      const [x1, y1, x2, y2] = place(e1.bounds());
+      e1.x = x1; e1.gy = y1; e2.x = x2; e2.gy = y2;
+      let f = 0;
+      for (; f < 30 && nd(e1, e2) < 0.95; f++) stage.update(0.05);
+      out.edge[name] = f;
+    }
+    // 靠近上緣使出會跳起來的招式（飛身重壓）：頭不能跑出螢幕
+    reset();
+    const hw = P[701], tg = P[668];
+    let topOut = 0;
+    for (let rep = 0; rep < 3; rep++) {
+      hw.set('idle', 99); tg.set('idle', 99);
+      hw.x = 400; hw.gy = hw.bounds().y0; tg.x = 520; tg.gy = hw.gy;
+      M.useMove(hw, 'flyingpress', tg);
+      for (let f = 0; f < 40; f++) { stage.update(0.05); if (hw.rect().y < -3) topOut++; }
+    }
+    out.topOut = topOut;
     return out;
   });
   console.log(JSON.stringify(r));
@@ -65,4 +89,6 @@ run('physics', async ({ page }, check) => {
   check(r.heavyHitsLight > r.lightHitsHeavy * 2, `重的撞輕的（${Math.round(r.heavyHitsLight)}px）應該遠大於輕的撞重的（${Math.round(r.lightHitsHeavy)}px）`);
   check(r.deep === 0, `自由活動時深度重疊 ${r.deep} 幀`);
   check(r.oob === 0, `跑出螢幕 ${r.oob} 次`);
+  for (const [k, f] of Object.entries(r.edge)) check(f <= 2, `貼著${k}邊疊在一起，${f} 幀才分開`);
+  check(r.topOut === 0, `在上緣跳起來，頭跑出螢幕 ${r.topOut} 幀`);
 });

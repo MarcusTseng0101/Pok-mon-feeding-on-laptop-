@@ -431,6 +431,14 @@ export class Pet {
       if (this.x > b.x1) { this.x = b.x1; this.vx = -Math.abs(this.vx) * 0.5; }
       if (this.gy < b.y0) { this.gy = b.y0; this.vy = Math.abs(this.vy) * 0.5; }
       if (this.gy > b.y1) { this.gy = b.y1; this.vy = -Math.abs(this.vy) * 0.5; }
+      // 跳起來（招式、習性）時頭不能超出螢幕上緣：靠近上緣就跳低一點；
+      // 動作本身的上下晃動（嚇一跳、蹦蹦跳）也一樣，整隻往下移一點
+      if (this.z > 0) {
+        const top = this.rect().y;
+        if (top < 0) this.z = Math.max(0, this.z + top / S);
+      }
+      const headY = this.rect().y;
+      if (headY < 0) this.gy = Math.min(b.y1, this.gy - headY);
     }
     if (this.leaving) this.alpha = Math.max(0, this.alpha - dt * 3);
   }
