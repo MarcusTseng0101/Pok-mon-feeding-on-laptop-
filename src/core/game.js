@@ -12,6 +12,7 @@ import { newlyUnlocked, pendingRewards } from './achievements.js';
 import { canonicalForm, inheritForm, defaultForm, FORMS } from './forms.js';
 import { createMind } from './mind.js';
 import { remember } from './memory.js';
+import * as trips from './trips.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
 
 // 夥伴之間的感情（0–255），到這些門檻時通知畫面
@@ -568,6 +569,7 @@ export class Game {
       training: normalizeTraining(null),
       mind: createMind(this.rng),
       memory: [],
+      trip: null,
     };
   }
 
@@ -611,6 +613,54 @@ export class Game {
     if (!mon) return;
     mon.fullness = Math.min(amie.MAX, Math.max(0, mon.fullness + fullness));
     mon.enjoyment = Math.min(amie.MAX, Math.max(0, mon.enjoyment + enjoyment));
+  }
+
+  // ---- 旅行（core/trips.js）----
+  tripStatus(uid) { return trips.tripStatus(this.mon(uid), this.now()); }
+  canDepart(uid) { return trips.canDepart(this.state, uid); }
+  // 在家、在桌面上的（旅行中的不在桌面上；回來了還沒收明信片的會在桌面上）
+  homeMons() { return this.outMons().filter(m => trips.tripStatus(m, this.now()) !== 'away'); }
+
+  depart(uid, { curious = 0.5 } = {}) {
+    if (!this.canDepart(uid)) return null;
+    const mon = this.mon(uid);
+    mon.trip = trips.planTrip(mon, { types: this.dex.get(mon.species).types, curious }, this.rng, this.now());
+    this.emit('tripStart', { uid, trip: mon.trip });
+    return mon.trip;
+  }
+
+  // 回來了：收下明信片、禮物、日記。結算過的（或還沒回來的）回傳 null
+  settleTrip(uid) {
+    const mon = this.mon(uid);
+    if (!mon?.trip || trips.tripStatus(mon, this.now()) !== 'back') return null;
+    const trip = mon.trip;
+    if (this.state.tripsDone.includes(trip.id)) { mon.trip = null; return null; }
+    const best = this.bestFriend(uid);
+    const r = trips.rollTrip(trip, { dex: this.dex, friendName: best && bondLevel(best.points) >= 2 ? this.displayName(this.mon(best.uid)) : null, selfName: this.displayName(mon) });
+    const bag = this.state.bag;
+    for (const [b, n] of Object.entries(r.gifts.berries)) bag.berries[b] = Math.min(999, bag.berries[b] + n);
+    for (const [b, n] of Object.entries(r.gifts.balls)) bag.balls[b] = Math.min(999, bag.balls[b] + n);
+    for (const p of r.gifts.puffs) bag.puffs[p] = (bag.puffs[p] ?? 0) + 1;
+    // 撿到蛋：跟這隻同一族的（uid 由旅行決定，同步時不會變成兩顆）
+    let egg = null;
+    if (r.egg && this.state.eggs.length < MAX_EGGS) {
+      const e = eggs.eggFrom(this.dex, [mon, mon], trips.seededRng(trip.seed + 7));
+      if (e) {
+        egg = { uid: `egg-${trip.id}`.slice(0, 40), species: e.species, form: e.form, shiny: false, steps: 0, need: eggs.eggNeed(e.species), receivedAt: this.now() };
+        this.state.eggs.push(egg);
+      }
+    }
+    const postcard = { id: trip.id, place: trip.place, seed: r.postcardSeed, at: this.now(), uid, name: this.displayName(mon), diary: r.diary };
+    this.state.postcards = [...this.state.postcards, postcard].slice(-trips.POSTCARDS_KEPT);
+    this.state.placesVisited[trip.place] ??= this.now();
+    this.state.tripsDone = [...this.state.tripsDone, trip.id].slice(-300);
+    this.state.stats.trips = (this.state.stats.trips ?? 0) + 1;
+    mon.trip = null;
+    this.remember(uid, { k: 'trip', data: { name: trips.PLACES[trip.place].zh } });
+    const result = { postcard, gifts: r.gifts, egg, friend: r.friend, diary: r.diary };
+    this.emit('tripSettled', { uid, ...result });
+    this.emit('bag');
+    return result;
   }
 
   // ---- 記憶 ----

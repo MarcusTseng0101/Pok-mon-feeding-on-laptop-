@@ -15,6 +15,8 @@ import { integrateKnock } from './physics.js';
 import { updateForm, drawForm } from './battleforms.js';
 import { PERCH_ACTIONS, perchBounds, perchedChoices, perchOption } from './perching.js';
 import { tag, weigh, afterChoice, tickMind } from './mindlink.js';
+import { TRAVEL_ACTIONS, startDepart, drawCarried } from './travel.js';
+import { traitsOf } from '../../core/mind.js';
 import { CURSOR_ACTIONS, cursorOptions, wantsToPounce, startPounce, besideCursor } from './cursor.js';
 
 const GRAVITY = 900; // 美術像素／秒²
@@ -80,7 +82,7 @@ export class Pet {
   get asset() { return this.stage.sprites.peek(this.spriteKey, this.mon.shiny); }
   get S() { return this.stage.S; }
   get types() { return this.stage.dex.get(this.mon.species).types; }
-  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state] ?? PERCH_ACTIONS[this.state] ?? CURSOR_ACTIONS[this.state]; }
+  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state] ?? PERCH_ACTIONS[this.state] ?? CURSOR_ACTIONS[this.state] ?? TRAVEL_ACTIONS[this.state]; }
   // 圖的腳底在螢幕上的 y（含飄浮與離地高度，不含走路的上下晃動）
   get y() { return this.gy - (this.alt + this.z) * this.S; }
   restY() { return this.gy - this.alt * this.S; }
@@ -520,6 +522,8 @@ export class Pet {
   decide() {
     const st = this.stage;
     this.onArrive = null;
+    if (st.game?.tripStatus(this.uid) === 'away') { startDepart(this); return; } // 已經出發了（例如走到一半被拎起來）：繼續走
+
     if (this.perch) { this.choose(tag(perchedChoices(this), 'explore')); return; } // 站在視窗上：只做安靜的事或跳下來
     if (st.env.focus) { this.choose(tag(focusChoices(this), 'rest')); return; } // 專注中：安靜地陪你
     // 站在視窗上、正在往上跳的不算（不會被拉去玩）
@@ -579,6 +583,10 @@ export class Pet {
       tag(groupOptions(this, others.filter(o => !o.group)), 'social'), // 一群一起玩、好朋友之間
       tag(perchOption(this), 'explore'), // 跳到其他視窗的標題列上
       tag(cursorOptions(this), 'cursor'), // 追游標、坐在游標旁邊
+      // 出門旅行（一次只有一隻、桌面上至少留一隻；很少發生）
+      tag([['trip', !this.perch && !st.minigame?.active && !this.evolveView && st.game?.canDepart(this.uid) ? 1 : 0, () => {
+        if (st.game.depart(this.uid, { curious: traitsOf(this.mon.nature).curious })) startDepart(this);
+      }]], 'trip'),
     );
     this.choose(choices);
   }
@@ -637,6 +645,7 @@ export class Pet {
     // 被招式打到：白色閃爍
     if (this.flinchT > 0 && Math.floor(this.flinchT * 20) % 2) blit(ctx, a.white, r.x + pose.ox * S, r.y, S, { flipX: this.facing > 0, flipY, alpha: 0.6 * alpha });
     act?.drawOver?.(this, ctx);
+    if (!this.emote && this.stage.game?.tripStatus(this.uid) === 'back') drawCarried(this, ctx); // 旅行回來：頂著明信片
     drawForm(this, ctx);
     if (this.eating && this.eating.bites < 3) {
       const m = this.mouth();

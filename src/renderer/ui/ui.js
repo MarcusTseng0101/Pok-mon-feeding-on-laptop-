@@ -16,6 +16,8 @@ import { FORMS, spriteKey, formName, formsOf, defaultForm } from '../../core/for
 import { habitNames } from '../scene/habits.js';
 import { describe as describeMind } from '../scene/mindlink.js';
 import { NEEDS, NEED_ZH, MOOD_ZH } from '../../core/mind.js';
+import { PLACES, PLACE_IDS } from '../../core/trips.js';
+import * as cards from '../gfx/postcards.js';
 import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
 import { transform as transformForm, revert as revertForm } from '../scene/battleforms.js';
 import { MinigameHost } from './minigames/host.js';
@@ -58,7 +60,7 @@ export class UI {
     this.menu = h(`<div class="menu hit pix hidden">
       <button data-open="party">夥伴</button><button data-open="dex">圖鑑</button>
       <button data-open="play">一起玩</button><button data-open="medals">獎章</button>
-      <button data-open="bag">背包</button><button data-open="aura">氣息</button>
+      <button data-open="bag">背包</button><button data-open="album">相簿</button><button data-open="aura">氣息</button>
       <button data-open="settings">設定</button><button data-act="quiet">勿擾模式</button>
       <button data-act="focus">開始專注</button>
     </div>`);
@@ -192,7 +194,7 @@ export class UI {
   }
 
   renderPanel() {
-    const titles = { party: '夥伴', dex: '卡洛斯圖鑑', play: '一起玩', medals: '獎章', bag: '背包', aura: '氣息', settings: '設定' };
+    const titles = { party: '夥伴', dex: '卡洛斯圖鑑', play: '一起玩', medals: '獎章', bag: '背包', album: '相簿', aura: '氣息', settings: '設定' };
     this.win.querySelector('.title').textContent = titles[this.panel];
     const body = this.win.querySelector('.body');
     const scroll = body.querySelector('.scroll')?.scrollTop;
@@ -277,9 +279,11 @@ export class UI {
         ${this.bar('滿足感', m.enjoyment, MAX, 'joy')}
         ${evoHtml}
       </div>
+      ${this.tripLine(m)}
       ${this.mindHtml(m)}
       <div class="actions">
-        ${m.out ? '<button data-act="recall">收回</button><button data-act="feed">餵泡芙</button>'
+        ${m.out && this.game.tripStatus(m.uid) === 'away' ? ''
+          : m.out ? `<button data-act="recall">收回</button><button data-act="feed">餵泡芙</button>${this.game.canDepart(m.uid) ? '<button data-act="trip">讓牠去旅行</button>' : ''}`
           : `<button data-act="sendout" ${out >= MAX_OUT ? 'disabled title="桌面上最多 6 隻"' : ''}>叫出來</button>`}
         ${m.species === 676 ? `<button data-act="trim" class="${this.trimOpen ? 'sel' : ''}">✂ 修剪</button>` : ''}
       </div>
@@ -317,6 +321,15 @@ export class UI {
     const bag = this.game.state.bag.puffs;
     for (const t of TIER_ORDER) for (const f of FLAVORS) if (bag[puffKey(f, t)] > 0) return puffKey(f, t);
     return null;
+  }
+
+  // 旅行中／回來了
+  tripLine(m) {
+    const s = this.game.tripStatus(m.uid);
+    if (s === 'home') return '';
+    if (s === 'back') return '<p class="trip">✉ 旅行回來了！點桌面上的牠收下明信片</p>';
+    const t = new Date(m.trip.returnAt);
+    return `<p class="trip">🧳 去${esc(PLACES[m.trip.place].zh)}旅行中，大約 ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')} 回來</p>`;
   }
 
   // 心情、需求、最近在想什麼、記得的事
@@ -425,6 +438,41 @@ export class UI {
       grid.append(el);
     }
     return root;
+  }
+
+  // ---------- 相簿（旅行帶回來的明信片） ----------
+  render_album() {
+    const g = this.game.state;
+    const visited = Object.keys(g.placesVisited ?? {}).length;
+    const root = h(`<div class="album"><div class="summary">去過 ${visited}／${PLACE_IDS.length} 個地方・${g.postcards.length} 張明信片</div><div class="grid scroll"></div></div>`);
+    const grid = root.querySelector('.grid');
+    if (!g.postcards.length) grid.append(h('<p class="empty">還沒有明信片。夥伴有時候會自己出門旅行，也可以在夥伴頁讓牠去。</p>'));
+    for (const p of [...g.postcards].reverse()) {
+      const el = h(`<button class="card" data-postcard="${esc(p.id)}"><b>${esc(PLACES[p.place].zh)}</b><small>${esc(p.name)}・${new Date(p.at).toLocaleDateString('zh-TW')}</small></button>`);
+      el.prepend(pixelImg(cards.postcard(p.place, p.seed), 2));
+      grid.append(el);
+    }
+    // 還沒去過的地方
+    const miss = PLACE_IDS.filter(id => !g.placesVisited?.[id]);
+    if (miss.length && g.postcards.length) grid.append(h(`<p class="hint">還沒去過：${miss.map(id => esc(PLACES[id].zh)).join('、')}</p>`));
+    return root;
+  }
+
+  // 明信片（收下的時候、或在相簿裡點開）
+  showPostcard({ postcard: p, gifts = null }) {
+    const giftText = gifts ? [
+      ...Object.entries(gifts.berries).map(([b, n]) => `${BERRY_ZH[b]}×${n}`),
+      ...Object.entries(gifts.balls).map(([b, n]) => `${BALLS[b].zh}×${n}`),
+      ...gifts.puffs.map(k => puffName(k)),
+    ].join('、') : '';
+    this.modal.innerHTML = `<div class="dialog postcard hit pix"><h2></h2><div class="pic"></div><p class="diary"></p>${giftText ? '<p class="gifts"></p>' : ''}<p class="from"></p><div class="btns"><button data-yes class="primary">好</button></div></div>`;
+    this.modal.querySelector('h2').textContent = `來自${PLACES[p.place].zh}的明信片`;
+    this.modal.querySelector('.pic').append(pixelImg(cards.postcard(p.place, p.seed), 5));
+    this.modal.querySelector('.diary').textContent = `「${p.diary}」`;
+    if (giftText) this.modal.querySelector('.gifts').textContent = `帶回來的東西：${giftText}`;
+    this.modal.querySelector('.from').textContent = `—— ${p.name}，${new Date(p.at).toLocaleDateString('zh-TW')}`;
+    this.modal.classList.remove('hidden');
+    this.modal.onclick = e => { if (e.target.closest('[data-yes]')) this.modal.classList.add('hidden'); };
   }
 
   // ---------- 一起玩（小遊戲） ----------
@@ -573,6 +621,7 @@ export class UI {
       return;
     }
     if (t.dataset.citypick !== undefined) { this.pickCity(Number(t.dataset.citypick)); return; }
+    if (t.dataset.postcard) { const pc = this.game.state.postcards.find(x => x.id === t.dataset.postcard); if (pc) { this.audio.sfx('click'); this.showPostcard({ postcard: pc }); } return; }
     if (t.dataset.play) { this.minigames.open(t.dataset.play, this.playPartner()?.uid); return; }
     if (t.dataset.dexform) { this.dexForm = t.dataset.dexform; this.audio.sfx('click'); this.renderPanel(); return; }
     if (t.dataset.style) {
@@ -599,6 +648,9 @@ export class UI {
     const m = this.game.mon(this.selectedUid);
     switch (act) {
       case 'recall': this.game.setOut(m.uid, false); this.audio.sfx('close'); break;
+      case 'trip':
+        if (this.director.sendOnTrip(m.uid)) { this.toast(`${this.game.displayName(m)}出發去旅行了！`); this.closePanel(); }
+        break;
       case 'sendout': if (!this.game.setOut(m.uid, true)) this.toast('桌面上最多 6 隻'); break;
       case 'feed': this.closePanel(); this.openPuffPicker(key => this.director.feedMode(key, 'pet')); break;
       case 'evolve': {

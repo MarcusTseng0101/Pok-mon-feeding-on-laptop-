@@ -35,6 +35,7 @@ node test/e2e/soul.cjs         # 「放著 10 分鐘就有戲」：5 個種子�
 node test/e2e/mind.cjs         # 想法泡泡、夥伴資料頁的心智、聊天、一起散步、切磋的記憶
 node test/e2e/cursor.cjs       # 撲游標、追游標、坐在游標旁邊（永遠不蓋住游標、不攔截滑鼠）
 node test/e2e/peek.cjs         # 探頭：慢慢靠近會走進來、太快會嚇跑、頻率最多 1/3
+node test/e2e/trips.cjs        # 出門旅行：鬼抓人正常結束、走出去、紙條、走回來、收明信片、相簿
 node test/e2e/world.cjs        # 天氣（不會攔截滑鼠、查不到沿用上次）、獎章、同步資料夾（合併、不重複加）
 node test/e2e/habits.cjs    # 72 種寶可夢的每一個習性都能跑完、不會跑出螢幕
 node test/e2e/physics.cjs   # 碰撞與擊退：沒有重疊、撞球、重量差
@@ -122,6 +123,21 @@ node test/e2e/perf.cjs      # 每幀 update + draw 的時間
 - 游標衝太快，牠會縮回去跑掉。這時還沒開始遭遇，所以不會中斷連鎖。
 - 離牠最近的夥伴會注意到：想法泡泡會顯示「外面好像有誰在看？」。
 - 探頭跟一般的出現共用同一個計時，所以野生寶可夢不會變多。每 3 次出現最多 1 次是探頭。
+
+**出門旅行**（`src/core/trips.js`、`src/renderer/scene/travel.js`）
+- 好奇或無聊的夥伴，有時候會自己走到螢幕邊緣，揮揮手，然後走出去旅行。你也可以在夥伴頁按「讓牠去旅行」。
+- 同時最多 1 隻在外面，桌面上至少會留 1 隻。
+- 牠出發的地方會留一張紙條，點紙條可以看到牠去了哪裡、大約幾點回來。
+- 旅行 30 分鐘到 6 小時，越好奇去越久。用真實時間計算，所以程式關掉也照樣在旅行。
+- 回來時從螢幕邊緣走進來，頭上頂著明信片。點牠就能收下：
+  - 一張明信片，是 12 個卡洛斯地點之一的像素風景。
+  - 一句日記，有時候會提到牠的好朋友。
+  - 禮物：樹果、精靈球或泡芙。偶爾會撿到蛋，偶爾會帶一個野生的朋友回來。
+- 選單裡的「相簿」可以看到所有收過的明信片，以及還沒去過的地方。
+- 新增 3 個獎章：第一次出遠門、去過 6 個地方、12 個地方全部去過。
+- 結算用的是旅行自己的種子，所以結算幾次結果都一樣。
+- 兩台電腦同步時，在哪一台收下明信片，禮物就只會算一次。
+- 電腦時鐘被調回去，牠一樣回得來。
 
 **生態動作**（依屬性與時間，寫在 `src/renderer/scene/behaviors.js`）：
 
@@ -346,6 +362,7 @@ src/main/                    Electron 主程序
 src/core/minigames.js        小遊戲的計分與獎勵（純函式）
 src/core/perch.js focus.js eggs.js   視窗頂邊、番茄鐘、孵蛋的規則（eggdata.js 由 scripts/build-eggs.mjs 產生）
 src/core/weather.js achievements.js sync.js   天氣、獎章、同步的合併規則
+src/core/trips.js            出門旅行（地點、結算、同步）；明信片的圖在 renderer/gfx/postcards.js
 src/core/mind.js memory.js   心智（需求、個性、心情、理由）與記憶；scene/mindlink.js 把它接到 Pet.decide()
 src/renderer/                畫面
   app.js                     進入點與主迴圈
