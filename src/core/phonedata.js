@@ -20,8 +20,8 @@ export function phoneSnapshot(state, { now, nameOf, speciesName, spriteKeyOf, we
   const out = outingMon(state);
   return {
     at: now,
-    // 跟你出門的那隻（手機頁面最上面）：出門多久、一句話
-    outing: out ? { name: nameOf(out), since: out.outing.since, minutes: minutesOut(out, now), line: outingLine({ minutes: minutesOut(out, now), now, weather }), pic: spriteKeyOf(out) } : null,
+    // 跟你出門的那隻（手機頁面最上面）：出門多久、一句話。沒有出門就沒有這個欄位
+    ...(out ? { outing: { name: nameOf(out), since: out.outing.since, minutes: minutesOut(out, now), line: outingLine({ minutes: minutesOut(out, now), now, weather }), pic: spriteKeyOf(out) } } : {}),
     daysTogether: Number.isFinite(t.firstMet) ? daysTogether(t, now) : null,
     mood: mood ? { id: mood, zh: MOODS[mood].zh, emoji: MOODS[mood].emoji } : null,
     holidays: holidaysOn(now, { birthday: state.settings?.birthday, firstMet: t.firstMet }).map(id => HOLIDAYS[id].zh),

@@ -602,11 +602,13 @@ export class Director {
       pet.x = side < 0 ? -pet.asset.w * pet.S : st.W + pet.asset.w * pet.S;
       pet.returnTo = to;
       pet.set('tripReturn', 999);
+      pet.runHome = true; // 用跑的回來（scene/travel.js）
       pet.runningHome = true; // 測試用：正在跑回來
       const t0 = performance.now();
       const arrived = () => {
         if (pet.state === 'tripReturn' && performance.now() - t0 < 8000 && st.pets.get(uid) === pet) { setTimeout(arrived, 100); return; }
         pet.runningHome = false;
+        pet.runHome = false;
         if (postcard) {
           this.audio.sfx('collect');
           pet.set('happy', 0.8);

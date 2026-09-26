@@ -84,7 +84,7 @@ test('摘要：只有要顯示的欄位，沒有存檔的其他東西', () => {
   g.rename(g.state.mons[0].uid, '<img src=x onerror=alert(1)>');
   g.setMood('happy');
   const d = phoneSnapshot(g.state, { now: t.v, nameOf: m => g.displayName(m), speciesName: id => dex.name(id), spriteKeyOf: m => String(m.species) });
-  assert.deepEqual(Object.keys(d).sort(), ['at', 'daysTogether', 'holidays', 'letters', 'milestones', 'mood', 'outing', 'pets', 'pics', 'postcards', 'trips']);
+  assert.deepEqual(Object.keys(d).sort(), ['at', 'daysTogether', 'holidays', 'letters', 'milestones', 'mood', 'pets', 'pics', 'postcards', 'trips']);
   assert.equal(d.mood.zh, '很開心');
   assert.deepEqual(d.holidays, ['中秋節']);
   assert.equal(d.pets[0].name.startsWith('<img'), true, '名字原樣傳過去（頁面用 textContent 顯示）');

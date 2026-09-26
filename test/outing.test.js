@@ -105,7 +105,7 @@ test('F9：沒有自動判斷回家；忘了帶回來 12 小時後自己回家�
 test('手機摘要：出門中的夥伴在 outing（最上面），不在「在桌面上」；文字寫「家裡那邊」', () => {
   const { g, t } = makeGame(at(2026, 9, 26, 15));
   const a = g.state.mons[0];
-  assert.equal(snap(g, t).outing, null);
+  assert.equal(snap(g, t).outing, undefined, '沒出門：手機摘要跟以前一樣，沒有這個欄位');
   g.goOut(a.uid);
   t.v += 50 * MIN;
   const d = snap(g, t, 'rain');
