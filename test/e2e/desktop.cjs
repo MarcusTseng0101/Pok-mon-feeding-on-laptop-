@@ -74,9 +74,11 @@ run('desktop', async ({ page, shot }, check) => {
     const near = sent.filter(uid => closest.get(stage.pets.get(uid)) < 110 * stage.S);
     // 冷卻中不會再跑過來
     const cd = director.typingCooldown - Date.now();
-    return { near: near.length, sent: sent.length, cd };
+    // 失敗時看得出是哪一隻、最近到多近、後來在做什麼
+    const detail = sent.map(uid => { const p = stage.pets.get(uid); return { d: Math.round((closest.get(p) ?? 0) / stage.S), state: p?.state, thought: p?.thought?.key }; });
+    return { near: near.length, sent: sent.length, cd, detail };
   });
-  check(typing.sent >= 1 && typing.sent <= 2 && typing.near === typing.sent, `打字時叫了 ${typing.sent} 隻過來，真的走到游標旁邊的有 ${typing.near} 隻`);
+  check(typing.sent >= 1 && typing.sent <= 2 && typing.near === typing.sent, `打字時叫了 ${typing.sent} 隻過來，真的走到游標旁邊的有 ${typing.near} 隻：${JSON.stringify(typing.detail)}`);
   check(typing.cd > 60_000, '沒有冷卻時間');
   await shot('typing');
 
