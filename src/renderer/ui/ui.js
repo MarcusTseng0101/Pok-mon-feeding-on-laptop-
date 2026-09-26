@@ -28,6 +28,9 @@ import { HoloCaster } from './holocaster.js';
 import { BattleHud } from './battlehud.js';
 import { MEGA, KEY_ITEMS, ITEM_IDS } from '../../core/items.js';
 import { LIMIT_ZH } from '../../core/attention.js';
+import { MOODS, MOOD_IDS, moodToday, shouldAsk as shouldAskMood } from '../../core/mood.js';
+import { MILESTONES, daysTogether } from '../../core/together.js';
+import { HOLIDAYS, SEASON_ZH, seasonOf } from '../../core/calendar.js';
 import * as cards from '../gfx/postcards.js';
 import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
 import { transform as transformForm, revert as revertForm } from '../scene/battleforms.js';
@@ -69,6 +72,7 @@ export class UI {
     this.launcher.append(pixelImg(art.balls.poke, 2));
     this.launcher.onclick = () => this.toggleMenu();
     this.menu = h(`<div class="menu hit pix hidden">
+      <div class="mood-row"></div>
       <button data-open="party">夥伴</button><button data-open="dex">圖鑑</button>
       <button data-open="play">一起玩</button><button data-open="medals">獎章</button>
       <button data-open="bag">背包</button><button data-open="album">相簿</button><button data-open="base">秘密基地</button><button data-open="mail">信箱</button><button data-open="story">故事</button><button data-open="aura">氣息</button>
@@ -79,7 +83,10 @@ export class UI {
       const b = e.target.closest('button');
       if (!b) return;
       this.audio.sfx('click');
-      if (b.dataset.open) this.open(b.dataset.open);
+      // 今天的心情（core/mood.js）
+      if (b.dataset.mood) { this.game.setMood(b.dataset.mood); this.moodEditing = false; this.renderMoodRow(); return; }
+      if (b.dataset.moodact === 'skip') { this.game.skipMood(); this.renderMoodRow(); return; }
+      if (b.dataset.moodact === 'edit') { this.moodEditing = true; this.renderMoodRow(); return; }
       if (b.dataset.act === 'quiet') this.toggleQuiet();
       if (b.dataset.act === 'focus') { if (this.game.state.focus.active) this.stopFocus(); else this.startFocus(); }
     };
@@ -189,7 +196,21 @@ export class UI {
   toggleMenu(force) {
     const show = force ?? this.menu.classList.contains('hidden');
     this.menu.classList.toggle('hidden', !show);
-    if (show) this.audio.sfx('open');
+    if (show) { this.renderMoodRow(); this.audio.sfx('open'); }
+  }
+
+  // 選單最上面：今天第一次打開就問心情（不跳視窗、跳過就不再問）；選過了顯示今天的心情，可以改
+  renderMoodRow() {
+    const row = this.menu.querySelector('.mood-row');
+    const now = Date.now(), mood = this.game.state.mood, today = moodToday(mood, now);
+    const buttons = `<div class="moods">${MOOD_IDS.map(id => `<button data-mood="${id}" title="${MOODS[id].zh}"><span class="emo">${MOODS[id].emoji}</span>${MOODS[id].zh}</button>`).join('')}</div>`;
+    if (this.moodEditing || shouldAskMood(mood, now)) {
+      row.innerHTML = `<div class="ask">今天心情怎麼樣？</div>${buttons}${today ? '' : '<button class="skip" data-moodact="skip">跳過</button>'}`;
+    } else if (today) {
+      row.innerHTML = `<button class="today" data-moodact="edit" title="改今天的心情">今天 ${MOODS[today].emoji} ${MOODS[today].zh}</button>`;
+    } else {
+      row.innerHTML = '<button class="today" data-moodact="edit">今天的心情…</button>';
+    }
   }
 
   open(name) {
@@ -521,7 +542,7 @@ export class UI {
       : left === 0 ? '今天還有事情會發生……' : `下一件事大約在 ${left} 天後。`;
     const got = new Set(badgesOf(st));
     const badges = Object.entries(BADGES).map(([k, b]) => `<span class="gym-badge ${got.has(k) ? 'on' : ''}" style="--c:${b.color}" title="${got.has(k) ? esc(b.zh) : '？？？'}"></span>`).join('');
-    const root = h(`<div class="story"><div class="summary">${ver}${st.startedAt === null ? '' : `第 ${storyDay(st, now)} 天・`}已經發生 ${done.length} 件事</div>
+    const root = h(`<div class="story">${this.usHtml()}<div class="summary">${ver}${st.startedAt === null ? '' : `第 ${storyDay(st, now)} 天・`}已經發生 ${done.length} 件事</div>
       ${st.startedAt === null ? '' : `<div class="badges">${badges}<small>${isChampion(st) ? '✦ 卡洛斯冠軍' : `徽章 ${got.size}／8`}</small></div>`}<p class="next"></p><div class="list scroll"></div></div>`);
     root.querySelector('.next').textContent = next;
     const list = root.querySelector('.list');
@@ -538,6 +559,17 @@ export class UI {
       list.append(row);
     }
     return root;
+  }
+
+  // 你和大家（core/together.js）：認識第幾天、季節、今天的節日、里程碑
+  usHtml() {
+    const g = this.game, t = g.state.together, now = Date.now();
+    if (!Number.isFinite(t.firstMet)) return '';
+    const season = SEASON_ZH[seasonOf(now, Intl.DateTimeFormat().resolvedOptions().timeZone)];
+    const hol = g.holidaysToday().map(id => HOLIDAYS[id].zh).join('・');
+    const chips = [...t.milestones].reverse().map(m => `<span class="chip" title="${new Date(m.at).toLocaleDateString('zh-TW')}">✦ ${esc(MILESTONES[m.id].zh)}</span>`).join('');
+    return `<div class="us"><div class="days">我們認識第 <b>${daysTogether(t, now)}</b> 天・${season}${hol ? `・今天是${esc(hol)}` : ''}</div>
+      ${chips ? `<div class="chips">${chips}</div>` : '<div class="hint">一起過的特別日子會記在這裡</div>'}</div>`;
   }
 
   // ---------- 信箱 ----------

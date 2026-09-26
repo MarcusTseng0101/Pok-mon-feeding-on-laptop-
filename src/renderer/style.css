@@ -534,3 +534,17 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 /* 徽章：八角形的小像素圖（沒拿到是灰色的） */
 .gym-badge { width: 14px; height: 14px; background: #d6cbbd; clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); }
 .gym-badge.on { background: var(--c); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.5); }
+
+/* ---------- 今天的心情（選單最上面）---------- */
+.menu .mood-row { border-bottom: 2px solid var(--line); margin-bottom: 4px; padding-bottom: 4px; }
+.menu .mood-row .ask { font-size: 12px; margin: 2px 4px 4px; }
+.menu .mood-row .moods { display: flex; gap: 2px; }
+.menu .mood-row .moods button { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 4px 2px; font-size: 11px; margin: 2px; }
+.menu .mood-row .emo { font-size: 18px; line-height: 1.2; }
+.menu .mood-row .skip { font-size: 11px; padding: 2px 6px; align-self: flex-end; }
+.menu .mood-row .today { width: calc(100% - 6px); font-size: 12px; }
+.menu .mood-row .skip { display: block; margin-left: auto; }
+.story .us { padding: 6px 8px; margin-bottom: 8px; background: var(--panel-2); box-shadow: inset 0 0 0 2px var(--line); }
+.story .us .days b { color: var(--pink); font-size: 15px; }
+.story .us .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.story .us .chip { font-size: 11px; padding: 1px 6px; background: var(--pink-2); border-radius: 2px; }
