@@ -10,6 +10,7 @@ import { WeatherFx } from './weatherfx.js';
 import { blit } from '../gfx/pixel.js';
 import * as art from '../gfx/art.js';
 import { FurnitureTarget } from './base.js';
+import { updateDim, drawDim } from './movefx.js';
 
 export const THOUGHT_HOVER = 0.6; // 秒：滑鼠停在寶可夢身上多久顯示想法泡泡（畫在 ui 的名字標籤上）
 
@@ -266,7 +267,20 @@ export class Stage {
     this.draw();
   }
 
+  // ---------- 招式的演出：打中時停一下、畫面震一下 ----------
+  get calmFx() { return Boolean(this.game?.state.settings.calmFx); }
+  hitStop(sec) { this.stopT = Math.max(this.stopT ?? 0, sec); }
+  shake(power, sec = 0.25) {
+    if (this.calmFx) return;
+    this.shakeP = Math.max(this.shakeT > 0 ? this.shakeP : 0, power * this.S);
+    this.shakeT = Math.max(this.shakeT ?? 0, sec);
+    this.shakeDur = Math.max(this.shakeT, sec);
+  }
+
   update(dt) {
+    // 打中的瞬間：整個舞台放慢一下（原作的「頓一下」），畫面震動慢慢停
+    if (this.stopT > 0) { this.stopT -= dt; dt *= 0.12; }
+    if (this.shakeT > 0) this.shakeT = Math.max(0, this.shakeT - dt);
     // 滑鼠停在同一隻身上多久（停 0.6 秒顯示想法泡泡）
     this.hoverT = this.hoverPet && this.hoverPet === this.lastHoverPet ? (this.hoverT ?? 0) + dt : 0;
     // 游標停著不動多久了（舞台時間；坐到游標旁邊用）
@@ -286,6 +300,7 @@ export class Stage {
     for (const d of this.decals) d.t += dt;
     this.decals = this.decals.filter(d => d.t < d.life);
     this.fx.update(dt);
+    updateDim(this, dt); // 放招時的局部變暗
     this.weatherFx.update(dt);
     this.updateFeeding(dt);
     this.minigame?.update(dt); // 小遊戲（ui/minigames/host.js）
@@ -310,8 +325,18 @@ export class Stage {
   }
 
   draw() {
-    const ctx = this.ctx, S = this.S;
+    const ctx = this.ctx;
     ctx.clearRect(0, 0, this.W, this.H);
+    const k = this.shakeT > 0 ? this.shakeT / this.shakeDur : 0;
+    const ox = k ? Math.round((Math.random() * 2 - 1) * this.shakeP * k) : 0, oy = k ? Math.round((Math.random() * 2 - 1) * this.shakeP * k * 0.6) : 0;
+    ctx.save();
+    if (ox || oy) ctx.translate(ox, oy);
+    this.drawScene();
+    ctx.restore();
+  }
+
+  drawScene() {
+    const ctx = this.ctx, S = this.S;
     if (this.hidden) { this.fx.draw(ctx, S); return; }
     this.baseView?.draw(ctx); // 秘密基地在最底層
     for (const d of this.decals) {
@@ -319,6 +344,7 @@ export class Stage {
       blit(ctx, d.img, d.x - (d.img.width * S) / 2, d.y - d.img.height * S, S, { alpha });
     }
     for (const p of this.props) p.draw(ctx);
+    drawDim(ctx, this); // 放招時兩隻周圍的桌面變暗（畫在寶可夢後面）
     this.minigame?.active?.ctl?.drawUnder?.(ctx); // 小遊戲畫在夥伴後面的東西（樹果樹…）
     const pets = [...this.pets.values()].sort((a, b) => this.drawOrder(a) - this.drawOrder(b));
     // 地上的夥伴畫在氣息點後面（看起來像站在草叢後），飄浮的畫在前面

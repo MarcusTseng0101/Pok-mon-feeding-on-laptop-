@@ -33,6 +33,7 @@ export const DEFAULT_SETTINGS = {
   quiet: false, // 勿擾：收起所有寶可夢、暫停遭遇
   focusMinutes: 25, // 番茄鐘長度（15–60）
   birthday: null, // 你的生日 'MM-DD'（不填也可以；那天夥伴會寫信給你）
+  calmFx: false, // 減少閃光和畫面震動（招式的演出）
 };
 
 export function emptyPuffs() {
@@ -208,6 +209,7 @@ export function migrate(raw, dex, now) {
       : null,
   };
   s.settings.focusMinutes = Math.round(num(s.settings.focusMinutes, 25, 15, 60));
+  s.settings.calmFx = s.settings.calmFx === true;
   const w = raw.weather;
   s.weather = w && Number.isFinite(w.lat) && Number.isFinite(w.lon) && Math.abs(w.lat) <= 90 && Math.abs(w.lon) <= 180
     ? { city: str(w.city, 40) ?? '', lat: w.lat, lon: w.lon, enabled: Boolean(w.enabled) }

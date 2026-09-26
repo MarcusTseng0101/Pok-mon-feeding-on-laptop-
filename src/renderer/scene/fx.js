@@ -42,8 +42,13 @@ export class Fx {
   text(x, y, str, S, color = '#ffffff') { this.add({ text: str, color, x, y, vy: -20 * S, life: 1.2, S }); }
 
   update(dt) {
-    for (const p of this.parts) {
+    // run：時間到了做一件事（錯開時間用）；tick：每一幀自己的邏輯（留尾巴、到達時觸發）；t < 0：還沒開始
+    for (let i = 0; i < this.parts.length; i++) {
+      const p = this.parts[i];
       p.t += dt;
+      if (p.t < 0) continue;
+      if (p.run) { const f = p.run; p.run = null; f(); continue; }
+      p.tick?.(p, dt);
       p.vy += p.g * dt;
       p.x += p.vx * dt + (p.wobble ? Math.sin(p.t * 8) * 0.6 : 0);
       p.y += p.vy * dt;
@@ -56,6 +61,7 @@ export class Fx {
       const k = p.t / p.life;
       const alpha = p.fade ? Math.min(1, (1 - k) * 2) : 1;
       if (p.blink && Math.floor(p.t * 12) % 2) continue;
+      if (p.draw) { if (p.t >= 0) p.draw(ctx, p, k, S); continue; } // 自己畫的（招式的光、光束、打擊火花…）；t < 0 是還沒開始
       if (p.img) {
         const sc = S * (p.scale ?? 1);
         blit(ctx, p.img, p.x - (p.img.width * sc) / 2, p.y - (p.img.height * sc) / 2, sc, { alpha });

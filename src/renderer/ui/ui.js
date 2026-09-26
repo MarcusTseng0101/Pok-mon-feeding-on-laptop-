@@ -298,7 +298,7 @@ export class UI {
         <div>性格：${esc(nature.zh)}</div><div>口味：${esc(taste)}</div>
         <div>${this.friendLine(m)}</div>
         <div class="habits">習性：${habitNames(m.species).map(esc).join('、') || '—'}</div>
-        <div class="habits">招式：${movesetFor(this.dex, m.species).map(id => `<span class="move" style="border-color:${art.TYPE_COLORS[MOVES[id].type]}">${esc(MOVES[id].zh)}</span>`).join('')}</div></div></div>
+        <div class="habits">招式：${movesetFor(this.dex, m.species, m).map(id => `<span class="move" style="border-color:${art.TYPE_COLORS[MOVES[id].type]}">${esc(MOVES[id].zh)}</span>`).join('')}</div></div></div>
       <div class="stats">
         <div class="stat"><span>好感</span>${this.heartsHtml(m.affection)}</div>
         ${this.bar('飽足感', m.fullness, MAX, 'full')}
@@ -694,6 +694,7 @@ export class UI {
         <select data-bmonth><option value="">—</option>${Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}" ${s.birthday && +s.birthday.slice(0, 2) === i + 1 ? 'selected' : ''}>${i + 1} 月</option>`).join('')}</select>
         <select data-bday><option value="">—</option>${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${s.birthday && +s.birthday.slice(3) === i + 1 ? 'selected' : ''}>${i + 1} 日</option>`).join('')}</select></div>
       <label><input type="checkbox" data-set="muted" ${s.muted ? 'checked' : ''}> 靜音</label>
+      <label><input type="checkbox" data-set="calmFx" ${s.calmFx ? 'checked' : ''}> 減少閃光和畫面震動（招式的演出比較安靜）</label>
       <div>野生寶可夢出現頻率：${rates}</div>
       <label><input type="checkbox" data-set="showLauncher" ${s.showLauncher ? 'checked' : ''}> 顯示右下角的精靈球按鈕（隱藏後可從系統匣開啟選單）</label>
       <label><input type="checkbox" data-set="quiet" ${s.quiet ? 'checked' : ''}> 勿擾模式（收起所有寶可夢、暫停遭遇）</label>
@@ -927,7 +928,7 @@ export class UI {
     const evo = this.game.evolutionStatus(m.uid);
     const n = hearts(m.affection);
     const moves = this.bubbleMoves
-      ? `<div class="btns moves">${movesetFor(this.dex, m.species).map(id => `<button data-move="${id}" style="border-color:${art.TYPE_COLORS[MOVES[id].type]}">${esc(MOVES[id].zh)}</button>`).join('')}</div>`
+      ? `<div class="btns moves">${movesetFor(this.dex, m.species, m).map(id => `<button data-move="${id}" style="border-color:${art.TYPE_COLORS[MOVES[id].type]}">${esc(MOVES[id].zh)}</button>`).join('')}</div>`
       : '';
     this.bubble.innerHTML = `<div class="name">${esc(this.game.displayName(m))} <span class="hearts">${'♥'.repeat(n)}<i>${'♥'.repeat(5 - n)}</i></span></div>
       <div class="btns"><button data-act="feed">餵泡芙</button><button data-act="moves" class="${this.bubbleMoves ? 'sel' : ''}">招式</button><button data-act="info">看看牠</button><button data-act="recall">回球裡</button>
