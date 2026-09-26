@@ -477,7 +477,9 @@ export class Pet {
     }
 
     integrateKnock(this, dt); // 被推、被打到的擊退
-    if (this.state !== 'held') {
+    // 走出螢幕（出門）、從螢幕外走進來（回家）的時候本來就在螢幕外：不要夾回來，不然會卡在邊上
+    const offscreen = (this.state === 'depart' && this.departure?.phase === 'out') || this.state === 'tripReturn';
+    if (this.state !== 'held' && !offscreen) {
       const b = this.bounds();
       if (this.x < b.x0) { this.x = b.x0; this.vx = Math.abs(this.vx) * 0.5; }
       if (this.x > b.x1) { this.x = b.x1; this.vx = -Math.abs(this.vx) * 0.5; }
