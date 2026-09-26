@@ -37,6 +37,7 @@ node test/e2e/cursor.cjs       # 撲游標、追游標、坐在游標旁邊（�
 node test/e2e/peek.cjs         # 探頭：慢慢靠近會走進來、太快會嚇跑、頻率最多 1/3
 node test/e2e/trips.cjs        # 出門旅行：鬼抓人正常結束、走出去、紙條、走回來、收明信片、相簿
 node test/e2e/letters.cjs      # 寫信：離開 7 小時收到信、打開、提到記憶裡的事、惡意暱稱不會被當成 HTML、信箱、生日
+node test/e2e/anim.cjs         # 會動的圖：在動、大小跟原本一樣、走路播得快、兩隻不同步、點得到、下載不到時用原本的圖
 node test/e2e/base.cjs         # 秘密基地：空地點不到、家具點得到、擺放和搬動、累了去床上睡、晚上回基地睡
 node test/e2e/world.cjs        # 天氣（不會攔截滑鼠、查不到沿用上次）、獎章、同步資料夾（合併、不重複加）
 node test/e2e/habits.cjs    # 72 種寶可夢的每一個習性都能跑完、不會跑出螢幕
@@ -47,6 +48,9 @@ node test/e2e/perf.cjs      # 每幀 update + draw 的時間
 每個腳本最後一行是 `PASS <名稱>` 或 `FAIL <名稱>: <原因>`。寶可夢圖會快取在 `.cache/sprites`（不進 repo）。
 
 第一次出現的寶可夢圖會從 GitHub 上的 PokeAPI sprites 下載，之後快取在使用者資料夾，離線也能玩。
+桌面上的寶可夢用的是**會動的圖**（PokeAPI sprites 裡的 Pokémon Showdown 動態圖，跟 X／Y 同一套 3D 模型）：
+尾巴、耳朵、手腳都會動，走路、跑步時播得比較快，睡覺時很慢。大小會縮放成跟原本的圖一樣高。
+會動的圖還沒下載好、或下載不到的時候，先用原本不會動的圖；圖鑑、夥伴頁這些介面還是用原本的圖。
 下載失敗時會先用依屬性顏色產生的替代圖。
 
 ## 怎麼玩

@@ -1,5 +1,6 @@
 // 野生寶可夢相關的舞台物件：氣息點、野生寶可夢、丟出去的球、桌面上的小道具。
 import { blit } from '../gfx/pixel.js';
+import { liveAsset } from '../gfx/sprites.js';
 import * as art from '../gfx/art.js';
 import { pixelCircle } from './fx.js';
 import { RING_MIN } from '../../core/capture.js';
@@ -117,7 +118,7 @@ export class PeekSpot extends Spot {
     this.show = 0; // 露出多少（0–1）
   }
 
-  get asset() { return this.stage.sprites.peek(spriteKey(this.plan.speciesId, this.plan.form), this.plan.shiny); }
+  get asset() { return liveAsset(this, this.stage.sprites, spriteKey(this.plan.speciesId, this.plan.form), this.plan.shiny, this.t); }
   // 走進來以後站的位置
   get enterX() { return this.side < 0 ? 90 * this.stage.S : this.stage.W - 90 * this.stage.S; }
 
@@ -214,7 +215,7 @@ export class WildMon {
     if (encounter.shiny) { stage.fx.sparkles(this.x, this.y - 30 * S, S, 16, 40); stage.fx.stars(this.x, this.y - 30 * S, S, 8); }
   }
 
-  get asset() { return this.stage.sprites.peek(spriteKey(this.enc.speciesId, this.enc.form), this.enc.shiny); }
+  get asset() { return liveAsset(this, this.stage.sprites, spriteKey(this.enc.speciesId, this.enc.form), this.enc.shiny, this.t); }
   restY() { return this.groundY - this.alt * this.stage.S; }
   set(state) { this.state = state; this.stateT = 0; }
 
