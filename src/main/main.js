@@ -12,6 +12,8 @@ import { trayImage } from './tray-icon.js';
 import { createWindowProbe } from './windows.js';
 import { forecastUrl, parseForecast, searchPlaces } from '../core/weather.js';
 import { listSyncFiles, writeSyncFile } from './syncfiles.js';
+import { createPhoneServer, privateAddresses, newToken } from './phone.js';
+import os from 'node:os';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DEV = process.env.KALOS_DEV === '1';
@@ -25,6 +27,7 @@ let win = null;
 let tray = null;
 let signals = null;
 let windowProbe = null;
+let phone = null; // 手機頁面的小網站（預設不開）
 let flushedForQuit = false;
 const trayState = { muted: false, quiet: false, focus: false, focusMinutes: 25 };
 
@@ -213,6 +216,28 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('sync:list', (_e, folder, selfId) => listSyncFiles(folder, selfId).catch(err => ({ error: err.message })));
   ipcMain.handle('sync:write', (_e, folder, deviceId, data) => writeSyncFile(folder, deviceId, data).then(() => true, err => ({ error: err.message })));
+  // 手機頁面（src/main/phone.js）：token 存在 userData/phone.json，重開 app 網址不變
+  const phoneFile = path.join(app.getPath('userData'), 'phone.json');
+  let phoneToken = null;
+  try { phoneToken = JSON.parse(await readFile(phoneFile, 'utf8')).token; } catch { /* 第一次 */ }
+  if (!/^[0-9a-f]{32}$/.test(phoneToken ?? '')) { phoneToken = newToken(); await writeFile(phoneFile, JSON.stringify({ token: phoneToken })); }
+  let phoneSnapshot = null;
+  const phoneDir = path.join(here, '../phone');
+  phone = createPhoneServer({
+    token: phoneToken,
+    getSnapshot: () => phoneSnapshot,
+    files: { '': path.join(phoneDir, 'index.html'), 'phone.js': path.join(phoneDir, 'phone.js'), 'phone.css': path.join(phoneDir, 'phone.css'), 'font.woff2': path.join(here, '../renderer/fonts/Cubic_11.woff2') },
+  });
+  ipcMain.handle('phone:set', async (_e, on) => {
+    if (!on) { await phone.stop(); return { urls: [] }; }
+    try { return { urls: await phone.start(privateAddresses(os.networkInterfaces())) }; } catch (err) { return { urls: [], error: err.message }; }
+  });
+  ipcMain.handle('phone:regen', async () => {
+    phone.regenerate();
+    await writeFile(phoneFile, JSON.stringify({ token: phone.token }));
+    return { urls: phone.urls };
+  });
+  ipcMain.on('phone:snapshot', (_e, data) => { if (data && typeof data === 'object') phoneSnapshot = data; });
   ipcMain.on('mouse:interactive', (_e, on) => win?.setIgnoreMouseEvents(!on, { forward: true }));
   ipcMain.on('window:focus', () => win?.focus());
   ipcMain.on('tray:update', (_e, s) => { Object.assign(trayState, s); buildTray(); });
@@ -233,4 +258,4 @@ app.on('before-quit', e => {
 
 app.on('second-instance', () => send('menu'));
 app.on('window-all-closed', () => app.quit());
-app.on('will-quit', () => { windowProbe?.dispose(); signals?.dispose(); });
+app.on('will-quit', () => { windowProbe?.dispose(); signals?.dispose(); phone?.stop(); });

@@ -10,12 +10,16 @@ import * as focus from './focus.js';
 import * as eggs from './eggs.js';
 import { newlyUnlocked, pendingRewards } from './achievements.js';
 import { canonicalForm, inheritForm, defaultForm, FORMS } from './forms.js';
-import { createMind } from './mind.js';
+import { createMind, traitsOf } from './mind.js';
 import { remember } from './memory.js';
 import * as trips from './trips.js';
 import * as baseRules from './base.js';
 import * as L from './letters.js';
 import * as S from './story.js';
+import * as R from './routine.js';
+import * as T from './together.js';
+import * as Mood from './mood.js';
+import { holidaysOn, HOLIDAYS } from './calendar.js';
 import { canMegaEvolve, KEY_ITEMS, STARTER_STONES, starterLine } from './items.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
 
@@ -140,6 +144,8 @@ export class Game {
     this.maybeFindEgg();
     this.checkBirthday(t);
     this.deliverLetters();
+    this.maybeWeeklyLetter();
+    this.checkTogether(); // 認識滿幾天
     this.checkAchievements();
     this.emit('tick');
   }
@@ -369,10 +375,59 @@ export class Game {
       amie.addAffection(m, focus.FOCUS_AFFECTION);
       this.afterAffection(m, before);
     }
-    const r = { puff, minutes: a.minutes, streak: f.streakDays };
+    const r = { puff, minutes: a.minutes, streak: f.streakDays, twoHours: R.addFocus(this.state.routine, this.now(), a.minutes) };
+    this.checkTogether(); // 第一次一天專注滿 3 小時
     this.emit('focus', { active: false, done: true, ...r });
     this.emit('bag');
     return r;
+  }
+
+  // ---- 作息（core/routine.js）----
+  // 每分鐘一次（畫面呼叫）：active＝有人在操作電腦、typing＝好像在打字。回傳該有的反應 ['greet'、'bedtime']
+  routineTick({ active = false, typing = false } = {}) {
+    const now = this.now(), evs = R.tick(this.state.routine, now, { active, typing });
+    if (!active || !this.state.starterChosen) return evs;
+    const out = this.outMons().filter(m => !m.trip).length > 0;
+    const minute = R.minuteOf(now), day = R.routineDay(now);
+    const holidays = this.holidaysToday();
+    // 節日：那天第一次看到你時打招呼（一天一次）
+    if (holidays.length && out && this.state.together.holidayDay !== day) { this.state.together.holidayDay = day; evs.push('holiday'); }
+    // 里程碑：01:00～05:00 還在、而且有夥伴在桌面上 → 第一次一起熬夜
+    this.checkTogether({ lateNight: out && minute >= R.LATE_FALLBACK, holiday: out && holidays.length > 0 });
+    return evs;
+  }
+
+  // ---- 你和大家（core/together.js）、心情（core/mood.js）、日曆（core/calendar.js）----
+  holidaysToday() {
+    return holidaysOn(this.now(), { birthday: this.state.settings.birthday, firstMet: this.state.together.firstMet });
+  }
+  checkTogether(ctx = {}) {
+    const got = T.check(this.state.together, this.now(), { focusToday: R.focusToday(this.state.routine, this.now()), ...ctx });
+    for (const id of got) this.emit('milestone', { id });
+    return got;
+  }
+  setMood(id) {
+    if (!Mood.setMood(this.state.mood, id, this.now())) return false;
+    this.emit('mood', { mood: id });
+    return true;
+  }
+  skipMood() { Mood.skipMood(this.state.mood, this.now()); this.emit('mood', { mood: null }); }
+  moodToday() { return Mood.moodToday(this.state.mood, this.now()); }
+
+  // 每週日早上：「這週我們一起……」的信（不佔每天 2 封的額度）
+  maybeWeeklyLetter() {
+    const now = this.now();
+    if (!T.weeklyDue(this.state, now)) return null;
+    const w = this.letterWriter();
+    if (!w) return null;
+    this.state.together.weeklyDay = R.routineDay(now);
+    const r = T.writeWeekly(T.weeklySummary(this.state, now), this.rng, { tone: L.toneOf(traitsOf(w.nature)) });
+    const box = this.state.letters, id = `weekly-${R.routineDay(now)}`;
+    if (box.inbox.some(l => l.id === id) || box.deleted?.includes(id)) return null;
+    const letter = { id, uid: w.uid, name: this.displayName(w), species: w.species, kind: 'weekly', at: now, text: r.text, refs: [], opened: false };
+    box.inbox = [...box.inbox, letter].slice(-L.INBOX_KEPT);
+    this.emit('letter', letter);
+    return { letter, refs: r.refs };
   }
 
   // ---- 孵蛋（規則在 eggs.js） ----
@@ -595,6 +650,7 @@ export class Game {
     this.state.mons.push(mon);
     this.state.dex[speciesId] = { seen: 1, caught: 1, firstSeenAt: this.now(), firstCaughtAt: this.now() };
     this.state.starterChosen = true;
+    this.state.together.firstMet ??= this.now();
     this.emit('starter', { mon });
     return mon;
   }
@@ -727,8 +783,9 @@ export class Game {
         const other = a === mon.uid ? b : b === mon.uid ? a : null;
         if (other && this.mon(other) && v >= 2 && (!rival || v > rival.v)) rival = { v, name: this.displayName(this.mon(other)) };
       }
+      const hol = this.holidaysToday().map(id => HOLIDAYS[id].letter).find(Boolean);
       const r = L.writeLetter(mon, p.kind, this.rng, {
-        now: t, hours: p.data?.hours, place: p.data?.place,
+        now: t, hours: p.data?.hours, place: p.data?.place, holiday: hol,
         friend: best && bondLevel(best.points) >= 2 ? { name: this.displayName(this.mon(best.uid)) } : null,
         rival,
       }, box.recent);

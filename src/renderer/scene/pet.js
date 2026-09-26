@@ -219,7 +219,8 @@ export class Pet {
   }
 
   // 可以被其他夥伴找去玩／被打斷的狀態
-  get free() { return ['idle', 'walk', 'sit', 'look', 'stretch'].includes(this.state) && !this.leaving; }
+  // reserved：正在過去陪你（晚睡時走到游標旁邊），別隻不能在半路找牠玩
+  get free() { return ['idle', 'walk', 'sit', 'look', 'stretch'].includes(this.state) && !this.leaving && !this.reserved; }
 
   // ---------- 反應 ----------
   onStroke(result) {
@@ -336,9 +337,16 @@ export class Pet {
         break;
       case 'walk':
       case 'run': {
-        const speed = (this.state === 'run' ? RUN_SPEED : WALK_SPEED) * S;
+        const speed = (this.state === 'run' ? RUN_SPEED : WALK_SPEED) * S * (st.env.calm ? 0.6 : 1); // 你說今天很累：大家走慢一點
         // 路被別隻擋住太久就放棄
-        if (this.state === 'walk' && this.stateT > (this.walkLimit ?? 15)) { this.onArrive = null; this.set('idle', 1); break; }
+        // 已經很近了（被別隻擋住最後幾步）就當作到了，不然放棄
+        if (this.state === 'walk' && this.stateT > (this.walkLimit ?? 15)) {
+          const arrive = Math.hypot(this.target.x - this.x, this.target.y - this.gy) < 40 * S ? this.onArrive : null;
+          this.onArrive = null;
+          this.set('idle', 1);
+          arrive?.();
+          break;
+        }
         if (this.moveTo(this.target.x, this.target.y, speed, dt)) {
           if (this.state === 'run' && this.stateT < this.dur) { this.target = this.randomPoint(60, 200); break; } // 暴衝：一直換方向
           const arrive = this.onArrive;
@@ -667,7 +675,14 @@ export class Pet {
     // 被招式打到：白色閃爍
     if (this.flinchT > 0 && Math.floor(this.flinchT * 20) % 2) blit(ctx, a.white, r.x + pose.ox * S, r.y, S, { flipX: this.facing > 0, flipY, alpha: 0.6 * alpha });
     act?.drawOver?.(this, ctx);
-    if (!this.emote && this.stage.game?.tripStatus(this.uid) === 'back') drawCarried(this, ctx); // 旅行回來：頂著明信片
+    const carrying = this.stage.game?.tripStatus(this.uid) === 'back';
+    if (!this.emote && carrying) drawCarried(this, ctx); // 旅行回來：頂著明信片
+    // 節日：頭上戴著小裝飾（core/calendar.js；故事對戰的對手不戴）
+    const deco = this.stage.env.holidayDeco && art.decos[this.stage.env.holidayDeco];
+    if (deco && !this.emote && !carrying && !this.guest && alpha > 0.5) {
+      const r2 = this.rect();
+      blit(ctx, deco, Math.round(r2.x + r2.w * (this.facing > 0 ? 0.62 : 0.38) - (deco.width * S) / 2), r2.y - (deco.height - 2) * S, S, { alpha });
+    }
     drawForm(this, ctx);
     if (this.eating && this.eating.bites < 3) {
       const m = this.mouth();
