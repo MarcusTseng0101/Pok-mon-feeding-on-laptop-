@@ -5,6 +5,8 @@
 // - 永久形態：存在 mon.form（null 表示預設形態），進化時會繼承。
 // - 對戰形態：超級進化、牽絆變身。只影響圖片與演出，不存進存檔。
 
+import { MEGA } from './items.js';
+
 const FLABEBE = ['red', 'yellow', 'orange', 'blue', 'white']; // 永恆之花（670-eternal）不收
 const VIVILLON = [
   'meadow', 'icy-snow', 'polar', 'tundra', 'continental', 'garden', 'elegant', 'modern', 'marine', 'archipelago',
@@ -34,11 +36,9 @@ export const FORM_ZH = {
   mega: '超級進化', ash: '牽絆變身',
 };
 
-// 對戰形態：圖片是獨立的圖鑑號
-export const BATTLE_FORMS = {
-  719: { mega: 10075 }, // 超級蒂安希
-  658: { ash: 10117 }, // 小智版甲賀忍蛙
-};
+// 對戰形態：圖片是獨立的圖鑑號。超級進化的圖在 core/items.js 的 MEGA
+export const BATTLE_FORMS = Object.fromEntries(Object.entries(MEGA).map(([id, m]) => [id, { mega: m.sprite }]));
+BATTLE_FORMS[658].ash = 10117; // 小智版甲賀忍蛙
 
 export const SPRITE_KEY_RE = /^\d{3,5}(-[a-z]+)*$/;
 export const isSpriteKey = key => typeof key === 'string' && key.length <= 32 && SPRITE_KEY_RE.test(key);

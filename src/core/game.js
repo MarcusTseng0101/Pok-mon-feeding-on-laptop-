@@ -16,6 +16,7 @@ import * as trips from './trips.js';
 import * as baseRules from './base.js';
 import * as L from './letters.js';
 import * as S from './story.js';
+import { canMegaEvolve, KEY_ITEMS, STARTER_STONES, starterLine } from './items.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
 
 // 夥伴之間的感情（0–255），到這些門檻時通知畫面
@@ -221,7 +222,7 @@ export class Game {
   // ---- 對戰形態（只影響演出，不存檔） ----
   canMega(uid) {
     const mon = this.mon(uid);
-    return Boolean(mon?.species === 719 && this.state.bag.items.diancite);
+    return Boolean(mon && canMegaEvolve(this.state.bag.items, mon.species));
   }
   // 牽絆變身：好感滿的甲賀忍蛙，而且有一個「最好的朋友」（感情 200 以上）
   canBondForm(uid) {
@@ -497,7 +498,8 @@ export class Game {
     this.state.bag.balls[ball]--;
     this.state.stats.throws++;
     const species = this.dex.get(wild.speciesId);
-    const p = catchProbability(species.captureRate, { ball, ringMult, puff: wild.puff });
+    // 故事裡的傳說寶可夢：跟原作一樣不會逃走，也比較好抓（牠是來找你的）
+    const p = Math.max(wild.story ? 0.45 : 0, catchProbability(species.captureRate, { ball, ringMult, puff: wild.puff }));
     const roll = rollCatch(p, this.rng);
     const result = { ok: true, p, ...roll, fled: false, mon: null, rewards: null };
     if (roll.caught) {
@@ -505,7 +507,7 @@ export class Game {
       Object.assign(result, this.registerCatch(wild, ball));
     } else {
       wild.failedThrows++;
-      result.fled = this.rng.chance(fleeChance(species, { puffed: wild.puff !== 'none', failedThrows: wild.failedThrows }));
+      result.fled = !wild.story && this.rng.chance(fleeChance(species, { puffed: wild.puff !== 'none', failedThrows: wild.failedThrows }));
       if (result.fled) this.wildGone(wild);
     }
     this.emit('bag');
@@ -768,8 +770,40 @@ export class Game {
   // 這件事演完了；choice：序章的問題選了什麼（決定 X／Y）
   storyDone(id, { choice } = {}) {
     if (!S.markDone(this.state.story, id, this.now(), { choice })) return false;
+    this.storyReward(S.EVENT_BY_ID[id]);
     this.emit('story', { id, choice });
     return true;
+  }
+  // 對戰輸了：明天再來
+  storyLost(id) {
+    if (!S.markLost(this.state.story, id, this.now())) return false;
+    this.emit('story', { id, lost: true });
+    return true;
+  }
+  // 做完拿到的東西（重要物品不會重複拿；拿到的每一個都通知畫面）
+  storyReward(ev) {
+    const r = ev.reward, got = { items: [], balls: {} };
+    if (!r) return got;
+    const items = this.state.bag.items;
+    const stones = [];
+    if (r.starter) {
+      const line = starterLine(this.state);
+      stones.push(...(r.starter === 'mine' ? [STARTER_STONES[line]] : STARTER_STONES.filter((_, i) => i !== line)));
+    }
+    for (const it of [...(r.items ?? []), ...stones]) {
+      if (items[it] || !KEY_ITEMS[it]) continue;
+      items[it] = true;
+      got.items.push(it);
+    }
+    for (const [k, n] of Object.entries(r.balls ?? {})) { this.state.bag.balls[k] = Math.min(999, this.state.bag.balls[k] + n); got.balls[k] = n; }
+    for (const it of got.items) this.emit('item', { item: it, story: ev.id });
+    if (Object.keys(got.balls).length) this.emit('bag');
+    return got;
+  }
+  // 傳說的寶可夢出現（legend 事件）：遭遇的計畫。抓到才算做完這件事
+  storyLegendPlan(ev) {
+    const speciesId = S.legendOf(this.state.story, ev.legend);
+    return { speciesId, form: null, spot: speciesId === 717 ? 'sky' : 'rock', shiny: false, nature: this.rng.pick(this.dex.natures).slug, special: true, story: ev.id };
   }
   // 故事裡的人寄來的信（直接放進信箱，不佔夥伴每天 2 封的額度）
   storyLetter(ev) {
