@@ -774,6 +774,16 @@ export class Game {
     this.emit('story', { id, choice });
     return true;
   }
+  // 故事對戰贏了：上場的夥伴好感增加
+  battleWon(uids) {
+    for (const uid of uids) {
+      const mon = this.mon(uid);
+      if (!mon) continue;
+      const before = amie.hearts(mon.affection);
+      amie.addAffection(mon, 8);
+      this.afterAffection(mon, before);
+    }
+  }
   // 對戰輸了：明天再來
   storyLost(id) {
     if (!S.markLost(this.state.story, id, this.now())) return false;

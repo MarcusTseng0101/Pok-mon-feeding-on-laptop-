@@ -101,7 +101,7 @@ export class Pet {
     const was = this.state;
     this.state = state; this.stateT = 0; this.dur = dur;
     // 跌倒或頭暈時，感情好的夥伴可能會跑來安慰
-    if ((state === 'trip' || state === 'dizzy') && was !== state && !this.leaving) maybeComfort(this);
+    if ((state === 'trip' || state === 'dizzy') && was !== state && !this.leaving && !this.guest) maybeComfort(this);
   }
 
   // 腳底可以站的範圍：頭不能超出螢幕上緣。站在視窗頂邊上時只能沿著頂邊走
@@ -310,8 +310,9 @@ export class Pet {
     this.flinchT = Math.max(0, (this.flinchT ?? 0) - dt); // 被招式打到
     this.flipT = Math.max(0, (this.flipT ?? 0) - dt); // 被「顛倒」倒過來
     updateForm(this, dt); // 超級進化、牽絆變身
-    tickMind(this, dt); // 需求隨時間變化（每秒一次）
-    if (wantsToPounce(this, dt)) this.choose(tag([['pounce', 1, () => startPounce(this)]], 'cursor')); // 游標在附近晃：撲過去
+    // guest：故事對戰的對手（不是你的夥伴）：沒有心情、不會自己決定要做什麼
+    if (!this.guest) tickMind(this, dt); // 需求隨時間變化（每秒一次）
+    if (!this.guest && wantsToPounce(this, dt)) this.choose(tag([['pounce', 1, () => startPounce(this)]], 'cursor')); // 游標在附近晃：撲過去
     if (this.emote && this.t > this.emote.until) this.emote = null;
     const p = st.pointer;
     const near = p.known && Math.abs(p.x - this.x) < 260 * (S / 2) && Math.abs(p.y - this.y) < 300 * (S / 2);
@@ -319,7 +320,7 @@ export class Pet {
 
     switch (this.state) {
       case 'appear':
-        if (this.stateT > 0.45) this.set('idle', 1.5);
+        if (this.stateT > 0.45) this.set(this.guest ? 'battle' : 'idle', 1.5);
         break;
       case 'idle':
         if (near && st.env.userActive) {
@@ -331,7 +332,7 @@ export class Pet {
             break;
           }
         }
-        if (done) this.decide();
+        if (done) { if (this.guest) this.set('battle'); else this.decide(); }
         break;
       case 'walk':
       case 'run': {

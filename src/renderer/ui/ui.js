@@ -22,9 +22,11 @@ import { STAGES, FURNITURE, MATERIALS, enough, trophiesAllowed } from '../../cor
 import * as baseGfx from '../gfx/basegfx.js';
 import * as mail from '../gfx/letters.js';
 import { KINDS as LETTER_KINDS } from '../../core/letters.js';
-import { EVENTS as STORY_EVENTS, EVENT_BY_ID as STORY_BY_ID, CAST, VERSIONS, storyDay, daysUntilNext } from '../../core/story.js';
+import { EVENTS as STORY_EVENTS, EVENT_BY_ID as STORY_BY_ID, CAST, VERSIONS, BADGES, storyDay, daysUntilNext, badgesOf, isChampion } from '../../core/story.js';
 import { Portraits } from '../gfx/portraits.js';
 import { HoloCaster } from './holocaster.js';
+import { BattleHud } from './battlehud.js';
+import { MEGA, KEY_ITEMS, ITEM_IDS } from '../../core/items.js';
 import * as cards from '../gfx/postcards.js';
 import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
 import { transform as transformForm, revert as revertForm } from '../scene/battleforms.js';
@@ -101,6 +103,7 @@ export class UI {
     // 主線故事：全息投影通訊器（故事裡的人的圖先試 Showdown 的訓練家圖，拿不到用剪影）
     this.portraits = new Portraits(this.api);
     this.holo = new HoloCaster({ root: r, portraits: this.portraits, audio: this.audio });
+    this.battleHud = new BattleHud({ root: r, audio: this.audio, thumb: (id, o) => this.thumb(id, o) });
     this.applySettings();
   }
 
@@ -335,8 +338,10 @@ export class UI {
       const left = m.trimAt ? Math.max(0, Math.ceil((m.trimAt + TRIM_DAYS * 86400000 - Date.now()) / 86400000)) : 0;
       lines.push(`造型：${esc(formName(m.species, m.form))}${m.form ? `（大約 ${left} 天後長回來）` : ''}`);
     } else if (f) lines.push(`${f.family === 'flabebe' ? '花色' : '花紋'}：${esc(formName(m.species, m.form))}`);
-    if (this.game.canMega(m.uid)) lines.push('✦ 帶著蒂安希進化石：對戰時會超級進化，也可以點牠叫牠超級進化');
+    const stone = MEGA[m.species] && KEY_ITEMS[MEGA[m.species].stone];
+    if (this.game.canMega(m.uid)) lines.push(`✦ 帶著${esc(stone.zh)}：對戰時會超級進化，也可以點牠叫牠超級進化`);
     else if (m.species === 719) lines.push('<span class="hint">好感滿了會發生什麼事呢…</span>');
+    else if (stone && this.game.state.bag.items[MEGA[m.species].stone]) lines.push('<span class="hint">有進化石了，還差超級手環…</span>');
     if (this.game.canBondForm(m.uid)) lines.push('✦ 牠和夥伴的羈絆很深：對戰中有機會「牽絆變身」');
     return lines.map(l => `<div>${l}</div>`).join('');
   }
@@ -508,10 +513,15 @@ export class UI {
     const done = st.log.filter(e => STORY_BY_ID[e.id]);
     const left = daysUntilNext(st, now);
     const ver = st.version ? `<span class="ver ver-${st.version}">${VERSIONS[st.version].zh}</span>` : '';
+    const retry = st.retry && STORY_BY_ID[st.retry.id];
     const next = st.startedAt === null ? '故事還沒開始。夥伴來到桌面以後，會有人打全息投影通訊器來。'
-      : left === null ? '這一段故事說完了。之後還會有新的章節。'
+      : left === null ? '主線故事說完了。不過卡洛斯還有一些特別的事，會在某些時候發生……'
+      : retry && left > 0 ? `${CAST[retry.lines[0][0]]?.zh ?? ''}在等你明天再去挑戰。`
       : left === 0 ? '今天還有事情會發生……' : `下一件事大約在 ${left} 天後。`;
-    const root = h(`<div class="story"><div class="summary">${ver}${st.startedAt === null ? '' : `第 ${storyDay(st, now)} 天・`}已經發生 ${done.length} 件事</div><p class="next"></p><div class="list scroll"></div></div>`);
+    const got = new Set(badgesOf(st));
+    const badges = Object.entries(BADGES).map(([k, b]) => `<span class="gym-badge ${got.has(k) ? 'on' : ''}" style="--c:${b.color}" title="${got.has(k) ? esc(b.zh) : '？？？'}"></span>`).join('');
+    const root = h(`<div class="story"><div class="summary">${ver}${st.startedAt === null ? '' : `第 ${storyDay(st, now)} 天・`}已經發生 ${done.length} 件事</div>
+      ${st.startedAt === null ? '' : `<div class="badges">${badges}<small>${isChampion(st) ? '✦ 卡洛斯冠軍' : `徽章 ${got.size}／8`}</small></div>`}<p class="next"></p><div class="list scroll"></div></div>`);
     root.querySelector('.next').textContent = next;
     const list = root.querySelector('.list');
     if (!done.length) list.append(h('<p class="empty">還沒有故事。</p>'));
@@ -635,7 +645,7 @@ export class UI {
       <h4>樹果</h4><div class="balls berries"></div><p class="hint">在「一起玩」摘樹果，拿來做泡芙。</p>
       <h4>材料</h4><div class="mats">${Object.entries(MATERIALS).map(([k, zh]) => `<span>${esc(zh)} ×${bag.materials[k]}</span>`).join('')}</div><p class="hint">夥伴旅行帶回來的，拿來蓋秘密基地。</p>
       ${this.game.state.eggs.length ? `<h4>蛋（${this.game.state.eggs.length}／3）</h4><div class="eggs"></div><p class="hint">移動游標、在電腦前待著，蛋就會慢慢孵化。好了之後會出現在桌面上。</p>` : ''}
-      ${bag.items.diancite ? '<h4>重要物品</h4><div class="item">✦ 蒂安希進化石</div>' : ''}
+      ${ITEM_IDS.some(i => bag.items[i]) ? `<h4>重要物品</h4><div class="keyitems">${ITEM_IDS.filter(i => bag.items[i]).map(i => `<div class="item" title="${esc(KEY_ITEMS[i].desc ?? `${this.dex.name(KEY_ITEMS[i].species)}的超級進化石`)}">✦ ${esc(KEY_ITEMS[i].zh)}</div>`).join('')}</div>` : ''}
       ${this.game.state.zygardeCells ? `<h4>其他</h4><div class="cells"></div>` : ''}</div>`);
     const balls = root.querySelector('.balls');
     for (const b of BALL_ORDER) {
@@ -755,7 +765,7 @@ export class UI {
       if (!ev || this.holo.busy) return;
       if (ev.kind === 'letter') { const l = this.game.state.letters.inbox.find(x => x.id === `story-${ev.id}`); if (l) this.showLetter(l); else this.toast('這封信已經不在信箱裡了'); return; }
       this.closePanel();
-      this.holo.play(ev);
+      this.holo.play(ev.kind === 'battle' ? { ...ev, kind: 'call', lines: [...ev.lines, ...ev.win] } : ev);
       return;
     }
     if (t.dataset.letter) { const l = this.game.state.letters.inbox.find(x => x.id === t.dataset.letter); if (l) { this.audio.sfx('open'); this.showLetter(l); } return; }
@@ -947,7 +957,7 @@ export class UI {
     const q = force ?? !this.game.state.settings.quiet;
     if (q) this.minigames.closeMinigame('quiet');
     this.game.setSetting('quiet', q);
-    if (q && this.director.enc) this.director.runAway();
+    if (q && this.director.enc) this.director.runAway({ force: true });
     this.director.syncPets();
     if (!q) this.director.scheduleNext();
     this.toggleMenu(false);
@@ -1048,7 +1058,7 @@ export class UI {
     const chainTag = chain.species === s.id && chain.count ? ` <span class="badge chain">連鎖 ×${chain.count}</span>` : '';
     this.encBar.innerHTML = `<div class="name">${enc.wild.shiny ? '<span class="shinytag">✦ 色違</span> ' : ''}野生的${esc(s.name.zh)}${caughtBefore ? ' <span class="badge">已捕獲</span>' : ''}${chainTag}</div>
       <div class="btns">${BALL_ORDER.map(b => `<button data-ball="${b}" class="${aiming === b ? 'sel' : ''}" ${busy || !bag[b] ? 'disabled' : ''} title="${BALLS[b].zh}">×${bag[b]}</button>`).join('')}
-      <button data-act="puff" ${busy || enc.wild.puff !== 'none' ? 'disabled' : ''}>給泡芙</button><button data-act="run" ${busy ? 'disabled' : ''}>離開</button></div>
+      <button data-act="puff" ${busy || enc.wild.puff !== 'none' ? 'disabled' : ''}>給泡芙</button>${enc.wild.story ? '' : `<button data-act="run" ${busy ? 'disabled' : ''}>離開</button>`}</div>
       <div class="hint">${aiming ? '在圈圈最小的時候點牠！' : enc.wild.puff !== 'none' ? '牠吃了泡芙，變得比較安心了' : '選一顆球，或先給牠泡芙'}</div>`;
     for (const b of BALL_ORDER) this.encBar.querySelector(`[data-ball="${b}"]`).prepend(pixelImg(art.balls[b], 2));
     this.encBar.classList.remove('hidden');

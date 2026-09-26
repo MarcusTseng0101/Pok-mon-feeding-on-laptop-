@@ -23,6 +23,7 @@ export class Stage {
     this.ctx = canvas.getContext('2d');
     this.fx = new Fx();
     this.pets = new Map();
+    this.guests = []; // 故事對戰的對手（Pet，guest＝true）：一起更新、畫，但點不到、不是你的夥伴
     this.spot = null;
     this.wild = null;
     this.balls = [];
@@ -225,7 +226,8 @@ export class Stage {
       this.fire('modeClick', target, { x, y });
       return;
     }
-    this.drag = { sx: x, sy: y, target, pet: target instanceof Pet && target.state !== 'evolving' ? target : null, held: false };
+    // 正在對戰的夥伴不能拎起來（inBattle：scene/battle.js）
+    this.drag = { sx: x, sy: y, target, pet: target instanceof Pet && target.state !== 'evolving' && !target.inBattle ? target : null, held: false };
     this.refreshInteractive();
   }
 
@@ -257,7 +259,7 @@ export class Stage {
     const dt = Math.min(0.1, (now - (this.lastFrame ?? now)) / 1000);
     this.lastFrame = now;
     // 沒什麼在動的時候 30fps 就夠了，省電
-    const busy = now < this.busyUntil || this.drag?.held || this.mode || this.balls.length || this.wild || this.minigame || this.weatherFx.fade > 0;
+    const busy = now < this.busyUntil || this.drag?.held || this.mode || this.balls.length || this.wild || this.minigame || this.battle || this.weatherFx.fade > 0;
     this.accum = (this.accum ?? 0) + dt;
     if (!busy && now - this.lastDraw < 30) return;
     const step = this.accum;
@@ -288,6 +290,8 @@ export class Stage {
     this.pointerMoved = false;
     this.lastHoverPet = this.hoverPet;
     for (const p of this.pets.values()) p.update(dt);
+    for (const g of this.guests) g.update(dt);
+    this.guests = this.guests.filter(g => !g.gone);
     resolveCollisions(this, dt); // 夥伴之間不會互相穿過去
     this.spot?.update(dt);
     if (this.spot?.gone) { this.spot = null; this.fire('spotGone'); }
@@ -304,6 +308,7 @@ export class Stage {
     this.weatherFx.update(dt);
     this.updateFeeding(dt);
     this.minigame?.update(dt); // 小遊戲（ui/minigames/host.js）
+    this.battle?.update(dt); // 故事裡的對戰（scene/battle.js）
     this.refreshInteractive();
   }
 
@@ -346,7 +351,7 @@ export class Stage {
     for (const p of this.props) p.draw(ctx);
     drawDim(ctx, this); // 放招時兩隻周圍的桌面變暗（畫在寶可夢後面）
     this.minigame?.active?.ctl?.drawUnder?.(ctx); // 小遊戲畫在夥伴後面的東西（樹果樹…）
-    const pets = [...this.pets.values()].sort((a, b) => this.drawOrder(a) - this.drawOrder(b));
+    const pets = [...this.pets.values(), ...this.guests].sort((a, b) => this.drawOrder(a) - this.drawOrder(b));
     // 地上的夥伴畫在氣息點後面（看起來像站在草叢後），飄浮的畫在前面
     for (const p of pets) if (p.state !== 'held' && !p.floats) p.draw(ctx);
     this.spot?.draw(ctx);
