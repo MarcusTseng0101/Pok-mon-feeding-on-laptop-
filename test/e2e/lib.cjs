@@ -13,7 +13,7 @@ const { execFile } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '../..');
 const CACHE = path.join(ROOT, '.cache/sprites');
 const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon';
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2' };
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.gif': 'image/gif', '.woff2': 'font/woff2' };
 
 function loadPlaywright() {
   const tries = [process.env.PLAYWRIGHT_PATH, 'playwright', '/opt/node22/lib/node_modules/playwright'].filter(Boolean);
@@ -38,7 +38,7 @@ function serve() {
     let file;
     if (url.startsWith('/__sprites/')) {
       const rel = url.slice('/__sprites/'.length);
-      if (!/^(shiny\/)?\d{3,5}(-[a-z]+)*\.png$/.test(rel)) { res.writeHead(400).end(); return; }
+      if (!/^(shiny\/)?\d{3,5}(-[a-z]+)*\.png$/.test(rel) && !/^other\/showdown\/(shiny\/)?\d{3,5}(-[a-z]+)*\.gif$/.test(rel)) { res.writeHead(400).end(); return; }
       file = await fetchSprite(rel);
     } else {
       file = path.join(ROOT, url);
