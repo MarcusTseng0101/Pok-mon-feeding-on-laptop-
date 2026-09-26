@@ -11,8 +11,8 @@
 
 export const NEEDS = ['food', 'energy', 'social', 'fun', 'curiosity', 'comfort'];
 export const NEED_ZH = { food: '肚子', energy: '體力', social: '想找人玩', fun: '開心', curiosity: '好奇心', comfort: '舒適' };
-export const CATEGORIES = ['rest', 'explore', 'play', 'social', 'habit', 'train', 'need', 'cursor', 'trip'];
-export const CATEGORY_ZH = { rest: '休息', explore: '探索', play: '玩耍', social: '找朋友', habit: '習性', train: '練習', need: '找吃的', cursor: '跟滑鼠玩', trip: '出門旅行' };
+export const CATEGORIES = ['rest', 'explore', 'play', 'social', 'habit', 'train', 'need', 'cursor', 'trip', 'base'];
+export const CATEGORY_ZH = { rest: '休息', explore: '探索', play: '玩耍', social: '找朋友', habit: '習性', train: '練習', need: '找吃的', cursor: '跟滑鼠玩', trip: '出門旅行', base: '回基地' };
 export const MOOD_ZH = { happy: '開心', calm: '平靜', lonely: '寂寞', bored: '無聊', sleepy: '想睡', grumpy: '不太高興' };
 
 export const MULT_MIN = 0.25;
@@ -123,6 +123,7 @@ export function satisfy(mind, category, { name = null, food = 100 } = {}) {
     case 'habit': add('curiosity', 12); mon.enjoyment = 3; break;
     case 'train': mon.enjoyment = 4; add('energy', -6); break;
     case 'trip': add('curiosity', 60); break;
+    case 'base': add('comfort', 30); add('energy', name === 'goBed' || name === 'homeNight' ? 30 : 5); break;
     case 'cursor': mon.enjoyment = 4; add('curiosity', 10); add('energy', -3); break;
     // 自己找到一點小樹果吃：只夠不餓，吃不飽（餵泡芙還是你的事）
     case 'need': if (food < 100) mon.fullness = 22; break;
@@ -169,6 +170,8 @@ export function weights(mind, lv, traits, ctx = {}) {
     train: def(lv.fun) * 0.4 + (lv.energy > 50 ? 0.15 : 0) + (ctx.rival ? 0.3 : 0),
     need: lv.food < 70 ? def(lv.food) * (0.8 + tr.greedy * 0.8) : 0,
     // 跟你的游標玩：好奇、外向的比較愛玩，膽小的會躲；你不在電腦前就不玩
+    // 回秘密基地：累了、想找個舒服的地方
+    base: Math.max(def(lv.energy), def(lv.comfort)) * (0.6 + tr.sleepy * 0.5) + 0.1,
     // 出門旅行：越好奇、越無聊越想去；不能出發的時候（已經有別隻在外面…）就不會想
     trip: ctx.canTrip ? (def(lv.curiosity) * 0.7 + def(lv.fun) * 0.3) * (0.4 + tr.curious) : 0,
     cursor: ctx.userActive ? ((def(lv.fun) * 0.6 + def(lv.curiosity) * 0.4) * (0.6 + tr.curious * 0.5 + tr.outgoing * 0.4) + 0.15) * (1 - tr.timid * 0.7) : 0,
@@ -180,6 +183,7 @@ export function weights(mind, lv, traits, ctx = {}) {
     if (c === 'need' && lv.food >= 70) m = MULT_MIN; // 不餓就不會去找吃的
     if (c === 'cursor' && !ctx.userActive) m = MULT_MIN;
     if (c === 'trip' && !ctx.canTrip) m = MULT_MIN;
+    if (c === 'rest' && ctx.bedFree && lv.energy < 30) m *= 0.4; // 有床可以睡，就不想在地上打瞌睡
     if (c === sCat && n >= BORED_AFTER) m *= BORED_MULT; // 做膩了
     out[c] = clamp(m, MULT_MIN, MULT_MAX);
   }
@@ -226,6 +230,12 @@ export const REASONS = {
     calm: ['你在忙嗎？我陪你', '靠過去看看你在做什麼', '在你旁邊待一下'],
     memory: ['上次坐在箭頭旁邊被嚇到…這次要小心', '箭頭上次突然跑掉，這次要抓住', '記得箭頭會突然動，好刺激'],
   },
+  base: {
+    energy: ['好累，回床上睡覺', '想念基地的床', '回家睡一下'],
+    comfort: ['回基地待著最安心', '想回家坐坐', '基地最舒服了'],
+    night: ['晚上了，回基地睡覺', '大家一起回家睡', '天黑了，回家'],
+    calm: ['回基地看看', '去院子裡走走', '看看家裡有沒有什麼新東西'],
+  },
   trip: {
     curiosity: ['想去遠一點的地方看看', '好想知道螢幕外面有什麼', '出發去冒險！'],
     bored: ['桌面待膩了，出去走走', '每天都一樣，想去旅行', '出去玩一下再回來'],
@@ -235,7 +245,7 @@ export const REASONS = {
     food: ['肚子咕嚕叫，找找有沒有樹果', '好餓…附近應該有吃的', '想吃東西，去找找看', '肚子餓扁了'],
   },
 };
-const CITES = { bored: 'need', peeker: 'memory', energy: 'need', comfort: 'need', curiosity: 'need', fun: 'need', food: 'need', lonely: 'need', friend: 'relation', rival: 'relation', memory: 'memory' };
+const CITES = { night: null, bored: 'need', peeker: 'memory', energy: 'need', comfort: 'need', curiosity: 'need', fun: 'need', food: 'need', lonely: 'need', friend: 'relation', rival: 'relation', memory: 'memory' };
 export const citesOf = key => CITES[key.split('.')[1]] ?? null;
 
 // 需求低於大約 60 就會在理由裡說出來（門檻是猜的，可以調）
@@ -257,6 +267,7 @@ export function reason(category, lv, rng, ctx = {}) {
     case 'habit': sub = lv.curiosity < 55 ? 'curiosity' : 'self'; break;
     case 'train': sub = other && other.rivalry >= 1 ? 'rival' : 'drive'; break;
     case 'need': sub = 'food'; break;
+    case 'base': sub = ctx.night ? 'night' : lv.energy < 50 ? 'energy' : lv.comfort < 70 ? 'comfort' : 'calm'; break;
     case 'trip': sub = ctx.sawPeeker ? 'memory' : lv.curiosity < 55 ? 'curiosity' : 'bored'; break;
     case 'cursor': sub = ctx.cursorSurprised ? 'memory' : lv.fun < 55 ? 'fun' : lv.curiosity < 65 ? 'curiosity' : 'calm'; break;
     default: sub = null;

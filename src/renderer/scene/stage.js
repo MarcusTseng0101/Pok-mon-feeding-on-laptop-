@@ -9,6 +9,7 @@ import { applyWindows } from './perching.js';
 import { WeatherFx } from './weatherfx.js';
 import { blit } from '../gfx/pixel.js';
 import * as art from '../gfx/art.js';
+import { FurnitureTarget } from './base.js';
 
 const THOUGHT_HOVER = 0.6; // 秒
 
@@ -148,7 +149,11 @@ export class Stage {
     for (const b of this.props) if (b.hit(x, y)) return b;
     if (this.wild?.hit(x, y)) return this.wild;
     if (this.spot?.hit(x, y)) return this.spot;
-    return this.petAt(x, y);
+    const pet = this.petAt(x, y);
+    if (pet) return pet;
+    // 秘密基地：只有家具點得到（空地、帳篷點不到，不會擋住底下的視窗）
+    const it = this.baseView?.itemAt(x, y);
+    return it ? new FurnitureTarget(this.baseView, it, () => this.fire('furnitureClick', it)) : null;
   }
 
   wantsMouse() {
@@ -334,6 +339,7 @@ export class Stage {
     const ctx = this.ctx, S = this.S;
     ctx.clearRect(0, 0, this.W, this.H);
     if (this.hidden) { this.fx.draw(ctx, S); return; }
+    this.baseView?.draw(ctx); // 秘密基地在最底層
     for (const d of this.decals) {
       const k = d.t / d.life, alpha = Math.min(1, d.t * 3, (1 - k) * 4);
       blit(ctx, d.img, d.x - (d.img.width * S) / 2, d.y - d.img.height * S, S, { alpha });

@@ -36,6 +36,7 @@ node test/e2e/mind.cjs         # 想法泡泡、夥伴資料頁的心智、聊�
 node test/e2e/cursor.cjs       # 撲游標、追游標、坐在游標旁邊（永遠不蓋住游標、不攔截滑鼠）
 node test/e2e/peek.cjs         # 探頭：慢慢靠近會走進來、太快會嚇跑、頻率最多 1/3
 node test/e2e/trips.cjs        # 出門旅行：鬼抓人正常結束、走出去、紙條、走回來、收明信片、相簿
+node test/e2e/base.cjs         # 秘密基地：空地點不到、家具點得到、擺放和搬動、累了去床上睡、晚上回基地睡
 node test/e2e/world.cjs        # 天氣（不會攔截滑鼠、查不到沿用上次）、獎章、同步資料夾（合併、不重複加）
 node test/e2e/habits.cjs    # 72 種寶可夢的每一個習性都能跑完、不會跑出螢幕
 node test/e2e/physics.cjs   # 碰撞與擊退：沒有重疊、撞球、重量差
@@ -138,6 +139,22 @@ node test/e2e/perf.cjs      # 每幀 update + draw 的時間
 - 結算用的是旅行自己的種子，所以結算幾次結果都一樣。
 - 兩台電腦同步時，在哪一台收下明信片，禮物就只會算一次。
 - 電腦時鐘被調回去，牠一樣回得來。
+
+**秘密基地**（`src/core/base.js`、`src/renderer/scene/base.js`、`scene/home.js`）
+- 螢幕左下角（也可以改成右下角）有一塊小院子。後面是住的地方，前面的格子可以擺家具。
+- 住的地方會升級：帳篷 → 小屋 → 樹屋。
+- 升級和家具要用材料：木頭、布、石頭、閃亮石，都是夥伴旅行帶回來的。
+- 家具有床、桌子、地毯、燈、盆栽、獎盃。獎盃不用材料，但有幾個獎章才能擺幾個。收起來的家具會把材料全部還你。
+- 一開始就有帳篷和一張小床。
+- 寶可夢會自己用基地：
+  - 累了會回床上睡，一張床睡一隻；累壞了（體力低於 20）會直接回床上。
+  - 想休息會回院子坐坐。
+  - 晚上大家都會回基地，床空著就上床，不然就跟在睡的夥伴擠在一起。
+- 選單的「秘密基地」可以升級、擺家具、搬動、收起來，也可以換位置。
+  - 擺放時會出現格線，放得下的格子是綠色、放不下的是紅色。按右鍵取消。
+  - 直接點桌面上的家具也可以搬動它。
+- 滑鼠：只有家具點得到。院子的空地和帳篷都點不到，所以不會擋到你點後面的視窗。
+- 兩台電腦同步時，基地用最後修改的那一邊。材料放在背包裡，跟其他東西一樣走 ledger。
 
 **生態動作**（依屬性與時間，寫在 `src/renderer/scene/behaviors.js`）：
 
@@ -362,6 +379,7 @@ src/main/                    Electron 主程序
 src/core/minigames.js        小遊戲的計分與獎勵（純函式）
 src/core/perch.js focus.js eggs.js   視窗頂邊、番茄鐘、孵蛋的規則（eggdata.js 由 scripts/build-eggs.mjs 產生）
 src/core/weather.js achievements.js sync.js   天氣、獎章、同步的合併規則
+src/core/base.js             秘密基地（升級、家具格子、材料、同步）；畫面在 renderer/scene/base.js、home.js
 src/core/trips.js            出門旅行（地點、結算、同步）；明信片的圖在 renderer/gfx/postcards.js
 src/core/mind.js memory.js   心智（需求、個性、心情、理由）與記憶；scene/mindlink.js 把它接到 Pet.decide()
 src/renderer/                畫面

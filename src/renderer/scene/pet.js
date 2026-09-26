@@ -15,6 +15,7 @@ import { integrateKnock } from './physics.js';
 import { updateForm, drawForm } from './battleforms.js';
 import { PERCH_ACTIONS, perchBounds, perchedChoices, perchOption } from './perching.js';
 import { tag, weigh, afterChoice, tickMind } from './mindlink.js';
+import { homeOptions, homeNight, exhausted } from './home.js';
 import { TRAVEL_ACTIONS, startDepart, drawCarried } from './travel.js';
 import { traitsOf } from '../../core/mind.js';
 import { CURSOR_ACTIONS, cursorOptions, wantsToPounce, startPounce, besideCursor } from './cursor.js';
@@ -325,7 +326,7 @@ export class Pet {
       case 'run': {
         const speed = (this.state === 'run' ? RUN_SPEED : WALK_SPEED) * S;
         // 路被別隻擋住太久就放棄
-        if (this.state === 'walk' && this.stateT > 15) { this.onArrive = null; this.set('idle', 1); break; }
+        if (this.state === 'walk' && this.stateT > (this.walkLimit ?? 15)) { this.onArrive = null; this.set('idle', 1); break; }
         if (this.moveTo(this.target.x, this.target.y, speed, dt)) {
           if (this.state === 'run' && this.stateT < this.dur) { this.target = this.randomPoint(60, 200); break; } // 暴衝：一直換方向
           const arrive = this.onArrive;
@@ -522,6 +523,8 @@ export class Pet {
   decide() {
     const st = this.stage;
     this.onArrive = null;
+    this.bedId = null; // 睡醒了：床空出來
+    this.walkLimit = null;
     if (st.game?.tripStatus(this.uid) === 'away') { startDepart(this); return; } // 已經出發了（例如走到一半被拎起來）：繼續走
 
     if (this.perch) { this.choose(tag(perchedChoices(this), 'explore')); return; } // 站在視窗上：只做安靜的事或跳下來
@@ -529,6 +532,10 @@ export class Pet {
     // 站在視窗上、正在往上跳的不算（不會被拉去玩）
     const others = [...st.pets.values()].filter(o => o !== this && o.free && !o.partner && !o.perch && o.state !== 'perchUp');
     if (st.env.sleepy) {
+      // 晚上：先回秘密基地（床空著就上床，不然去基地跟大家擠在一起）。
+      // 睡著了要到早上才會醒，所以一定要先回到家再睡
+      const home = homeNight(this);
+      if (home) { this.choose(tag([home], 'base')); return; }
       // 想睡了：有其他夥伴在睡的話靠過去一起睡
       const cuddle = socialOptions(this, others).find(([n]) => n === 'cuddle');
       if (cuddle && Math.random() < 0.6) { cuddle[2](); afterChoice(this, [...cuddle, 'social']); return; }
@@ -538,6 +545,8 @@ export class Pet {
       afterChoice(this, [nap, 1, null, 'rest']);
       return;
     }
+    const tired = exhausted(this); // 累壞了：直接回床上睡
+    if (tired) { this.choose(tag([tired], 'base')); return; }
     const h = hearts(this.mon.affection);
     const settings = st.game?.state.settings;
     const musicOn = settings && !settings.muted && settings.musicVolume > 0.05;
@@ -583,6 +592,7 @@ export class Pet {
       tag(groupOptions(this, others.filter(o => !o.group)), 'social'), // 一群一起玩、好朋友之間
       tag(perchOption(this), 'explore'), // 跳到其他視窗的標題列上
       tag(cursorOptions(this), 'cursor'), // 追游標、坐在游標旁邊
+      tag(homeOptions(this), 'base'), // 回秘密基地睡覺、坐坐
       // 出門旅行（一次只有一隻、桌面上至少留一隻；很少發生）
       tag([['trip', !this.perch && !st.minigame?.active && !this.evolveView && st.game?.canDepart(this.uid) ? 1 : 0, () => {
         if (st.game.depart(this.uid, { curious: traitsOf(this.mon.nature).curious })) startDepart(this);

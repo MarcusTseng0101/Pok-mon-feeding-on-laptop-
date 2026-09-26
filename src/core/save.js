@@ -5,6 +5,7 @@ import { FLAVORS, TIER_ORDER, BERRIES, puffKey } from './amie.js';
 import { canonicalForm, formsOf } from './forms.js';
 import { normalizeMind } from './mind.js';
 import { normalizeMemory } from './memory.js';
+import { normalizeBase, defaultBase, emptyMaterials, MATERIALS } from './base.js';
 import { normalizeTrip, normalizePostcard, PLACES, POSTCARDS_KEPT, TRIPS_DONE_KEPT } from './trips.js';
 
 // 舊存檔沒有心智：用 uid 產生固定的起始值（每次讀進來都一樣）
@@ -49,7 +50,7 @@ export function defaultSave(now) {
     lastDailyGift: null,
     starterChosen: false,
     settings: { ...DEFAULT_SETTINGS },
-    bag: { balls: { poke: 15, great: 3, ultra: 1 }, puffs, berries: emptyBerries(), items: emptyItems() },
+    bag: { balls: { poke: 15, great: 3, ultra: 1 }, puffs, berries: emptyBerries(), items: emptyItems(), materials: emptyMaterials() },
     dex: {}, // [speciesId]: { seen, caught, shiny, firstSeenAt, firstCaughtAt, forms?: { [形態]: { seen, caught } } }
     mons: [],
     zygardeCells: 0,
@@ -71,6 +72,7 @@ export function defaultSave(now) {
     postcards: [], // 旅行帶回來的明信片 [{ id, place, seed, at, uid, name, diary }]
     tripsDone: [], // 已經結算的旅行 id（同步時用：不會在另一台電腦再結算一次）
     placesVisited: {}, // { [地點]: 第一次去的時間 }
+    base: defaultBase(now), // 秘密基地（core/base.js）：一開始有帳篷＋一張小床
     minigames: { day: null, baked: 0, deluxe: 0 }, // 今天做了幾個泡芙（每天有上限）
     stats: {
       encounters: 0, throws: 0, catches: 0, puffsFed: 0, strokes: 0, evolutions: 0, shinies: 0,
@@ -157,9 +159,11 @@ export function migrate(raw, dex, now) {
     puffs: { ...emptyPuffs(), ...(raw.bag?.puffs ?? {}) },
     berries: emptyBerries(),
     items: emptyItems(),
+    materials: emptyMaterials(), // 蓋秘密基地的材料（旅行帶回來的）
   };
   for (const b of Object.keys(s.bag.berries)) s.bag.berries[b] = num(raw.bag?.berries?.[b], 0, 0, 999);
   for (const i of ITEMS) s.bag.items[i] = Boolean(raw.bag?.items?.[i]);
+  for (const k of Object.keys(MATERIALS)) s.bag.materials[k] = num(raw.bag?.materials?.[k], 0, 0, 999);
   for (const k of Object.keys(s.bag.balls)) s.bag.balls[k] = num(s.bag.balls[k], 0, 0, 999);
   for (const k of Object.keys(s.bag.puffs)) s.bag.puffs[k] = num(s.bag.puffs[k], 0, 0, 999);
   s.mons = (Array.isArray(raw.mons) ? raw.mons : []).map(m => normalizeMon(m, dex)).filter(Boolean);
@@ -182,6 +186,7 @@ export function migrate(raw, dex, now) {
   s.eggs = (Array.isArray(raw.eggs) ? raw.eggs : []).map(e => normalizeEgg(e, dex)).filter(Boolean).slice(0, MAX_EGGS);
   s.postcards = (Array.isArray(raw.postcards) ? raw.postcards : []).map(normalizePostcard).filter(Boolean).slice(-POSTCARDS_KEPT);
   s.tripsDone = (Array.isArray(raw.tripsDone) ? raw.tripsDone : []).filter(id => typeof id === 'string' && id.length <= 60).slice(-TRIPS_DONE_KEPT);
+  s.base = normalizeBase(raw.base, now);
   s.placesVisited = Object.fromEntries(Object.entries(raw.placesVisited && typeof raw.placesVisited === 'object' ? raw.placesVisited : {}).filter(([k, v]) => PLACES[k] && Number.isFinite(v)));
   s.hatchedEggs = (Array.isArray(raw.hatchedEggs) ? raw.hatchedEggs : []).filter(u => typeof u === 'string' && u.length <= 40).slice(-200);
   s.eggDay = typeof raw.eggDay === 'string' && DAY_RE.test(raw.eggDay) ? raw.eggDay : null;
@@ -211,7 +216,7 @@ export function migrate(raw, dex, now) {
     deluxe: Math.floor(num(mg.deluxe, 0, 0, 99)),
   };
   const y = raw.sync;
-  const flat = o => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([k, v]) => /^(balls|puffs|berries)\.[a-z-]{1,24}$/.test(k) && Number.isFinite(v)).map(([k, v]) => [k, Math.round(v)]));
+  const flat = o => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([k, v]) => /^(balls|puffs|berries|materials)\.[a-z-]{1,24}$/.test(k) && Number.isFinite(v)).map(([k, v]) => [k, Math.round(v)]));
   s.sync = y && str(y.folder, 500) && typeof y.deviceId === 'string' && /^[a-z0-9]{6,32}$/.test(y.deviceId)
     ? {
       folder: y.folder.slice(0, 500),
