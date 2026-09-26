@@ -41,6 +41,7 @@ node test/e2e/trips.cjs        # 出門旅行：鬼抓人正常結束、走出�
 node test/e2e/letters.cjs      # 寫信：離開 7 小時信箱立旗子、打開、提到記憶裡的事、惡意暱稱不會被當成 HTML、收件夾、刪信、生日
 node test/e2e/story.cjs        # 主線故事：序章選 X／Y、三個人輪流說、廣播變暗、AZ 點了才說話、弗拉達利的信、故事頁重看
 node test/e2e/attention.cjs    # 打擾額度：假時鐘模擬 8 小時，任何一小時最多 1 次、沒有繞過額度的通知、排隊的故事最後有打來、專注中不打擾
+node test/e2e/phone.cjs        # 手機頁面：設定裡的網址和 QR code、真的小網站開在 127.0.0.1、手機大小的瀏覽器看得到信和明信片、暱稱裡的 HTML 原樣顯示、token 不對打不開
 node test/e2e/us.cjs           # 心情（選單最上面問、很累／很開心／壓力大的效果）、認識滿一週、中秋頭上的月亮、每週日的信
 node test/e2e/routine.cjs      # 作息：早上說早安、半夜打哈欠陪你（專注中不會）、專注兩小時慶祝
 node test/e2e/battle.cjs       # 道館對戰：館主點了才開打、選夥伴選招式打到贏、徽章與超級手環、上場就超級進化、認輸明天再來、傳說寶可夢抓到才算
@@ -334,6 +335,28 @@ X・Y 的主線節點，改成發生在你的桌面上（`src/core/story.js`）�
 - 農曆的日子沒有簡單的公式，寫死 2025–2040 的日期表（用兩個函式庫對過，16 年全部一致），超出表的年份就不過農曆節日
 - 季節照月份判斷，南半球的時區反過來
 
+### 在手機上看
+
+設定 →「在手機上看」打開以後，電腦上的 app 會開一個小網頁，手機掃畫面上的 QR code 就能看：
+今天的心情和認識第幾天、桌面上的夥伴、旅行中的夥伴（什麼時候回來）、信箱（點一下展開）、明信片、我們的里程碑。
+只能看，不能操作；電腦上的 app 開著的時候才會更新（每 30 秒）。
+
+**同一個 Wi-Fi**：手機和電腦連同一個 Wi-Fi，掃「同一個 Wi-Fi」那個網址的 QR code。
+第一次打開時 Windows 可能會問要不要讓 Kalos Amie 使用網路，選「私人網路」就好（不要勾公用網路）。
+
+**出門也想看：用 Tailscale**（免費、不用改路由器，也不會把網頁公開到網路上）
+1. 到 [tailscale.com](https://tailscale.com/download) 下載，電腦和手機都裝，用**同一個帳號**登入
+2. 電腦上重新打開「在手機上看」（或重開 app），網址清單會多一個「Tailscale：http://100.x.x.x:…」
+3. 手機上打開 Tailscale（保持連線），點設定裡那個網址旁邊，換成它的 QR code 掃一次，加到主畫面
+4. 之後手機在外面用行動網路也打得開（電腦要開著、app 要開著）
+
+**安全**（`src/main/phone.js`）：
+- 預設關閉
+- 網址裡有一串 128-bit 的隨機密碼，沒有它一律 404；覺得外流了可以按「重新產生網址」，舊的馬上失效
+- 只監聽區網（10.x、172.16–31.x、192.168.x）和 Tailscale（100.64–127.x）的位址，不對外公開
+- 只提供唯讀的摘要（`src/core/phonedata.js`），不會送出整份存檔；頁面不准執行內嵌程式，你取的暱稱一律當成文字顯示
+- QR code 是自己寫的產生器（`src/core/qr.js`，不加套件），跟 Nayuki 的 QR Code generator 逐格一樣
+
 **隱私**：遊戲只讀其他視窗的**位置和大小**（讓寶可夢站在標題列上），**不讀視窗標題、程式名稱或內容，也不讀按鍵**。
 「好像在打字」是用「系統閒置時間 < 1 秒，但游標 2 秒沒動」推測的，不讀鍵盤。
 
@@ -483,6 +506,7 @@ src/core/                    遊戲規則（純 JS，不碰 DOM／Electron，nod
   attention.js  routine.js   打擾額度（每小時幾次、排隊）／你的作息（早安、晚睡、專注兩小時）
   mood.js  together.js       每天的心情／你和大家（第一次見面、里程碑、每週的信）
   calendar.js                節日（農曆日期表 2025–2040）、季節
+  phonedata.js  qr.js        手機頁面看到的摘要／QR code 產生器
   vivillon.js                時區 → 彩粉蝶花紋（scripts/build-vivillon.mjs 產生）
   amie.js  capture.js  encounter.js  evolution.js  save.js  dex.js  rng.js  shiny.js
 src/main/                    Electron 主程序
@@ -492,6 +516,8 @@ src/main/                    Electron 主程序
   syncfiles.js               同步資料夾的讀寫（只碰 kalos-amie/save.<裝置>.json）
   windows.js                 其他視窗的位置（Windows；只讀位置和大小，還沒接進遊戲）
   signals.js                 閒置時間、電源、CPU → 遭遇的「氣息」
+  phone.js                   手機頁面的小網站（只監聽區網和 Tailscale、網址帶密碼、唯讀）
+src/phone/                   手機頁面本身（index.html、phone.js、phone.css）
   preload.cjs                給 renderer 的窄介面（contextIsolation + sandbox）
 src/core/minigames.js        小遊戲的計分與獎勵（純函式）
 src/core/perch.js focus.js eggs.js   視窗頂邊、番茄鐘、孵蛋的規則（eggdata.js 由 scripts/build-eggs.mjs 產生）

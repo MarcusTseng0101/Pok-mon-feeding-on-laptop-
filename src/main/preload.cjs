@@ -23,6 +23,10 @@ contextBridge.exposeInMainWorld('kalos', {
   updateTray: state => ipcRenderer.send('tray:update', state),
   flushed: () => ipcRenderer.send('app:flushed'),
   quit: () => ipcRenderer.send('app:quit'),
+  // 手機頁面：打開／關掉（回傳網址）、重新產生網址、送最新的摘要過去
+  setPhone: on => ipcRenderer.invoke('phone:set', Boolean(on)),
+  regenPhone: () => ipcRenderer.invoke('phone:regen'),
+  phoneSnapshot: data => ipcRenderer.send('phone:snapshot', data),
   on(channel, fn) {
     if (!CHANNELS.includes(channel)) throw new Error(`unknown channel ${channel}`);
     const handler = (_e, payload) => fn(payload);

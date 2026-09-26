@@ -24,6 +24,7 @@ import { routineDay, clockOf, minuteOf } from '../core/routine.js';
 import { HOLIDAYS } from '../core/calendar.js';
 import { MILESTONES } from '../core/together.js';
 import { MOODS } from '../core/mood.js';
+import { phoneSnapshot } from '../core/phonedata.js';
 import { KEY_ITEMS } from '../core/items.js';
 import { CAST, BADGES, lossesOf } from '../core/story.js';
 
@@ -195,6 +196,26 @@ export class Director {
     }
   }
 
+  // ---------- 手機頁面（src/main/phone.js）----------
+  // 打開的時候每 30 秒把摘要送過去：只有要顯示的欄位（core/phonedata.js），圖片畫成 data URL
+  pushPhone() {
+    const g = this.game;
+    if (!g.state.settings.phone || !this.api.phoneSnapshot) return null;
+    const keyOf = m => `${spriteKey(m.species, m.form)}${m.shiny ? ':s' : ''}`;
+    const data = phoneSnapshot(g.state, { now: Date.now(), nameOf: m => g.displayName(m), speciesName: id => this.dex.name(id), spriteKeyOf: keyOf });
+    for (const k of new Set([...data.pets, ...data.trips].map(p => p.pic))) {
+      const [key, s] = k.split(':');
+      try { data.pics[k] = this.sprites.peek(key, s === 's').canvas.toDataURL('image/png'); } catch { /* 還沒載好：下次 */ }
+    }
+    const byId = new Map(g.state.postcards.map(p => [p.id, p]));
+    for (const c of data.postcards) {
+      const p = byId.get(c.id);
+      try { if (p) c.img = cards.postcard(p.place, p.seed).toDataURL('image/png'); } catch { /* 沒有圖就只有字 */ }
+    }
+    this.api.phoneSnapshot(data);
+    return data;
+  }
+
   // 比平常晚睡：大家打哈欠（只是動作，不算打擾）；最喜歡你的那隻靠到游標旁邊坐下（要經過額度）
   bedtime() {
     const st = this.stage, g = this.game.state;
@@ -283,6 +304,8 @@ export class Director {
     if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); this.drainAttention(); }
     if (!this.dayChecked) { this.dayChecked = true; this.refreshDay(); }
     this.moodTick(dt);
+    this.phoneT = (this.phoneT ?? 25) + dt;
+    if (this.phoneT >= 30) { this.phoneT = 0; this.pushPhone(); }
     this.routineT = (this.routineT ?? 0) + dt;
     if (this.routineT >= 60) { this.routineT = 0; this.routineTick(); }
   }

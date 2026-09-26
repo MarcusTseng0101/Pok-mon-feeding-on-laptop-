@@ -40,6 +40,7 @@ export const DEFAULT_SETTINGS = {
   focusMinutes: 25, // 番茄鐘長度（15–60）
   birthday: null, // 你的生日 'MM-DD'（不填也可以；那天夥伴會寫信給你）
   calmFx: false, // 減少閃光和畫面震動（招式的演出）
+  phone: false, // 手機頁面（src/main/phone.js）：預設關閉
   interruptions: String(DEFAULT_LIMIT), // 寶可夢每小時最多主動打擾你幾次（core/attention.js）：'0'／'1'／'2'／'unlimited'
 };
 

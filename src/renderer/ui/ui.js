@@ -31,6 +31,7 @@ import { LIMIT_ZH } from '../../core/attention.js';
 import { MOODS, MOOD_IDS, moodToday, shouldAsk as shouldAskMood } from '../../core/mood.js';
 import { MILESTONES, daysTogether } from '../../core/together.js';
 import { HOLIDAYS, SEASON_ZH, seasonOf } from '../../core/calendar.js';
+import { encodeQR } from '../../core/qr.js';
 import * as cards from '../gfx/postcards.js';
 import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
 import { transform as transformForm, revert as revertForm } from '../scene/battleforms.js';
@@ -758,6 +759,12 @@ export class UI {
 
   // ---------- 設定 ----------
   render_settings() {
+    const root = this.render_settings_html();
+    this.drawPhoneQr(root);
+    return root;
+  }
+
+  render_settings_html() {
     const s = this.game.state.settings;
     const rates = Object.entries(RATES).map(([k, v]) => `<label><input type="radio" name="rate" value="${k}" ${s.encounterRate === k ? 'checked' : ''}> ${v.zh}</label>`).join('');
     return h(`<div class="settings">
@@ -766,6 +773,7 @@ export class UI {
       <label>專注時間 <input type="range" min="15" max="60" step="5" data-set="focusMinutes" value="${s.focusMinutes}"> <span class="focusmin">${s.focusMinutes} 分鐘</span></label>
       ${this.weatherSettingsHtml()}
       ${this.syncSettingsHtml()}
+      ${this.phoneSettingsHtml()}
       <div class="birthday">你的生日（選填，那天夥伴會寫信給你）：
         <select data-bmonth><option value="">—</option>${Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}" ${s.birthday && +s.birthday.slice(0, 2) === i + 1 ? 'selected' : ''}>${i + 1} 月</option>`).join('')}</select>
         <select data-bday><option value="">—</option>${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${s.birthday && +s.birthday.slice(3) === i + 1 ? 'selected' : ''}>${i + 1} 日</option>`).join('')}</select></div>
@@ -803,6 +811,7 @@ export class UI {
       this.holo.play(ev.kind === 'battle' ? { ...ev, kind: 'call', lines: [...ev.lines, ...ev.win] } : ev);
       return;
     }
+    if (t.dataset.phoneqr !== undefined) { this.phoneQr = Number(t.dataset.phoneqr); this.renderPanel(); return; }
     if (t.dataset.letter) { const l = this.game.state.letters.inbox.find(x => x.id === t.dataset.letter); if (l) { this.audio.sfx('open'); this.showLetter(l); } return; }
     if (t.dataset.basekind) { this.closePanel(); this.director.startBasePlace(t.dataset.basekind); return; }
     if (t.dataset.basemove) { this.closePanel(); this.stage.fire('furnitureClick', this.game.state.base.items.find(i => i.id === t.dataset.basemove)); return; }
@@ -858,6 +867,11 @@ export class UI {
       case 'shinyview': this.dexShiny = !this.dexShiny; this.audio.sfx('click'); this.renderPanel(); return;
       case 'citysearch': this.searchCity(); return;
       case 'syncsetup': this.sync?.setup().then(() => this.renderPanel()); return;
+      case 'phoneregen': this.confirm('重新產生網址？手機上存的舊網址會打不開，要再掃一次 QR code。', async () => {
+        const r = await this.api.regenPhone?.();
+        if (r) this.phoneUrls = r.urls;
+        this.renderPanel();
+      }); return;
       case 'syncnow': this.sync?.run(true); return;
       case 'syncstop': this.confirm('停止同步？這台電腦的存檔會留著，只是之後不會再和其他電腦合併。', () => { this.sync?.stop(); this.renderPanel(); }); return;
       case 'trim': this.trimOpen = !this.trimOpen; this.audio.sfx('click'); this.renderPanel(); return;
@@ -882,6 +896,7 @@ export class UI {
       else this.game.setSetting(t.dataset.set, t.checked);
     }
     if (t.dataset.interrupt !== undefined) this.game.setSetting('interruptions', t.value);
+    if (t.dataset.phone !== undefined) this.setPhone(t.checked);
     if (t.dataset.login !== undefined) this.api.setLoginItem(t.checked);
     if (t.dataset.bmonth !== undefined || t.dataset.bday !== undefined) {
       const m = Number(this.win.querySelector('[data-bmonth]').value), d = Number(this.win.querySelector('[data-bday]').value);
@@ -909,6 +924,42 @@ export class UI {
   }
 
   // ---------- 同步設定 ----------
+  // ---------- 手機頁面（src/main/phone.js）----------
+  phoneSettingsHtml() {
+    const on = this.game.state.settings.phone, urls = this.phoneUrls ?? [];
+    const list = urls.map((u, i) => `<button class="purl ${i === (this.phoneQr ?? 0) ? 'sel' : ''}" data-phoneqr="${i}">${u.tailscale ? 'Tailscale：' : '同一個 Wi-Fi：'}<code>${esc(u.url)}</code></button>`).join('');
+    return `<fieldset class="phone"><legend>在手機上看</legend>
+      <label><input type="checkbox" data-phone ${on ? 'checked' : ''}> 在手機上看信箱、明信片、旅行中的夥伴（只有看，不能操作）</label>
+      ${!on ? '<p class="hint">打開以後，手機連同一個 Wi-Fi，掃 QR code 就能看。想出門也看，可以在電腦和手機都裝 Tailscale（說明在 README）。</p>'
+        : urls.length ? `<div class="qrbox"><canvas data-qr></canvas><div class="urls">${list}
+          <p class="hint">網址裡有一串只有你知道的密碼，不要給別人。第一次打開時 Windows 可能會問要不要讓 Kalos Amie 使用網路：選「私人網路」。</p>
+          <button data-act="phoneregen">重新產生網址（舊的網址會失效）</button></div></div>`
+          : `<p class="hint">${esc(this.phoneError ?? '找不到區網或 Tailscale 的網路（先連上 Wi-Fi）')}</p>`}
+      </fieldset>`;
+  }
+
+  async setPhone(on, { quiet = false } = {}) {
+    this.game.setSetting('phone', Boolean(on));
+    const r = await this.api.setPhone?.(on) ?? { urls: [] };
+    this.phoneUrls = r.urls;
+    this.phoneError = r.error ?? null;
+    this.phoneQr = Math.max(0, r.urls.findIndex(u => !u.tailscale));
+    if (on) this.director.pushPhone();
+    if (!quiet && this.panel === 'settings') this.renderPanel();
+  }
+
+  drawPhoneQr(root) {
+    const cv = root.querySelector('canvas[data-qr]'), u = this.phoneUrls?.[this.phoneQr ?? 0];
+    if (!cv || !u) return;
+    const q = encodeQR(u.url), k = 4, pad = 4;
+    cv.width = cv.height = (q.size + pad * 2) * k;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, cv.width, cv.height);
+    g.fillStyle = '#000000';
+    for (let y = 0; y < q.size; y++) for (let x = 0; x < q.size; x++) if (q.get(x, y)) g.fillRect((x + pad) * k, (y + pad) * k, k, k);
+  }
+
   syncSettingsHtml() {
     const y = this.game.state.sync, st = this.sync?.status;
     if (!y) {
