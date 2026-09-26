@@ -104,6 +104,7 @@ async function main() {
     setTimeout(() => director.showReadyEggs(), 2000); // 上次關掉時已經可以孵的蛋
     director.refreshMail(); // 還沒打開的信（包括離開很久時寫的「你不在的時候…」）
     setTimeout(() => director.tickStory(), 8000); // 錯過的故事
+    if (game.state.settings.phone) ui.setPhone(true, { quiet: true }); // 手機頁面上次是開著的：繼續開
   }
   sprites.prefetchAll();
 

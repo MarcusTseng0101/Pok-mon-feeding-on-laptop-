@@ -377,7 +377,7 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .medals .medal b { display: block; font-size: 13px; }
 .medals .medal small { display: block; font-size: 11px; color: var(--muted); }
 .medals .medal .date { color: #c08800; }
-.settings fieldset.sync { border: 2px solid var(--panel-2); padding: 6px 8px; margin: 8px 0; }
+.settings fieldset.sync, .settings fieldset.phone { border: 2px solid var(--panel-2); padding: 6px 8px; margin: 8px 0; }
 .settings fieldset.sync .why { color: #c0506a; font-size: 12px; }
 .dialog.ask .choices { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .dialog.ask .choices button { text-align: left; }
@@ -548,3 +548,10 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .story .us .days b { color: var(--pink); font-size: 15px; }
 .story .us .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .story .us .chip { font-size: 11px; padding: 1px 6px; background: var(--pink-2); border-radius: 2px; }
+
+/* ---------- 手機頁面（設定）---------- */
+.settings .phone .qrbox { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.settings .phone canvas[data-qr] { width: 164px; height: 164px; image-rendering: pixelated; box-shadow: 0 0 0 2px var(--ink); }
+.settings .phone .urls { flex: 1; min-width: 200px; }
+.settings .phone .purl { display: block; width: 100%; text-align: left; font-size: 11px; word-break: break-all; }
+.settings .phone .purl code { font-size: 11px; }
