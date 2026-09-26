@@ -13,6 +13,7 @@ import { duelHitChance } from '../../core/minigames.js';
 import { transform, endDuelForms } from './battleforms.js';
 import * as FX from './movefx.js';
 import { hearts } from '../../core/amie.js';
+import { effectiveness } from '../../core/types.js';
 
 const T = art.TYPE_COLORS;
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -136,33 +137,7 @@ export function movesetFor(dex, speciesId, mon = null) {
   return [...new Set(list)].filter(id => MOVES[id]).slice(0, 4);
 }
 
-// 屬性相剋（第六世代）：[效果絕佳, 效果不好, 沒有效果]
-const CHART = {
-  normal: [[], ['rock', 'steel'], ['ghost']],
-  fire: [['grass', 'ice', 'bug', 'steel'], ['fire', 'water', 'rock', 'dragon'], []],
-  water: [['fire', 'ground', 'rock'], ['water', 'grass', 'dragon'], []],
-  electric: [['water', 'flying'], ['electric', 'grass', 'dragon'], ['ground']],
-  grass: [['water', 'ground', 'rock'], ['fire', 'grass', 'poison', 'flying', 'bug', 'dragon', 'steel'], []],
-  ice: [['grass', 'ground', 'flying', 'dragon'], ['fire', 'water', 'ice', 'steel'], []],
-  fighting: [['normal', 'ice', 'rock', 'dark', 'steel'], ['poison', 'flying', 'psychic', 'bug', 'fairy'], ['ghost']],
-  poison: [['grass', 'fairy'], ['poison', 'ground', 'rock', 'ghost'], ['steel']],
-  ground: [['fire', 'electric', 'poison', 'rock', 'steel'], ['grass', 'bug'], ['flying']],
-  flying: [['grass', 'fighting', 'bug'], ['electric', 'rock', 'steel'], []],
-  psychic: [['fighting', 'poison'], ['psychic', 'steel'], ['dark']],
-  bug: [['grass', 'psychic', 'dark'], ['fire', 'fighting', 'poison', 'flying', 'ghost', 'steel', 'fairy'], []],
-  rock: [['fire', 'ice', 'flying', 'bug'], ['fighting', 'ground', 'steel'], []],
-  ghost: [['psychic', 'ghost'], ['dark'], ['normal']],
-  dragon: [['dragon'], ['steel'], ['fairy']],
-  dark: [['psychic', 'ghost'], ['fighting', 'dark', 'fairy'], []],
-  steel: [['ice', 'rock', 'fairy'], ['fire', 'water', 'electric', 'steel'], []],
-  fairy: [['fighting', 'dragon', 'dark'], ['fire', 'poison', 'steel'], []],
-};
-export function effectiveness(moveType, targetTypes) {
-  const [sup, weak, none] = CHART[moveType];
-  let m = 1;
-  for (const t of targetTypes) m *= none.includes(t) ? 0 : sup.includes(t) ? 2 : weak.includes(t) ? 0.5 : 1;
-  return m;
-}
+export { effectiveness }; // 屬性相剋表在 core/types.js（故事裡的對戰也用）
 
 // ---------- 使出招式 ----------
 const center = pet => { const r = pet.rect(); return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; };
