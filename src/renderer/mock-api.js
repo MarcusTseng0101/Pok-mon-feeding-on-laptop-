@@ -37,6 +37,10 @@ export function createMockApi() {
         return await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
       } catch { return null; }
     },
+    // 手機頁面（測試用）：假的網址；送過來的摘要放在 window.__phoneSnapshot
+    async setPhone(on) { return { urls: on ? [{ url: 'http://192.168.0.2:37851/t/0123456789abcdef0123456789abcdef/', tailscale: false }, { url: 'http://100.100.1.2:37851/t/0123456789abcdef0123456789abcdef/', tailscale: true }] : [] }; },
+    async regenPhone() { return { urls: [{ url: 'http://192.168.0.2:37851/t/fedcba9876543210fedcba9876543210/', tailscale: false }] }; },
+    phoneSnapshot(data) { window.__phoneSnapshot = data; },
     // ?weather=rain：假裝現在的天氣（測試用）；城市搜尋回傳固定的結果
     async searchCity(city) { return { places: city ? [{ name: city, region: '測試', lat: 24.965, lon: 121.217 }] : [], offline: false }; },
     async getWeather() { const w = params.get('weather'); return w ? { weather: w, code: 0 } : null; },

@@ -19,6 +19,7 @@ export const KINDS = {
   birthday: { zh: '生日快樂' },
   hearts: { zh: '最喜歡你' },
   story: { zh: '故事' }, // 主線故事裡的人寄來的（core/story.js）；uid 是空的、from 是登場人物
+  weekly: { zh: '這週我們一起' }, // 每週日的信（core/together.js），不佔每天 2 封的額度
 };
 
 const pick = (list, rng) => list[Math.floor(rng() * list.length)];
@@ -96,6 +97,7 @@ export function writeLetter(mon, kind, rng, ctx = {}, recent = { open: [], close
   const refs = [];
   const openIdx = pickFresh(OPENINGS[tone], recent.open ?? [], rng);
   parts.push(OPENINGS[tone][openIdx]);
+  if (ctx.holiday) parts.push(ctx.holiday); // 節日那天多一句（core/calendar.js 的 letter）
   // 為什麼寫信：需要的資料不在就換成一般的寫法
   const kf = { hours: ctx.hours, place: ctx.place };
   const kindOk = kind === 'away' ? Number.isFinite(kf.hours) : kind === 'trip' ? Boolean(kf.place) : true;
@@ -122,7 +124,8 @@ export function writeLetter(mon, kind, rng, ctx = {}, recent = { open: [], close
   if (traits.greedy >= 0.6) parts.push(pick(FOOD_LINES, rng)); // 貪吃的一定會提到吃的
   const closeIdx = pickFresh(CLOSINGS[tone], recent.close ?? [], rng);
   // 排版：開頭一行、中間一段、結尾一行
-  let text = [parts[0], parts.slice(1).join(''), CLOSINGS[tone][closeIdx]].join('\n\n');
+  const head = ctx.holiday ? `${parts[0]}${parts[1]}` : parts[0];
+  let text = [head, parts.slice(ctx.holiday ? 2 : 1).join(''), CLOSINGS[tone][closeIdx]].join('\n\n');
   // 保險：萬一有東西沒代入成功，就只留一定安全的部分
   if (/undefined|null|NaN|[{}]/.test(text)) text = [OPENINGS[tone][openIdx], MOOD_LINES.calm[0], CLOSINGS[tone][closeIdx]].join('\n\n');
   return { text, refs, tone, openIdx, closeIdx };
