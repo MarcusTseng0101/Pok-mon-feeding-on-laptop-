@@ -38,7 +38,7 @@ function serve() {
     let file;
     if (url.startsWith('/__sprites/')) {
       const rel = url.slice('/__sprites/'.length);
-      if (!/^(shiny\/)?\d{3,5}(-[a-z]+)*\.png$/.test(rel) && !/^other\/showdown\/(shiny\/)?\d{3,5}(-[a-z]+)*\.gif$/.test(rel)) { res.writeHead(400).end(); return; }
+      if (!/^(shiny\/)?\d{3,5}(-[a-z]+)*\.png$/.test(rel)) { res.writeHead(400).end(); return; }
       file = await fetchSprite(rel);
     } else {
       file = path.join(ROOT, url);

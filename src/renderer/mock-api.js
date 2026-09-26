@@ -26,15 +26,6 @@ export function createMockApi() {
         return await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
       } catch { return null; }
     },
-    async getAnimSprite(id, shiny) {
-      if (!isSpriteKey(id) || params.get('anim') === '0') return null;
-      try {
-        const res = await fetch(`${spriteBase}/other/showdown${shiny ? '/shiny' : ''}/${id}.gif`);
-        if (!res.ok) return null;
-        const blob = await res.blob();
-        return await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
-      } catch { return null; }
-    },
     // 故事的訓練家圖：測試環境連不到 Showdown，只有 ?trainers=<網址> 時才去抓
     async getTrainerSprite(name) {
       const base = params.get('trainers');

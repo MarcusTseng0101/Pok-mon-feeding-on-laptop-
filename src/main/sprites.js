@@ -7,7 +7,6 @@ import { isSpriteKey } from '../core/forms.js';
 
 const BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon';
 const MAX_PARALLEL = 4;
-const MAX_GIF = 2 * 1024 * 1024; // 最大的也才兩三百 KB，超過就當作壞掉
 
 export function createSpriteCache(dir) {
   const inflight = new Map();
@@ -39,24 +38,6 @@ export function createSpriteCache(dir) {
     return buf;
   }
 
-  // 會動的圖（Pokémon Showdown 的 GIF，跟 X／Y 同一套 3D 模型）。
-  // 沒有這張圖（404）就記一個空檔，之後不再下載；網路不通則下次再試
-  async function fetchGif(key, shiny) {
-    const file = path.join(dir, 'anim', shiny ? 'shiny' : 'normal', `${key}.gif`);
-    try {
-      const buf = await readFile(file);
-      return buf.length ? buf : null;
-    } catch { /* 還沒快取 */ }
-    const res = await net.fetch(`${BASE}/other/showdown${shiny ? '/shiny' : ''}/${key}.gif`);
-    if (res.status === 404) { await mkdir(path.dirname(file), { recursive: true }); await writeFile(file, Buffer.alloc(0)); return null; }
-    if (!res.ok) throw new Error(`anim ${key} ${res.status}`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > MAX_GIF || buf.subarray(0, 3).toString() !== 'GIF') throw new Error(`anim ${key} 不是 GIF`);
-    await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, buf);
-    return buf;
-  }
-
   function cached(key, load, type) {
     if (!inflight.has(key)) {
       const p = enqueue(load)
@@ -79,11 +60,5 @@ export function createSpriteCache(dir) {
     return cached(`${spriteKey}:${shiny}`, () => fetchPng(spriteKey, shiny), 'image/png');
   }
 
-  // 會動的圖：data URL（image/gif）；沒有這張或下載失敗回傳 null（就用不會動的圖）
-  function getAnimSprite(spriteKey, shiny = false) {
-    if (!isSpriteKey(spriteKey)) return Promise.resolve(null);
-    return cached(`anim:${spriteKey}:${shiny}`, () => fetchGif(spriteKey, shiny), 'image/gif');
-  }
-
-  return { getSprite, getAnimSprite };
+  return { getSprite };
 }

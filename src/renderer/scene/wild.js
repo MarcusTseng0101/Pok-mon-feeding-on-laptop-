@@ -215,7 +215,7 @@ export class WildMon {
     if (encounter.shiny) { stage.fx.sparkles(this.x, this.y - 30 * S, S, 16, 40); stage.fx.stars(this.x, this.y - 30 * S, S, 8); }
   }
 
-  get asset() { return liveAsset(this, this.stage.sprites, spriteKey(this.enc.speciesId, this.enc.form), this.enc.shiny, this.t); }
+  get asset() { return liveAsset(this, this.stage.sprites, spriteKey(this.enc.speciesId, this.enc.form), this.enc.shiny, this.t, this.state === 'walkIn' ? 'walk' : 'idle'); }
   restY() { return this.groundY - this.alt * this.stage.S; }
   set(state) { this.state = state; this.stateT = 0; }
 
