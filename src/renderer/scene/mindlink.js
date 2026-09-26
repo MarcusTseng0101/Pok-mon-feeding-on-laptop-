@@ -4,7 +4,7 @@
 //   - 抽出來、開始做以後，才用「實際被選中的類別」問理由（理由才不會說謊）
 // 心智不自己選行為；選行為的只有 Pet.decide()。
 import * as M from '../../core/mind.js';
-import { recall } from '../../core/memory.js';
+import { recall, summary } from '../../core/memory.js';
 
 const MIN = 60_000;
 const SLEEP_STATES = new Set(['sleep', 'nap']);
@@ -100,10 +100,10 @@ export function afterChoice(pet, [name, , , cat]) {
   return thought;
 }
 
-// 夥伴資料頁用：心情和最近的想法
-export function describe(pet) {
-  const mind = ensureMind(pet);
-  const lv = M.levels(mind, pet.mon);
-  const lost = recall(pet.mon.memory ?? [], { k: 'lost', since: Date.now() - 10 * MIN }).length > 0;
-  return { mood: M.moodOf(lv, { lostRecently: lost }), levels: lv, thoughts: mind.thoughts };
+// 夥伴資料頁用：心情、需求、最近的想法、記得的事（收回來的也看得到）
+export function describe(mon, now = Date.now()) {
+  const mind = mon.mind ?? M.normalizeMind(null);
+  const lv = M.levels(mind, mon);
+  const lost = recall(mon.memory ?? [], { k: 'lost', since: now - 10 * MIN }).length > 0;
+  return { mood: M.moodOf(lv, { lostRecently: lost }), levels: lv, thoughts: [...mind.thoughts].reverse(), memories: summary(mon.memory ?? [], now, 3) };
 }

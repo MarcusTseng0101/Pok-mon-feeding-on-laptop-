@@ -6,6 +6,7 @@ import { hearts } from '../../core/amie.js';
 import { meet, WALK_SPEED, RUN_SPEED } from './behaviors.js';
 import { startHabit } from './habits.js';
 import { knockFrom } from './physics.js';
+import { describe as describeMind } from './mindlink.js';
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = list => list[Math.floor(Math.random() * list.length)];
@@ -14,6 +15,9 @@ const bond = (a, b, n) => a.stage.fire('bond', a, b, n);
 const bondOf = (a, b) => a.stage.game?.bondOf(a.uid, b.uid) ?? 0;
 const center = pet => { const r = pet.rect(); return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; };
 const valid = p => p && !p.leaving && p.state !== 'held' && p.state !== 'evolving';
+
+// 聊天時冒出的表情，看心情
+const CHAT_EMOTES = { happy: ['♪', '♥', '!'], calm: ['…', '♪', '?'], lonely: ['♥', '…'], bored: ['?', '…'], sleepy: ['Z', '…'], grumpy: ['💢', '…'] };
 
 // 一群一起玩的遊戲：group = { kind, members, ... }，每一隻的 pet.group 指向它
 function endGroup(g, { happy = true } = {}) {
@@ -217,6 +221,50 @@ export const SOCIAL_ACTIONS = {
     pose(pet, p) { p.sx = 1.03; p.sy = 0.96; p.rot = pet.facing * 0.05; },
     lift: () => 0,
   },
+  // ---------- 聊天：兩隻停下來，輪流冒出表情泡泡（內容看各自的心情） ----------
+  chat: {
+    update(pet, dt, done) {
+      const o = pet.partner;
+      if (!valid(o) || o.partner !== pet) { pet.partner = null; pet.set('idle', 1); return; }
+      pet.facing = o.x > pet.x ? 1 : -1;
+      if (!pet.chatLead) return;
+      pet.chatT = (pet.chatT ?? 0) - dt;
+      if (pet.chatT <= 0) {
+        const who = pet.chatTurn ? o : pet;
+        pet.chatTurn = !pet.chatTurn;
+        pet.chatT = 0.9;
+        who.showEmote(pick(CHAT_EMOTES[describeMind(who.mon).mood] ?? ['!']), 0.85);
+        who.hopT = 0.2;
+      }
+      if (done) {
+        for (const p of [pet, o]) { p.partner = null; p.chatLead = false; p.set('idle', rnd(1, 2)); }
+        bond(pet, o, 1);
+      }
+    },
+    lift: pet => (pet.hopT > 0 ? 1 : 0),
+  },
+  // ---------- 一起散步：好朋友並肩走到同一個地方 ----------
+  walkTogether: {
+    update(pet, dt, done) {
+      const o = pet.partner, S = pet.S;
+      if (!valid(o) || o.partner !== pet) { pet.partner = null; pet.set('idle', 1); return; }
+      if (pet.walkLead) {
+        const arrived = pet.moveTo(pet.wp.x, pet.wp.y, WALK_SPEED * S * 0.9, dt);
+        if (arrived) pet.wp = pet.randomPoint(120, 280);
+        if (done) {
+          for (const p of [pet, o]) { p.partner = null; p.walkLead = false; p.set('happy', 0.6); }
+          pet.showEmote('♥', 1.2);
+          bond(pet, o, 2);
+        }
+      } else {
+        // 走在旁邊：領頭的後面一點、錯開一點
+        const side = (pet.asset.w / 2 + o.asset.w / 2 + 4) * S;
+        pet.moveTo(o.x - o.facing * side, o.gy + 6 * S, WALK_SPEED * S * 1.3, dt);
+        if (Math.abs(pet.x - o.x) < side * 1.5) pet.facing = o.facing;
+      }
+    },
+    lift: pet => Math.round(Math.abs(Math.sin(pet.walkPhase)) * 2),
+  },
   share: {
     // 叼著泡芙拿去給肚子餓的夥伴（只是動作，不會用掉背包裡的泡芙）
     update(pet, dt) {
@@ -346,6 +394,29 @@ export function groupOptions(pet, others) {
       a.stareLead = true; b.stareLead = false;
       a.set('stare', 2.5); b.set('stare', 3);
       a.showEmote('💢', 1); b.showEmote('💢', 1);
+    } });
+  });
+  // 聊天、好朋友一起散步
+  add('chat', others.length ? 3 : 0, () => {
+    const o = pick(others);
+    meet(pet, o, { gap: 10, then: (a, b) => {
+      a.partner = b; b.partner = a;
+      a.chatLead = true; b.chatLead = false;
+      a.chatT = 0; a.chatTurn = false;
+      const d = rnd(4, 6.5);
+      a.set('chat', d); b.set('chat', d + 1);
+    } });
+  });
+  const friends = others.filter(o => bondOf(pet, o) >= 60);
+  add('walkTogether', friends.length ? 4 : 0, () => {
+    const o = pick(friends);
+    meet(pet, o, { gap: 4, then: (a, b) => {
+      a.partner = b; b.partner = a;
+      a.walkLead = true; b.walkLead = false;
+      a.wp = a.randomPoint(120, 280);
+      const d = rnd(6, 10);
+      a.set('walkTogether', d); b.set('walkTogether', d + 1);
+      b.showEmote('♪', 0.8);
     } });
   });
   const hungry = others.filter(o => o.mon.fullness < 90);

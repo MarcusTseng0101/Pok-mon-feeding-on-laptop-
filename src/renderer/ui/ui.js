@@ -14,6 +14,8 @@ import { WEATHER_ZH } from '../../core/weather.js';
 import { ACHIEVEMENTS, REWARD_FANCY_AT } from '../../core/achievements.js';
 import { FORMS, spriteKey, formName, formsOf, defaultForm } from '../../core/forms.js';
 import { habitNames } from '../scene/habits.js';
+import { describe as describeMind } from '../scene/mindlink.js';
+import { NEEDS, NEED_ZH, MOOD_ZH } from '../../core/mind.js';
 import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
 import { transform as transformForm, revert as revertForm } from '../scene/battleforms.js';
 import { MinigameHost } from './minigames/host.js';
@@ -274,6 +276,7 @@ export class UI {
         ${this.bar('滿足感', m.enjoyment, MAX, 'joy')}
         ${evoHtml}
       </div>
+      ${this.mindHtml(m)}
       <div class="actions">
         ${m.out ? '<button data-act="recall">收回</button><button data-act="feed">餵泡芙</button>'
           : `<button data-act="sendout" ${out >= MAX_OUT ? 'disabled title="桌面上最多 6 隻"' : ''}>叫出來</button>`}
@@ -313,6 +316,17 @@ export class UI {
     const bag = this.game.state.bag.puffs;
     for (const t of TIER_ORDER) for (const f of FLAVORS) if (bag[puffKey(f, t)] > 0) return puffKey(f, t);
     return null;
+  }
+
+  // 心情、需求、最近在想什麼、記得的事
+  mindHtml(m) {
+    const d = describeMind(m);
+    const needs = NEEDS.map(k => `<span class="need" title="${esc(NEED_ZH[k])}"><i style="width:${Math.round(d.levels[k])}%"></i><small>${esc(NEED_ZH[k])}</small></span>`).join('');
+    const ago = t => { const min = Math.round((Date.now() - t) / 60000); return min < 1 ? '剛剛' : min < 60 ? `${min} 分鐘前` : `${Math.round(min / 60)} 小時前`; };
+    const thoughts = d.thoughts.length ? d.thoughts.map(t => `<li>「${esc(t.text)}」<small>${ago(t.at)}</small></li>`).join('') : '<li class="hint">還沒想什麼（叫出來陪牠一下）</li>';
+    const mems = d.memories.length ? `<div class="mems">記得：${d.memories.map(e => esc(e.text)).join('、')}</div>` : '';
+    return `<div class="mind"><div class="mood">心情：${esc(MOOD_ZH[d.mood])}</div><div class="needs">${needs}</div>
+      <div class="thoughts">最近在想什麼<ul>${thoughts}</ul></div>${mems}</div>`;
   }
 
   // 跟哪一隻夥伴感情最好
