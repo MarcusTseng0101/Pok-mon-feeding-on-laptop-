@@ -584,7 +584,7 @@ export class Pet {
       tag(perchOption(this), 'explore'), // 跳到其他視窗的標題列上
       tag(cursorOptions(this), 'cursor'), // 追游標、坐在游標旁邊
       // 出門旅行（一次只有一隻、桌面上至少留一隻；很少發生）
-      tag([['trip', !this.perch && st.game?.canDepart(this.uid) ? 1 : 0, () => {
+      tag([['trip', !this.perch && !st.minigame?.active && !this.evolveView && st.game?.canDepart(this.uid) ? 1 : 0, () => {
         if (st.game.depart(this.uid, { curious: traitsOf(this.mon.nature).curious })) startDepart(this);
       }]], 'trip'),
     );

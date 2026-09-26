@@ -191,9 +191,14 @@ export class Director {
 
   // 從夥伴頁按「讓牠去旅行」
   sendOnTrip(uid) {
+    const pet = this.stage.pets.get(uid);
+    // 小遊戲、被拎著、進化中、專注中都不出發
+    if (this.ui?.minigames.active || this.game.state.focus.active || this.evolution || (pet && ['held', 'evolving'].includes(pet.state))) {
+      this.ui?.toast('現在不太方便出門，等一下再說');
+      return false;
+    }
     const trip = this.game.depart(uid, { curious: 0.5 });
     if (!trip) return false;
-    const pet = this.stage.pets.get(uid);
     if (pet) startDepart(pet);
     return true;
   }
