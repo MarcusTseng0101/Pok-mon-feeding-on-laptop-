@@ -24,6 +24,7 @@ function endGroup(g, { happy = true } = {}) {
   if (g.over) return;
   g.over = true;
   for (const p of g.members) {
+    if (p.group === g || !p.group) p.hidden = false; // 捉迷藏還沒被找到的也出來了（不然會一直半透明、不跟別隻碰撞）
     if (p.group !== g) continue;
     p.group = null;
     p.partner = null;

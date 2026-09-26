@@ -234,6 +234,7 @@ export class Director {
         .sort((a, b) => b.mon.affection - a.mon.affection)[0];
       if (!p || !st.pointer.known) return;
       p.endPlay?.();
+      p.group = null; // 正在玩鬼抓人之類的：先離開（不然遊戲結束時會把牠叫回去，走不到你旁邊）
       const b = p.bounds(), S = st.S;
       p.target = { x: Math.max(b.x0, Math.min(b.x1, st.pointer.x - 60 * S)), y: Math.max(b.y0, Math.min(b.y1, st.pointer.y + 40 * S)) };
       p.set('walk');
@@ -839,7 +840,10 @@ export class Director {
       const side = i === 0 ? -1 : 1;
       p.target = { x: Math.max(b.x0, Math.min(b.x1, st.pointer.x + side * (50 + Math.random() * 40) * S)), y: Math.max(b.y0, Math.min(b.y1, st.pointer.y + (30 + Math.random() * 40) * S)) };
       p.set('walk');
+      p.reserved = true; // 走過去的路上別隻不能找牠玩（不然會被拉去玩鬼抓人，走不到你旁邊）
+      setTimeout(() => { p.reserved = false; }, 12_000);
       p.onArrive = () => {
+        p.reserved = false;
         p.facing = st.pointer.x > p.x ? 1 : -1;
         p.set('look', 3);
         p.showEmote(Math.random() < 0.5 ? '♪' : '!', 1.5);
