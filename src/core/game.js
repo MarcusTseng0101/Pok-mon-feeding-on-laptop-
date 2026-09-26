@@ -16,6 +16,7 @@ import * as trips from './trips.js';
 import * as baseRules from './base.js';
 import * as L from './letters.js';
 import * as S from './story.js';
+import * as R from './routine.js';
 import { canMegaEvolve, KEY_ITEMS, STARTER_STONES, starterLine } from './items.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
 
@@ -369,10 +370,16 @@ export class Game {
       amie.addAffection(m, focus.FOCUS_AFFECTION);
       this.afterAffection(m, before);
     }
-    const r = { puff, minutes: a.minutes, streak: f.streakDays };
+    const r = { puff, minutes: a.minutes, streak: f.streakDays, twoHours: R.addFocus(this.state.routine, this.now(), a.minutes) };
     this.emit('focus', { active: false, done: true, ...r });
     this.emit('bag');
     return r;
+  }
+
+  // ---- 作息（core/routine.js）----
+  // 每分鐘一次（畫面呼叫）：active＝有人在操作電腦、typing＝好像在打字。回傳該有的反應 ['greet'、'bedtime']
+  routineTick({ active = false, typing = false } = {}) {
+    return R.tick(this.state.routine, this.now(), { active, typing });
   }
 
   // ---- 孵蛋（規則在 eggs.js） ----

@@ -73,7 +73,7 @@ export class Spot {
     if (this.kind === 'dusk') this.y = this.baseY + Math.round(Math.sin(this.t * 2) * 3) * S;
     if (this.kind === 'grass' && this.t > this.nextRustle) {
       this.nextRustle = this.t + 3;
-      if (this.t < 10) this.stage.audio.sfx('rustle'); // 只在剛出現時出聲，不吵
+      if (this.t < 10 && !this.silent) this.stage.audio.sfx('rustle'); // 只在剛出現時出聲，不吵；silent：打擾額度用完了
     }
     // 色違：氣息點偶爾會閃一下（眼尖的人會發現）
     if (this.plan.shiny && this.alpha >= 1 && Math.random() < dt * 0.6) {

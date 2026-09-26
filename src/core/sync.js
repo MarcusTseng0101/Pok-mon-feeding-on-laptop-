@@ -22,6 +22,8 @@ import { mergeMemory } from './memory.js';
 import { mergeBase } from './base.js';
 import { mergeLetters } from './letters.js';
 import { mergeStory } from './story.js';
+import { mergeAttention } from './attention.js';
+import { mergeRoutine } from './routine.js';
 import { mergeTrip, mergePostcards, mergeTripsDone } from './trips.js';
 
 export const SYNC_DIR = 'kalos-amie';
@@ -181,6 +183,8 @@ export function mergeShared(local, remote) {
   out.base = mergeBase(local.base, remote.base); // 秘密基地：最後改的那一邊
   out.letters = mergeLetters(local.letters, remote.letters); // 信：聯集，打開過的算打開過
   out.story = mergeStory(local.story, remote.story); // 主線故事：做過的取聯集，開始時間取早的
+  out.attention = mergeAttention(local.attention, remote.attention); // 打擾額度：兩台電腦放行的時間合在一起
+  out.routine = mergeRoutine(local.routine, remote.routine); // 作息：同一天取最早／最晚、時間加起來
   out.achievementRewards = { fancy: local.achievementRewards.fancy || remote.achievementRewards.fancy, pokeBall: local.achievementRewards.pokeBall || remote.achievementRewards.pokeBall };
   out.pendingVivillon = (local.pendingVivillon.length >= remote.pendingVivillon.length ? local : remote).pendingVivillon.slice();
   // 蛋：聯集，已經孵化的不要

@@ -19,6 +19,8 @@ import { FURNITURE, STAGES } from '../core/base.js';
 import * as cards from './gfx/postcards.js';
 import * as mail from './gfx/letters.js';
 import { StoryBattle } from './scene/battle.js';
+import * as A from '../core/attention.js';
+import { routineDay, clockOf, minuteOf } from '../core/routine.js';
 import { KEY_ITEMS } from '../core/items.js';
 import { CAST, BADGES, lossesOf } from '../core/story.js';
 
@@ -67,7 +69,8 @@ export class Director {
     const returned = s.returnedAt && s.returnedAt !== this.signals.returnedAt;
     this.signals = s;
     this.updateEnv();
-    if (returned) this.welcomeBack();
+    // 回來了：早上第一次就說早安，不然是一般的「歡迎回來」
+    if (returned && !this.routineTick().includes('greet')) this.welcomeBack();
   }
 
   updateEnv() {
@@ -86,12 +89,82 @@ export class Director {
     return tod === 'night' ? 'nocturne' : 'cafe';
   }
 
+  // ---------- 打擾額度（core/attention.js）----------
+  // 所有「沒有你的操作就主動找你」的演出都從這裡過：放行就馬上演，不然排隊（過期就丟）。
+  // ttl：排隊多久還有意義（毫秒；Infinity＝一定要演）
+  attentionOpts() {
+    const s = this.game.state;
+    const blocked = Boolean(s.focus.active || s.settings.quiet || this.ui?.minigames?.active);
+    return { limit: A.limitOf(s.settings.interruptions), blocked };
+  }
+  interrupt({ id, kind, ttl = Infinity }, run) {
+    const now = Date.now();
+    this.attnQueue ??= [];
+    const ev = { id, kind, priority: A.PRIORITY[kind] ?? 0, expiresAt: now + ttl, run };
+    const r = A.request(this.game.state.attention, this.attnQueue, ev, now, this.attentionOpts());
+    (this.attnLog ??= []).push({ at: now, id, kind, granted: r.granted }); // 除錯、測試用
+    if (r.granted) run();
+    return r.granted;
+  }
+  // 每秒一次：額度空出來了就放行排隊中最優先的
+  drainAttention() {
+    if (!this.attnQueue?.length) return;
+    const now = Date.now();
+    const ev = A.drain(this.game.state.attention, this.attnQueue, now, this.attentionOpts());
+    if (!ev) return;
+    this.attnLog.push({ at: now, id: ev.id, kind: ev.kind, granted: true, late: true });
+    ev.run();
+  }
+
   refreshMusic() {
     if (this.evolution) return;
     this.audio.playSong(this.enc ? 'wild' : this.ambientSong());
   }
 
   welcomeBack() {
+    this.interrupt({ id: 'welcome', kind: 'greet', ttl: 10 * 60_000 }, () => this.greetUser());
+    this.nextSpawnAt = Math.min(this.nextSpawnAt, Date.now() + nextSpawnDelay(this.game.state.settings.encounterRate, this.ctx(), this.rng, { dev: this.dev }));
+  }
+
+  // ---------- 作息（core/routine.js）----------
+  // 每分鐘記一次你有沒有在用電腦；早上第一次 → 早安，比平常晚 → 打哈欠、靠過來
+  routineTick() {
+    const s = this.signals ?? {};
+    const active = (s.idleSeconds ?? Infinity) < 60;
+    const evs = this.game.routineTick({ active, typing: Boolean(s.typing) });
+    const day = routineDay(Date.now());
+    for (const e of evs) {
+      if (e === 'greet') this.interrupt({ id: `greet:${day}`, kind: 'greet', ttl: 2 * 3_600_000 }, () => this.greetUser('早安！夥伴們跑過來跟你打招呼了'));
+      if (e === 'bedtime') this.bedtime();
+    }
+    return evs;
+  }
+
+  // 比平常晚睡：大家打哈欠（只是動作，不算打擾）；最喜歡你的那隻靠到游標旁邊坐下（要經過額度）
+  bedtime() {
+    const st = this.stage, g = this.game.state;
+    if (g.focus.active || g.settings.quiet) return;
+    const pets = [...st.pets.values()].filter(p => p.free && !p.partner && !p.perch);
+    pets.forEach((p, i) => setTimeout(() => { if (p.free) { p.set('stretch', 1.2); p.showEmote('Z', 2); } }, i * 400));
+    this.interrupt({ id: `bedtime:${routineDay(Date.now())}`, kind: 'bedtime', ttl: 30 * 60_000 }, () => {
+      // 打完哈欠再走過來；正在忙的（被拎著、在視窗上、在對戰）不算
+      const p = [...st.pets.values()].filter(q => !q.leaving && !q.perch && !q.inBattle && !['held', 'fall', 'evolving', 'move', 'duel', 'eat'].includes(q.state))
+        .sort((a, b) => b.mon.affection - a.mon.affection)[0];
+      if (!p || !st.pointer.known) return;
+      p.endPlay?.();
+      const b = p.bounds(), S = st.S;
+      p.target = { x: Math.max(b.x0, Math.min(b.x1, st.pointer.x - 60 * S)), y: Math.max(b.y0, Math.min(b.y1, st.pointer.y + 40 * S)) };
+      p.set('walk');
+      p.walkLimit = 8;
+      p.reserved = true; // 走過去的路上別隻不能找牠玩
+      setTimeout(() => { p.reserved = false; }, 12_000);
+      p.onArrive = () => { p.reserved = false; p.facing = st.pointer.x > p.x ? 1 : -1; p.set('sit', 20); p.showEmote('Z', 3); this.bedtimeSat = { uid: p.uid, x: p.x, y: p.gy }; };
+      this.bedtimePet = p.uid; // 測試用
+      this.ui?.toast(`${this.game.displayName(p.mon)}揉揉眼睛，靠到你旁邊……已經 ${clockOf(minuteOf(Date.now()))} 了，早點休息吧`);
+    });
+  }
+
+  greetUser(text = '歡迎回來！夥伴們跑過來迎接你了') {
     let greeted = 0;
     for (const pet of this.stage.pets.values()) {
       if (hearts(pet.mon.affection) >= 3 && pet.state !== 'held') {
@@ -100,8 +173,7 @@ export class Director {
         greeted++;
       }
     }
-    if (greeted) this.ui?.toast('歡迎回來！夥伴們跑過來迎接你了');
-    this.nextSpawnAt = Math.min(this.nextSpawnAt, Date.now() + nextSpawnDelay(this.game.state.settings.encounterRate, this.ctx(), this.rng, { dev: this.dev }));
+    if (greeted) this.ui?.toast(text);
   }
 
   // ---------- 夥伴同步 ----------
@@ -141,6 +213,7 @@ export class Director {
     const playing = Boolean(this.ui?.minigames.active); // 玩小遊戲的時候不會有野生寶可夢來打擾
     const focusing = Boolean(this.game.state.focus.active); // 專注中也不會
     this.stage.env.focus = focusing;
+    this.stage.env.noApproach = this.game.state.settings.interruptions === '0'; // 完全不主動打擾：也不跑來玩游標
     if (focusing && this.game.focusRemaining() <= 0) this.finishFocus();
     if (!focusing) this.typingReaction(now);
     if (!quiet && !playing && !focusing && !this.stage.spot && !this.enc && !this.stage.battle && now >= this.nextSpawnAt && this.game.state.starterChosen) this.spawn();
@@ -148,12 +221,13 @@ export class Director {
     if (this.lure && now > this.lure.until) {
       this.lure.prop.life = 0;
       this.lure = null;
-      this.updateEnv();
-      this.ui?.toast('誘餌泡芙的香味散掉了');
+      this.updateEnv(); // 香味散掉了（不跳通知：不重要的事不打擾你）
     }
     if (this.evolution) this.updateEvolution(dt);
     this.tripT = (this.tripT ?? 0) + dt;
-    if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); }
+    if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); this.drainAttention(); }
+    this.routineT = (this.routineT ?? 0) + dt;
+    if (this.routineT >= 60) { this.routineT = 0; this.routineTick(); }
   }
 
   // ---------- 出門旅行 ----------
@@ -182,7 +256,7 @@ export class Director {
             this.returning.delete(mon.uid);
             if (this.game.tripStatus(mon.uid) !== 'back' || st.pets.has(mon.uid)) return;
             startReturn(st.addPet(mon, { x: -100, gy: st.H * 0.7 }));
-            this.ui?.toast(`${this.game.displayName(mon)}旅行回來了！點牠收下明信片`, { icon: cards.mini });
+            this.interrupt({ id: `trip:${mon.uid}`, kind: 'gift' }, () => this.ui?.toast(`${this.game.displayName(mon)}旅行回來了！點牠收下明信片`, { icon: cards.mini }));
           });
         }
       }
@@ -209,7 +283,13 @@ export class Director {
     if (!ui.modal.classList.contains('hidden')) return false;
     const ev = g.storyNext({ force });
     if (!ev) return false;
-    this.playStory(ev);
+    if (ev.kind === 'letter' || force) { this.playStory(ev); return true; } // 信直接進信箱（有信的提醒另外排隊）；開發用的 force 不排隊
+    // 打來、廣播、有人來拜訪：要經過打擾額度（排隊時不會被丟掉，只是晚一點）
+    if (this.attnQueue?.some(q => q.id === `story:${ev.id}`)) return false;
+    this.interrupt({ id: `story:${ev.id}`, kind: 'story' }, () => {
+      if (this.storyBusy || ui.holo.busy || g.state.story.done.includes(ev.id)) return;
+      this.playStory(ev);
+    });
     return true;
   }
 
@@ -441,7 +521,7 @@ export class Director {
       const x = near ? Math.max(30 * S, Math.min(st.W - 30 * S, near.x + (Math.random() < 0.5 ? -1 : 1) * (near.asset.w / 2 + 16) * S)) : st.W / 2;
       const y = near ? near.gy : st.H * 0.8;
       st.props.push(new EggProp(st, { uid: egg.uid, x, y, color: this.eggColor(egg), onHatch: e => this.hatch(e) }));
-      this.ui?.toast('蛋好像動了一下…點一下看看！', { icon: art.egg(this.eggColor(egg), 1) });
+      this.interrupt({ id: `egg:${egg.uid}`, kind: 'gift' }, () => this.ui?.toast('蛋好像動了一下…點一下看看！', { icon: art.egg(this.eggColor(egg), 1) }));
     }
   }
 
@@ -461,11 +541,26 @@ export class Director {
     if (!r) return;
     this.audio.jingle('newEntry', { resumeWith: this.ambientSong() });
     this.ui?.toast(`專注 ${r.minutes} 分鐘完成！拿到了${puffName(r.puff)}${r.streak > 1 ? `（連續 ${r.streak} 天）` : ''}`, { icon: art.puff(r.puff), kind: 'dex' });
+    // 今天專注加起來超過兩小時：大家一起慶祝（番茄鐘結束了才來，要經過額度）
+    if (r.twoHours) setTimeout(() => this.interrupt({ id: `focus2h:${routineDay(Date.now())}`, kind: 'celebrate', ttl: 2 * 3_600_000 }, () => this.celebrateFocus()), 2500);
     for (const p of this.stage.pets.values()) {
       if (p.perch || !['idle', 'sit', 'sleep', 'look'].includes(p.state)) continue;
       p.set('happy', 1.2);
       p.showEmote('♥', 1.5);
     }
+  }
+
+  celebrateFocus() {
+    this.audio.jingle('hearts');
+    // 大家都來跳（正在忙的：被拎著、在視窗上、在放招、在吃東西的不算）
+    for (const p of this.stage.pets.values()) {
+      if (p.perch || p.leaving || p.inBattle || ['held', 'fall', 'evolving', 'move', 'duel', 'eat', 'sleep'].includes(p.state)) continue;
+      p.endPlay?.();
+      p.set('dance', 3);
+      p.showEmote('♪', 2);
+    }
+    this.stage.fx.stars(this.stage.W / 2, this.stage.H * 0.6, this.stage.S, 12);
+    this.ui?.toast('今天專注超過兩小時了！大家一起幫你慶祝', { icon: art.sparkle, kind: 'dex' });
   }
 
   // ---------- 打字反應（不讀鍵盤：看 signals.typing） ----------
@@ -475,6 +570,13 @@ export class Director {
     if (!s.typing || (s.typingSeconds ?? 0) < TYPING_WATCH_AFTER || now < (this.typingCooldown ?? 0) || !st.pointer.known) return;
     if (this.enc || this.ui?.minigames.active) return;
     this.typingCooldown = now + TYPING_COOLDOWN;
+    // 跑到游標旁邊是主動打擾：額度用完就算了（過 30 秒還沒輪到，你大概也不在打字了）
+    this.interrupt({ id: 'typing', kind: 'ambient', ttl: 30_000 }, () => this.typingApproach());
+  }
+
+  typingApproach() {
+    const st = this.stage;
+    if (!this.signals?.typing || !st.pointer.known) return;
     const free = [...st.pets.values()].filter(p => p.free && !p.partner && !p.perch).sort(() => Math.random() - 0.5).slice(0, Math.random() < 0.5 ? 1 : 2);
     this.typingWatchers = free.map(p => p.uid); // 這次是誰跑過來（除錯、測試用）
     const S = st.S;
@@ -509,7 +611,11 @@ export class Director {
       this.stage.spot = new PeekSpot(this.stage, { ...plan, spot: 'peek' }, { life });
       this.noticePeeker(this.stage.spot);
     } else this.stage.spot = new Spot(this.stage, plan, { life });
-    if (plan.special) this.ui?.toast('好像有什麼不尋常的氣息…', { icon: art.sparkle });
+    // 出現時的沙沙聲：這小時已經打擾過你就安靜地出現（寶可夢照樣會來）。
+    // 聲音很小、又很常出現，所以只「看」額度、不用掉額度，不然每小時的那一次都會被它吃掉
+    const spot = this.stage.spot;
+    spot.silent = !A.canInterrupt(this.game.state.attention, Date.now(), this.attentionOpts());
+    if (plan.special) this.interrupt({ id: 'special', kind: 'ambient', ttl: 10 * 60_000 }, () => { if (this.stage.spot === spot) this.ui?.toast('好像有什麼不尋常的氣息…', { icon: art.sparkle }); });
     if (shouldDropCell(this.game.state, this.rng)) this.dropCell();
   }
 
@@ -629,6 +735,7 @@ export class Director {
     st.on('perched', () => { this.game.state.stats.perches++; });
     // 超級進化、牽絆變身（只是演出，不會存檔）
     st.on('formChange', (pet, form) => {
+      if (pet.duel && !pet.inBattle) { if (form) pet.stage.fx.hearts(pet.x, pet.head().y, pet.S, 2); return; } // 夥伴自己切磋時變身：不跳通知
       const name = this.game.displayName(pet.mon);
       if (form === 'mega') this.ui?.toast(`${name}超級進化成超級${this.dex.name(pet.mon.species)}了！`, { icon: art.sparkle });
       if (form === 'ash') this.ui?.toast(`${name}和夥伴的羈絆產生了共鳴…牽絆變身！`, { icon: art.sparkle });
@@ -914,15 +1021,17 @@ export class Director {
       this.ui?.toast(n >= 5 ? `${g.displayName(mon)}最喜歡你了！（♥5）` : `${g.displayName(mon)}對你的好感提升了！（♥${n}）`);
     });
     g.on('partnerGift', ({ uid, puff }) => {
-      const pet = this.stage.pets.get(uid);
-      if (pet) { pet.showEmote(art.puff(puff), 3); pet.happy(); }
-      this.audio.jingle('gift');
-      this.ui?.toast(`${g.displayName(g.mon(uid))}撿到了${puffName(puff)}送給你！`, { icon: art.puff(puff) });
+      this.interrupt({ id: `gift:${uid}:${puff}`, kind: 'gift', ttl: 3 * 3_600_000 }, () => {
+        const p = this.stage.pets.get(uid);
+        if (p) { p.showEmote(art.puff(puff), 3); p.happy(); }
+        this.audio.jingle('gift');
+        this.ui?.toast(`${g.displayName(g.mon(uid))}撿到了${puffName(puff)}送給你！`, { icon: art.puff(puff) });
+      });
     });
     g.on('dailyGift', ({ balls, puffs }) => {
-      setTimeout(() => {
+      setTimeout(() => this.interrupt({ id: 'daily', kind: 'gift' }, () => {
         this.ui?.toast(`每日禮物：精靈球×${balls.poke}、超級球×${balls.great}、高級球×${balls.ultra}，以及 ${puffs.length} 個泡芙`, { icon: art.balls.poke });
-      }, 1500);
+      }), 1500);
     });
     g.on('party', () => this.syncPets());
     g.on('chain', ({ speciesId, count }) => {
@@ -946,7 +1055,7 @@ export class Director {
     });
     g.on('eggFound', ({ egg, parents }) => {
       const [a, b] = parents.map(u => this.game.displayName(this.game.mon(u)));
-      this.ui?.toast(`${a}和${b}一起找到了一顆蛋！用游標、在電腦前待著，蛋就會慢慢孵化`, { icon: art.egg(this.eggColor(egg)) });
+      this.interrupt({ id: `eggFound:${egg.uid}`, kind: 'gift' }, () => this.ui?.toast(`${a}和${b}一起找到了一顆蛋！用游標、在電腦前待著，蛋就會慢慢孵化`, { icon: art.egg(this.eggColor(egg)) }));
     });
     g.on('eggReady', () => this.showReadyEggs());
     g.on('achievement', ({ id }) => {
@@ -960,22 +1069,25 @@ export class Director {
     });
     g.on('trimExpired', ({ uid }) => {
       const m = this.game.mon(uid);
-      if (m) this.ui?.toast(`${this.game.displayName(m)}的毛長回來了`);
+      if (m) this.interrupt({ id: `trim:${uid}`, kind: 'ambient', ttl: 30 * 60_000 }, () => this.ui?.toast(`${this.game.displayName(m)}的毛長回來了`));
     });
     g.on('charm', () => {
       this.audio.jingle('newEntry', { resumeWith: this.ambientSong() });
       this.ui?.toast('圖鑑捕獲 60 種！獲得了「閃耀護符」，色違更容易出現了', { icon: art.sparkle, kind: 'dex' });
     });
     // 信：有沒打開的信，桌面角落就有一個信封
-    g.on('letter', l => { this.refreshMail(); this.audio.sfx('open'); this.ui?.toast(`${l.name}寫了一封信給你`, { icon: mail.envelope }); });
+    // 有信：信箱馬上插旗子（不吵）；「叮」一聲和通知要排隊
+    g.on('letter', l => { this.refreshMail(); this.interrupt({ id: `letter:${l.id}`, kind: 'gift' }, () => { this.audio.sfx('open'); this.ui?.toast(`${l.name}寫了一封信給你`, { icon: mail.envelope }); }); });
     g.on('letterOpened', () => this.refreshMail());
     g.on('letterDeleted', () => this.refreshMail());
     g.on('bondUp', ({ a, b, level, zh }) => {
       if (level < 2) return;
       const pa = this.stage.pets.get(a), pb = this.stage.pets.get(b);
-      for (const p of [pa, pb]) if (p) this.stage.fx.hearts(p.head().x, p.head().y, this.stage.S, 3);
-      this.audio.sfx('heart');
-      this.ui?.toast(`${g.displayName(g.mon(a))}和${g.displayName(g.mon(b))}變成${zh}了！`);
+      for (const p of [pa, pb]) if (p) this.stage.fx.hearts(p.head().x, p.head().y, this.stage.S, 3); // 愛心是畫面，不算打擾
+      this.interrupt({ id: `bond:${a}:${b}:${level}`, kind: 'ambient', ttl: 30 * 60_000 }, () => {
+        this.audio.sfx('heart');
+        this.ui?.toast(`${g.displayName(g.mon(a))}和${g.displayName(g.mon(b))}變成${zh}了！`);
+      });
     });
   }
 

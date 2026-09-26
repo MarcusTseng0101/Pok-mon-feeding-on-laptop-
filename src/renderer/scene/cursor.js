@@ -34,6 +34,7 @@ const pointerCss = st => ({ speed: (st.pointerSpeed?.() ?? 0) / st.dpr });
 export function wantsToPounce(pet, dt) {
   const st = pet.stage, p = st.pointer;
   if (!p.known || !st.env.userActive || !pet.free || pet.perch || pet.partner || pet.group) return false;
+  if (st.env.focus || st.env.noApproach) return false; // 專注中、或你設定「完全不主動打擾」：不來玩游標
   if (hearts(pet.mon.affection) < 1 || traitsOf(pet.mon.nature).timid >= 0.7) return false;
   const d = Math.hypot(p.x - pet.x, p.y - pet.gy) / st.dpr;
   if (d > 360 || pointerCss(st).speed < POUNCE_SPEED) return false;
@@ -50,7 +51,7 @@ export function startPounce(pet) {
 // 滑鼠相關的選項（Pet.decide() 用；類別都是 cursor）
 export function cursorOptions(pet) {
   const st = pet.stage, p = st.pointer, h = hearts(pet.mon.affection);
-  if (!p.known || !st.env.userActive || pet.perch) return [];
+  if (!p.known || !st.env.userActive || pet.perch || st.env.focus || st.env.noApproach) return [];
   return [
     ['chaseCursor', h >= 1 ? 4 : 0, () => pet.set('chaseCursor', rnd(3, 6))],
     ['cursorSit', st.pointerStill > SIT_AFTER ? 8 : 0, () => { pet.cursorSit = { seated: false, side: null }; pet.set('cursorSit', 25); }],

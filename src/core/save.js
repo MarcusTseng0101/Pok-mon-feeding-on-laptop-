@@ -8,6 +8,8 @@ import { normalizeMemory } from './memory.js';
 import { normalizeLetters, defaultLetters } from './letters.js';
 import { normalizeStory, defaultStory } from './story.js';
 import { ITEM_IDS } from './items.js';
+import { defaultAttention, normalizeAttention, LIMITS, DEFAULT_LIMIT } from './attention.js';
+import { defaultRoutine, normalizeRoutine } from './routine.js';
 import { normalizeBase, defaultBase, emptyMaterials, MATERIALS } from './base.js';
 import { normalizeTrip, normalizePostcard, PLACES, POSTCARDS_KEPT, TRIPS_DONE_KEPT } from './trips.js';
 
@@ -36,6 +38,7 @@ export const DEFAULT_SETTINGS = {
   focusMinutes: 25, // 番茄鐘長度（15–60）
   birthday: null, // 你的生日 'MM-DD'（不填也可以；那天夥伴會寫信給你）
   calmFx: false, // 減少閃光和畫面震動（招式的演出）
+  interruptions: String(DEFAULT_LIMIT), // 寶可夢每小時最多主動打擾你幾次（core/attention.js）：'0'／'1'／'2'／'unlimited'
 };
 
 export function emptyPuffs() {
@@ -79,6 +82,8 @@ export function defaultSave(now) {
     placesVisited: {}, // { [地點]: 第一次去的時間 }
     letters: defaultLetters(), // 夥伴寫給你的信（core/letters.js）
     story: defaultStory(), // 主線故事（core/story.js）
+    attention: defaultAttention(), // 打擾額度：最近放行主動打擾的時間（core/attention.js）
+    routine: defaultRoutine(), // 你的作息：最近 28 天每天的第一次／最後一次操作、打字、專注分鐘（core/routine.js）
     base: defaultBase(now), // 秘密基地（core/base.js）：一開始有帳篷＋一張小床
     minigames: { day: null, baked: 0, deluxe: 0 }, // 今天做了幾個泡芙（每天有上限）
     stats: {
@@ -196,6 +201,9 @@ export function migrate(raw, dex, now) {
   s.base = normalizeBase(raw.base, now);
   s.letters = normalizeLetters(raw.letters);
   s.story = normalizeStory(raw.story);
+  s.attention = normalizeAttention(raw.attention);
+  s.routine = normalizeRoutine(raw.routine);
+  if (!(s.settings.interruptions in LIMITS)) s.settings.interruptions = String(DEFAULT_LIMIT);
   s.settings.birthday = typeof s.settings.birthday === 'string' && /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s.settings.birthday) ? s.settings.birthday : null;
   s.placesVisited = Object.fromEntries(Object.entries(raw.placesVisited && typeof raw.placesVisited === 'object' ? raw.placesVisited : {}).filter(([k, v]) => PLACES[k] && Number.isFinite(v)));
   s.hatchedEggs = (Array.isArray(raw.hatchedEggs) ? raw.hatchedEggs : []).filter(u => typeof u === 'string' && u.length <= 40).slice(-200);

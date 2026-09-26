@@ -90,7 +90,9 @@ async function watchHangs(page) {
 
 // query：額外的網址參數（例如 { windows: '...' }）
 // init：在網頁任何程式執行之前先跑的函式（例如把 Math.random 換成固定種子的版本），initArg 是傳給它的參數
-async function open({ query = {}, fresh = true, viewport = { width: 1280, height: 720 }, init = null, initArg } = {}) {
+// budget：要不要照真的打擾額度（預設每小時 1 次）。其他測試要測的是功能本身，預設改成「不限制」，
+// 不然開場的每日禮物就把這小時的額度用掉了
+async function open({ query = {}, fresh = true, viewport = { width: 1280, height: 720 }, init = null, initArg, budget = false } = {}) {
   const { chromium } = loadPlaywright();
   const server = await serve();
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -104,6 +106,7 @@ async function open({ query = {}, fresh = true, viewport = { width: 1280, height
   const q =new URLSearchParams({ dev: '1', sprites: '/__sprites', trainers: '/__trainers', ...(fresh ? { fresh: '1' } : {}), ...query });
   await page.goto(`${base}/src/renderer/index.html?${q}`);
   await page.waitForFunction(() => window.__kalos?.game, null, { timeout: 15000 });
+  if (!budget) await page.evaluate(() => { window.__kalos.game.state.settings.interruptions = 'unlimited'; });
   return {
     page,
     errors,
