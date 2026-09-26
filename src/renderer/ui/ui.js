@@ -73,6 +73,7 @@ export class UI {
     this.win.addEventListener('click', e => this.onPanelClick(e));
     this.win.addEventListener('change', e => this.onPanelChange(e));
     this.win.addEventListener('input', e => this.onPanelInput(e));
+    this.win.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches?.('[data-city]')) this.searchCity(); });
     this.bubble = h('<div class="bubble hit pix hidden"></div>');
     this.bubble.onclick = e => this.onBubbleClick(e);
     this.encBar = h('<div class="encounter hit pix hidden"></div>');
@@ -664,7 +665,8 @@ export class UI {
       ${w ? `<label><input type="checkbox" data-weatheron ${w.enabled ? 'checked' : ''}> 依照「${esc(w.city)}」的天氣（現在：${esc(now)}）</label>`
         : '<p class="hint">輸入你的城市，出現的寶可夢會跟著真實天氣變化（下雨時水屬性變多…）。用 Open-Meteo 查詢，不會用 IP 猜你的位置。</p>'}
       <div class="cityrow"><input data-city maxlength="40" placeholder="城市，例如：中壢" value="${esc(this.cityQuery ?? '')}"><button data-act="citysearch">搜尋</button></div>
-      ${this.cityResults ? (results || '<p class="hint">找不到這個城市（或連不上網路）</p>') : ''}
+      ${this.cityNote && results ? `<p class="hint">${esc(this.cityNote)}</p>` : ''}
+      ${this.cityResults ? (results || `<p class="hint">${this.cityOffline ? '連不上天氣服務，等一下再試試' : '找不到這個地方，試試只打城市名，例如「台中」'}</p>`) : ''}
     </fieldset>`;
   }
 
@@ -672,7 +674,11 @@ export class UI {
     const q = this.win.querySelector('[data-city]')?.value.trim() ?? '';
     this.cityQuery = q;
     if (!q) return;
-    this.cityResults = await Promise.resolve(this.api.searchCity?.(q)).catch(() => []) ?? [];
+    const r = await Promise.resolve(this.api.searchCity?.(q)).catch(() => null);
+    const list = Array.isArray(r) ? r : r?.places; // 舊版回傳陣列
+    this.cityResults = Array.isArray(list) ? list : [];
+    this.cityNote = r?.note ?? null;
+    this.cityOffline = r == null || Boolean(r.offline);
     this.renderPanel();
   }
 
@@ -681,6 +687,7 @@ export class UI {
     if (!c) return;
     this.game.state.weather = { city: c.name, lat: c.lat, lon: c.lon, enabled: true };
     this.cityResults = null;
+    this.cityNote = null;
     this.game.emit('settings', { key: 'weather' });
     this.director.refreshWeather(true).then(() => this.renderPanel());
     this.toast(`之後會依照${c.name}的天氣`);

@@ -27,7 +27,7 @@ export function createMockApi() {
       } catch { return null; }
     },
     // ?weather=rain：假裝現在的天氣（測試用）；城市搜尋回傳固定的結果
-    async searchCity(city) { return city ? [{ name: city, region: '測試', lat: 24.965, lon: 121.217 }] : []; },
+    async searchCity(city) { return { places: city ? [{ name: city, region: '測試', lat: 24.965, lon: 121.217 }] : [], offline: false }; },
     async getWeather() { const w = params.get('weather'); return w ? { weather: w, code: 0 } : null; },
     // 同步資料夾（測試用）：放在記憶體裡；window.__mockSync[deviceId] = 存檔 可以假裝別台電腦
     async pickSyncFolder() { return '/mock-sync'; },

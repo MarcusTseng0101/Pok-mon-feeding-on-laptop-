@@ -27,6 +27,10 @@ run('world', async ({ page, shot }, check) => {
   // ---------- 2. 天氣：在設定裡搜尋城市 → 選擇 → 下雨 ----------
   await page.evaluate(() => window.__kalos.ui.open('settings'));
   await wait(300);
+  await page.fill('[data-city]', '台中東區'); // 按 Enter 也能搜尋
+  await page.press('[data-city]', 'Enter');
+  await wait(300);
+  check(await page.locator('[data-citypick="0"]').count() === 1, '按 Enter 沒有搜尋');
   await page.fill('[data-city]', '中壢');
   await page.click('[data-act="citysearch"]');
   await wait(300);
