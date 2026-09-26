@@ -35,6 +35,17 @@ export function createMockApi() {
         return await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
       } catch { return null; }
     },
+    // 故事的訓練家圖：測試環境連不到 Showdown，只有 ?trainers=<網址> 時才去抓
+    async getTrainerSprite(name) {
+      const base = params.get('trainers');
+      if (!base || !/^[a-z0-9-]{1,40}$/.test(name)) return null;
+      try {
+        const res = await fetch(`${base}/${name}.png`);
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        return await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
+      } catch { return null; }
+    },
     // ?weather=rain：假裝現在的天氣（測試用）；城市搜尋回傳固定的結果
     async searchCity(city) { return { places: city ? [{ name: city, region: '測試', lat: 24.965, lon: 121.217 }] : [], offline: false }; },
     async getWeather() { const w = params.get('weather'); return w ? { weather: w, code: 0 } : null; },

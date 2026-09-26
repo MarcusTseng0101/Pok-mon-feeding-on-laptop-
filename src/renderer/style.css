@@ -435,3 +435,54 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .dialog.letter .sign { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 8px; color: var(--muted); }
 .dialog.letter .btns { display: flex; justify-content: center; gap: 8px; margin-top: 10px; }
 .settings .birthday select { margin: 0 2px; }
+
+/* ---------- 主線故事：全息投影通訊器 ---------- */
+.holo {
+  position: fixed;
+  left: 24px;
+  top: 72px; /* 左上角：不擋住秘密基地和寶可夢 */
+  width: min(440px, calc(100vw - 48px));
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  padding: 12px 14px;
+  color: #eaf6ff;
+  background: rgba(16, 52, 104, 0.72);
+  border: 1px solid rgba(150, 215, 255, 0.85);
+  box-shadow: 0 0 22px rgba(80, 180, 255, 0.45), inset 0 0 18px rgba(80, 180, 255, 0.25);
+  cursor: pointer;
+  --who: #8ac8ff;
+}
+.holo.broadcast { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100vw - 48px)); }
+.holo .portrait { position: relative; flex: none; min-width: 72px; min-height: 72px; display: flex; align-items: flex-end; justify-content: center; }
+/* 投影的樣子：藍色、掃描線、偶爾閃一下 */
+.holo .portrait canvas { image-rendering: pixelated; filter: grayscale(1) sepia(1) hue-rotate(170deg) saturate(2.4) brightness(1.2); opacity: 0.92; }
+.holo .portrait::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(transparent 0 2px, rgba(8, 28, 60, 0.4) 2px 3px);
+  pointer-events: none;
+  animation: holo-flicker 3.2s steps(1) infinite;
+}
+@keyframes holo-flicker { 0%, 92%, 100% { opacity: 1; } 94% { opacity: 0.4; } 96% { opacity: 0.85; } }
+.holo .talk { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.holo .name { font-size: 13px; color: #fff; border-left: 4px solid var(--who); padding-left: 6px; letter-spacing: 0.05em; }
+.holo .line { margin: 0; min-height: 3.4em; font-size: 15px; line-height: 1.6; }
+.holo .choices { display: flex; flex-direction: column; gap: 6px; }
+.holo .choices button { text-align: left; padding: 8px 10px; min-height: 40px; color: #eaf6ff; background: rgba(40, 100, 170, 0.6); border: 1px solid rgba(150, 215, 255, 0.8); cursor: pointer; }
+.holo .choices button:hover, .holo .choices button:focus-visible { background: rgba(70, 140, 220, 0.8); }
+.holo .hint { font-size: 11px; color: rgba(200, 230, 255, 0.7); text-align: right; }
+.holo-dim { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.5s; background: radial-gradient(ellipse at center, rgba(4, 10, 26, 0.6), rgba(4, 10, 26, 0.35) 45%, rgba(4, 10, 26, 0) 75%); }
+.holo-dim.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .holo .portrait::after { animation: none; } .holo-dim { transition: none; } }
+
+.story .summary { display: flex; gap: 8px; align-items: center; }
+.story .next { margin: 6px 0 10px; color: var(--muted); }
+.story .ver { font-weight: 700; padding: 1px 8px; border-radius: 4px; color: #fff; }
+.story .ver-x { background: #2a6ad8; }
+.story .ver-y { background: #c8302a; }
+.story .story-row { display: grid; grid-template-columns: 56px 1fr auto; gap: 10px; align-items: center; padding: 6px 4px; border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
+.story .story-row .face { display: flex; justify-content: center; align-items: flex-end; height: 52px; overflow: hidden; }
+.story .story-row .txt { display: flex; flex-direction: column; min-width: 0; }
+.story .story-row small { color: var(--muted); font-size: 11px; }

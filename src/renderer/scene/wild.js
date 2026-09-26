@@ -434,6 +434,7 @@ export class Prop {
   }
   image() {
     if (this.kind === 'mailbox') return this.unread ? mail.mailbox.full : mail.mailbox.empty;
+    if (this.kind === 'npc') return this.img; // 故事裡來拜訪的人（圖由外面給）
     return this.kind === 'cell' ? art.zygardeCell(this.t) : this.kind === 'note' ? cards.note : this.kind === 'letter' ? mail.envelope : art.puff(this.puff);
   }
   rect() {

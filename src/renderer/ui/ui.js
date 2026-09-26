@@ -22,6 +22,9 @@ import { STAGES, FURNITURE, MATERIALS, enough, trophiesAllowed } from '../../cor
 import * as baseGfx from '../gfx/basegfx.js';
 import * as mail from '../gfx/letters.js';
 import { KINDS as LETTER_KINDS } from '../../core/letters.js';
+import { EVENTS as STORY_EVENTS, EVENT_BY_ID as STORY_BY_ID, CAST, VERSIONS, storyDay, daysUntilNext } from '../../core/story.js';
+import { Portraits } from '../gfx/portraits.js';
+import { HoloCaster } from './holocaster.js';
 import * as cards from '../gfx/postcards.js';
 import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
 import { transform as transformForm, revert as revertForm } from '../scene/battleforms.js';
@@ -65,7 +68,7 @@ export class UI {
     this.menu = h(`<div class="menu hit pix hidden">
       <button data-open="party">夥伴</button><button data-open="dex">圖鑑</button>
       <button data-open="play">一起玩</button><button data-open="medals">獎章</button>
-      <button data-open="bag">背包</button><button data-open="album">相簿</button><button data-open="base">秘密基地</button><button data-open="mail">信箱</button><button data-open="aura">氣息</button>
+      <button data-open="bag">背包</button><button data-open="album">相簿</button><button data-open="base">秘密基地</button><button data-open="mail">信箱</button><button data-open="story">故事</button><button data-open="aura">氣息</button>
       <button data-open="settings">設定</button><button data-act="quiet">勿擾模式</button>
       <button data-act="focus">開始專注</button>
     </div>`);
@@ -95,6 +98,9 @@ export class UI {
     this.modal = h('<div class="modal hidden"></div>');
     this.focusHud = h('<div class="focus-hud pix hidden"></div>');
     r.append(this.focusHud, this.label, this.bubble, this.encBar, this.picker, this.menu, this.win, this.launcher, this.toasts, this.modal);
+    // 主線故事：全息投影通訊器（故事裡的人的圖先試 Showdown 的訓練家圖，拿不到用剪影）
+    this.portraits = new Portraits(this.api);
+    this.holo = new HoloCaster({ root: r, portraits: this.portraits, audio: this.audio });
     this.applySettings();
   }
 
@@ -220,7 +226,7 @@ export class UI {
   }
 
   renderPanel() {
-    const titles = { party: '夥伴', dex: '卡洛斯圖鑑', play: '一起玩', medals: '獎章', bag: '背包', album: '相簿', base: '秘密基地', mail: '信箱', aura: '氣息', settings: '設定' };
+    const titles = { party: '夥伴', dex: '卡洛斯圖鑑', play: '一起玩', medals: '獎章', bag: '背包', album: '相簿', base: '秘密基地', mail: '信箱', story: '故事', aura: '氣息', settings: '設定' };
     this.win.querySelector('.title').textContent = titles[this.panel];
     const body = this.win.querySelector('.body');
     const scroll = body.querySelector('.scroll')?.scrollTop;
@@ -496,6 +502,33 @@ export class UI {
     return root;
   }
 
+  // ---------- 故事（主線）----------
+  render_story() {
+    const st = this.game.state.story, now = Date.now();
+    const done = st.log.filter(e => STORY_BY_ID[e.id]);
+    const left = daysUntilNext(st, now);
+    const ver = st.version ? `<span class="ver ver-${st.version}">${VERSIONS[st.version].zh}</span>` : '';
+    const next = st.startedAt === null ? '故事還沒開始。夥伴來到桌面以後，會有人打全息投影通訊器來。'
+      : left === null ? '這一段故事說完了。之後還會有新的章節。'
+      : left === 0 ? '今天還有事情會發生……' : `下一件事大約在 ${left} 天後。`;
+    const root = h(`<div class="story"><div class="summary">${ver}${st.startedAt === null ? '' : `第 ${storyDay(st, now)} 天・`}已經發生 ${done.length} 件事</div><p class="next"></p><div class="list scroll"></div></div>`);
+    root.querySelector('.next').textContent = next;
+    const list = root.querySelector('.list');
+    if (!done.length) list.append(h('<p class="empty">還沒有故事。</p>'));
+    for (const e of [...done].reverse()) {
+      const ev = STORY_BY_ID[e.id], who = ev.kind === 'letter' ? ev.from : ev.lines[0][0];
+      const row = h(`<div class="story-row"><div class="face"></div><div class="txt"><b></b><small></small></div><button data-storyreplay="${esc(ev.id)}">${ev.kind === 'letter' ? '看信' : '重看'}</button></div>`);
+      row.querySelector('b').textContent = ev.title;
+      row.querySelector('small').textContent = `${CAST[who]?.zh ?? ''}・第 ${storyDay({ startedAt: st.startedAt }, e.at)} 天・${new Date(e.at).toLocaleDateString('zh-TW')}`;
+      const face = row.querySelector('.face');
+      const draw = img => face.replaceChildren(pixelImg(img, Math.max(1, Math.min(2, Math.floor(48 / img.height)))));
+      draw(this.portraits.peek(who));
+      this.portraits.get(who).then(p => draw(p.canvas));
+      list.append(row);
+    }
+    return root;
+  }
+
   // ---------- 信箱 ----------
   render_mail() {
     const inbox = [...this.game.state.letters.inbox].reverse();
@@ -513,7 +546,7 @@ export class UI {
   // 打開一封信：信紙＋腳印簽名（內容一律用 textContent，不當成 HTML）
   showLetter(l) {
     const sp = this.dex.get(l.species);
-    const color = art.TYPE_COLORS[sp?.types?.[0]] ?? '#ff6fa5';
+    const color = l.kind === 'story' ? (CAST[l.from]?.color ?? '#8a86a0') : art.TYPE_COLORS[sp?.types?.[0]] ?? '#ff6fa5';
     this.modal.innerHTML = `<div class="dialog letter hit pix"><div class="paper"><p class="body"></p><div class="sign"><span class="who"></span></div></div><div class="btns"><button data-del>刪除</button><button data-yes class="primary">收進信箱</button></div></div>`;
     this.modal.querySelector('.body').textContent = l.text;
     this.modal.querySelector('.who').textContent = `—— ${l.name}`;
@@ -699,7 +732,7 @@ export class UI {
       <label><input type="checkbox" data-set="showLauncher" ${s.showLauncher ? 'checked' : ''}> 顯示右下角的精靈球按鈕（隱藏後可從系統匣開啟選單）</label>
       <label><input type="checkbox" data-set="quiet" ${s.quiet ? 'checked' : ''}> 勿擾模式（收起所有寶可夢、暫停遭遇）</label>
       <label><input type="checkbox" data-login> 開機時自動啟動</label>
-      ${this.dev ? '<button data-act="spawn">〔開發〕立刻生成氣息點</button> <button data-act="devfill">〔開發〕補滿道具</button>' : ''}
+      ${this.dev ? '<button data-act="spawn">〔開發〕立刻生成氣息點</button> <button data-act="storynext">〔開發〕下一段故事</button> <button data-act="devfill">〔開發〕補滿道具</button>' : ''}
       <hr><button class="danger" data-act="reset">重置存檔…</button>
       <p class="hint">存檔位置：使用者資料夾／save.json。寶可夢圖片第一次出現時會從 PokeAPI 下載並快取。</p>
     </div>`);
@@ -717,6 +750,14 @@ export class UI {
     }
     if (t.dataset.citypick !== undefined) { this.pickCity(Number(t.dataset.citypick)); return; }
     if (t.dataset.letterdel) { this.game.deleteLetter(t.dataset.letterdel); this.audio.sfx('close'); this.renderPanel(); return; }
+    if (t.dataset.storyreplay) {
+      const ev = STORY_BY_ID[t.dataset.storyreplay];
+      if (!ev || this.holo.busy) return;
+      if (ev.kind === 'letter') { const l = this.game.state.letters.inbox.find(x => x.id === `story-${ev.id}`); if (l) this.showLetter(l); else this.toast('這封信已經不在信箱裡了'); return; }
+      this.closePanel();
+      this.holo.play(ev);
+      return;
+    }
     if (t.dataset.letter) { const l = this.game.state.letters.inbox.find(x => x.id === t.dataset.letter); if (l) { this.audio.sfx('open'); this.showLetter(l); } return; }
     if (t.dataset.basekind) { this.closePanel(); this.director.startBasePlace(t.dataset.basekind); return; }
     if (t.dataset.basemove) { this.closePanel(); this.stage.fire('furnitureClick', this.game.state.base.items.find(i => i.id === t.dataset.basemove)); return; }
@@ -768,6 +809,7 @@ export class UI {
         break;
       }
       case 'spawn': this.director.spawnNow(); break;
+      case 'storynext': this.closePanel(); if (!this.director.tickStory({ force: true })) this.toast('現在沒辦法開始（對話中、專注中或故事已經說完）'); return;
       case 'shinyview': this.dexShiny = !this.dexShiny; this.audio.sfx('click'); this.renderPanel(); return;
       case 'citysearch': this.searchCity(); return;
       case 'syncsetup': this.sync?.setup().then(() => this.renderPanel()); return;

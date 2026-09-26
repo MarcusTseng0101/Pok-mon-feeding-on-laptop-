@@ -15,6 +15,7 @@ import { remember } from './memory.js';
 import * as trips from './trips.js';
 import * as baseRules from './base.js';
 import * as L from './letters.js';
+import * as S from './story.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
 
 // 夥伴之間的感情（0–255），到這些門檻時通知畫面
@@ -756,6 +757,28 @@ export class Game {
     box.deleted = [...(box.deleted ?? []), id].slice(-L.DELETED_KEPT);
     this.emit('letterDeleted', id);
     return true;
+  }
+
+  // ---- 主線故事（core/story.js）----
+  // 下一件該發生的事（時間到了、而且跟上一件隔夠久）；force：開發用
+  storyNext({ force = false } = {}) {
+    if (!this.state.starterChosen) return null;
+    return S.nextDue(this.state.story, this.now(), { force });
+  }
+  // 這件事演完了；choice：序章的問題選了什麼（決定 X／Y）
+  storyDone(id, { choice } = {}) {
+    if (!S.markDone(this.state.story, id, this.now(), { choice })) return false;
+    this.emit('story', { id, choice });
+    return true;
+  }
+  // 故事裡的人寄來的信（直接放進信箱，不佔夥伴每天 2 封的額度）
+  storyLetter(ev) {
+    const box = this.state.letters, id = `story-${ev.id}`;
+    if (box.inbox.some(l => l.id === id) || box.deleted?.includes(id)) return null;
+    const letter = { id, uid: '', name: S.CAST[ev.from]?.zh ?? '', species: 0, kind: 'story', from: ev.from, at: this.now(), text: ev.text, refs: [], opened: false };
+    box.inbox = [...box.inbox, letter].slice(-L.INBOX_KEPT);
+    this.emit('letter', letter);
+    return letter;
   }
 
   // ---- 記憶 ----

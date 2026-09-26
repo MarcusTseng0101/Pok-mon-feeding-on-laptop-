@@ -21,6 +21,7 @@
 import { mergeMemory } from './memory.js';
 import { mergeBase } from './base.js';
 import { mergeLetters } from './letters.js';
+import { mergeStory } from './story.js';
 import { mergeTrip, mergePostcards, mergeTripsDone } from './trips.js';
 
 export const SYNC_DIR = 'kalos-amie';
@@ -179,6 +180,7 @@ export function mergeShared(local, remote) {
   out.placesVisited = minMap(local.placesVisited, remote.placesVisited);
   out.base = mergeBase(local.base, remote.base); // 秘密基地：最後改的那一邊
   out.letters = mergeLetters(local.letters, remote.letters); // 信：聯集，打開過的算打開過
+  out.story = mergeStory(local.story, remote.story); // 主線故事：做過的取聯集，開始時間取早的
   out.achievementRewards = { fancy: local.achievementRewards.fancy || remote.achievementRewards.fancy, pokeBall: local.achievementRewards.pokeBall || remote.achievementRewards.pokeBall };
   out.pendingVivillon = (local.pendingVivillon.length >= remote.pendingVivillon.length ? local : remote).pendingVivillon.slice();
   // 蛋：聯集，已經孵化的不要
