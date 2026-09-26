@@ -12,6 +12,7 @@ import { HABIT_ACTIONS, habitOptions } from './habits.js';
 import { MOVE_ACTIONS, moveOptions } from './moves.js';
 import { SOCIAL_ACTIONS, groupOptions, maybeComfort } from './social.js';
 import { integrateKnock } from './physics.js';
+import { updateForm, drawForm } from './battleforms.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
@@ -269,6 +270,7 @@ export class Pet {
     this.squashT = Math.max(0, this.squashT - dt);
     this.flinchT = Math.max(0, (this.flinchT ?? 0) - dt); // 被招式打到
     this.flipT = Math.max(0, (this.flipT ?? 0) - dt); // 被「顛倒」倒過來
+    updateForm(this, dt); // 超級進化、牽絆變身
     if (this.emote && this.t > this.emote.until) this.emote = null;
     const p = st.pointer;
     const near = p.known && Math.abs(p.x - this.x) < 260 * (S / 2) && Math.abs(p.y - this.y) < 300 * (S / 2);
@@ -577,6 +579,7 @@ export class Pet {
     // 被招式打到：白色閃爍
     if (this.flinchT > 0 && Math.floor(this.flinchT * 20) % 2) blit(ctx, a.white, r.x + pose.ox * S, r.y, S, { flipX: this.facing > 0, flipY, alpha: 0.6 * alpha });
     act?.drawOver?.(this, ctx);
+    drawForm(this, ctx);
     if (this.eating && this.eating.bites < 3) {
       const m = this.mouth();
       const img2 = art.bittenPuff(this.eating.puff, this.eating.bites);

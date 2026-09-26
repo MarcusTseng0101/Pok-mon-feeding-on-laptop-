@@ -26,7 +26,8 @@ npm run dist       # 打包成安裝檔（Windows: NSIS + portable；在各自�
 瀏覽器端的回歸測試放在 `test/e2e/`（需要另外裝好的 Playwright，不在 `package.json` 裡）：
 
 ```bash
-node test/e2e/forms.cjs     # 形態圖片（藍花的花蓓蓓真的是藍色的圖）
+node test/e2e/forms.cjs        # 形態圖片（藍花的花蓓蓓真的是藍色的圖）
+node test/e2e/kalos-forms.cjs  # 野生花色、圖鑑切換、美容、超級進化（變大後不重疊、不存檔）、牽絆變身
 node test/e2e/habits.cjs    # 72 種寶可夢的每一個習性都能跑完、不會跑出螢幕
 node test/e2e/physics.cjs   # 碰撞與擊退：沒有重疊、撞球、重量差
 node test/e2e/perf.cjs      # 每幀 update + draw 的時間
@@ -194,6 +195,22 @@ node test/e2e/perf.cjs      # 每幀 update + draw 的時間
 色違的氣息點偶爾會閃一下；色違的寶可夢出現時有星星和提示，在桌面上也會不時閃光。
 圖鑑會標記抓過色違的種類（✦），可以切換看色違的樣子；「氣息」視窗會列出目前的色違機率與連鎖。
 
+### 形態
+
+| 寶可夢 | 形態 | 怎麼決定 |
+|---|---|---|
+| 花蓓蓓、花葉蒂、花潔夫人 | 紅、黃、橙、藍、白 5 種花色 | 野生的隨機出現；進化時花色不變 |
+| 粉蝶蟲、粉蝶蛹、彩粉蝶 | 18 種花紋（另外 2 種配信限定的之後當成就獎勵） | 跟原作一樣依你所在的地區決定，一個地區固定一種。這裡用電腦的時區判斷：台灣是驟雨花紋、日本（東京）是高雅花紋、法國是花園花紋 |
+| 多麗米亞 | 9 種造型 | 在「夥伴」裡按「修剪」，花一個泡芙；5 天後毛會長回來 |
+| 蒂安希 | 超級進化 | 好感第一次滿了拿到「蒂安希進化石」。之後切磋一開始就會超級進化，也可以點牠叫牠超級進化（最多 5 分鐘） |
+| 甲賀忍蛙 | 牽絆變身 | 好感滿，而且有「最好的朋友」時，切磋中打中對手有機會變身 |
+
+圖鑑會分開記錄每一種形態，可以點形態切換圖片。超級進化和牽絆變身只是暫時的樣子，不會存進存檔。
+
+時區對花紋的表（`src/core/vivillon.js`）是用 `scripts/build-vivillon.mjs` 產生的：
+取原作每個 3DS 國家／地區的經緯度與花紋（[abcboy101/vivillon](https://github.com/abcboy101/vivillon)，和 PKHeX 的合法性檢查表逐筆比對一致），
+再用 IANA 時區資料庫裡每個時區代表城市的經緯度，找同一個國家裡最近的地區。3DS 沒有的國家用預設的花園花紋。
+
 ### 捕獲
 
 沒有對戰、不會削血，捕獲率 = `(捕獲率/255)^0.75 × 0.85 × 球 × 投擲時機 × 泡芙`（夾在 2%–97%）。
@@ -217,6 +234,7 @@ scripts/build-dex.mjs        從 PokeAPI（GitHub 上的靜態鏡像）產生 da
 src/core/                    遊戲規則（純 JS，不碰 DOM／Electron，node --test 直接測）
   game.js                    唯一會改存檔的地方：交流、捕獲、進化、背包、每日禮物
   forms.js                   形態（花蓓蓓的花色、彩粉蝶的花紋、多麗米亞的造型、超級進化）與圖片 key
+  vivillon.js                時區 → 彩粉蝶花紋（scripts/build-vivillon.mjs 產生）
   amie.js  capture.js  encounter.js  evolution.js  save.js  dex.js  rng.js  shiny.js
 src/main/                    Electron 主程序
   main.js                    透明置頂視窗、滑鼠穿透、游標輪詢、系統匣、IPC

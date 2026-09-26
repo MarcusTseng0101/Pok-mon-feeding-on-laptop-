@@ -9,6 +9,7 @@ import * as art from '../gfx/art.js';
 import { blit, paint } from '../gfx/pixel.js';
 import { meet } from './behaviors.js';
 import { knockFrom } from './physics.js';
+import { transform, endDuelForms } from './battleforms.js';
 
 const T = art.TYPE_COLORS;
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -440,6 +441,16 @@ function startDuel(a, b) {
   a.partner = b; b.partner = a;
   a.set('duel', 30); b.set('duel', 30);
   a.showEmote('!', 0.8); b.showEmote('!', 0.8);
+  // 拿到進化石的蒂安希：對戰一開始就超級進化（跟原作一樣），對戰結束變回來
+  for (const p of [a, b]) if (!p.battleForm && p.stage.game.canMega(p.uid)) { transform(p, 'mega', { duel: true }); d.cool = 1.8; }
+}
+
+// 牽絆變身：甲賀忍蛙的招式打中對手時，有機會跟牠的羈絆共鳴（一場對戰最多判定一次）
+const BOND_CHANCE = 1 / 3; // 猜的，可調整
+function maybeBondForm(d, atk, eff) {
+  if (d.bondTried?.has(atk) || eff === 0 || atk.battleForm || !atk.stage.game.canBondForm(atk.uid)) return;
+  (d.bondTried ??= new Set()).add(atk);
+  if (Math.random() < BOND_CHANCE) transform(atk, 'ash', { duel: true });
 }
 
 function nextTurn(d) {
@@ -450,7 +461,7 @@ function nextTurn(d) {
   d.turn++;
   const moves = movesetFor(atk.stage.dex, atk.mon.species);
   useMove(atk, pick(moves), def, {
-    onHit: eff => react(def, eff),
+    onHit: eff => { react(def, eff); maybeBondForm(d, atk, eff); },
     onEnd: () => { if (d.over) { atk.set('idle', 1); return; } atk.set('duel', 30); d.cool = 0.45; },
   });
 }
@@ -460,13 +471,15 @@ function finishDuel(d) {
   for (const p of [d.a, d.b]) { p.duel = null; p.partner = null; if (p.state === 'duel') { p.set('happy', 0.6); p.showEmote('♪', 1.2); } }
   d.a.stage.fx.hearts((d.a.x + d.b.x) / 2, Math.min(d.a.head().y, d.b.head().y), d.a.S, 3);
   d.a.stage.fire('bond', d.a, d.b, 3);
+  endDuelForms(d.a, d.b);
 }
 
 function endDuel(d, pet) {
   if (d) {
     d.over = true;
     for (const p of [d.a, d.b]) { p.duel = null; if (p.partner === d.a || p.partner === d.b) p.partner = null; if (p.state === 'duel') p.set('idle', 1); }
-  } else if (pet) { pet.duel = null; pet.set('idle', 1); }
+    endDuelForms(d.a, d.b);
+  } else if (pet) { pet.duel = null; pet.set('idle', 1); endDuelForms(pet); }
 }
 
 // Pet.decide() 用

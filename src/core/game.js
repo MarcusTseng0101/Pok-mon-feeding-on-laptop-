@@ -5,7 +5,7 @@ import * as amie from './amie.js';
 import { BALLS, catchProbability, rollCatch, fleeChance } from './capture.js';
 import { checkEvolution } from './evolution.js';
 import { MAX_OUT, normalizeTraining } from './save.js';
-import { canonicalForm, inheritForm } from './forms.js';
+import { canonicalForm, inheritForm, defaultForm, FORMS } from './forms.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain } from './shiny.js';
 
 // 夥伴之間的感情（0–255），到這些門檻時通知畫面
@@ -19,6 +19,9 @@ export const bondLevel = points => BOND_LEVELS.reduce((lv, l, i) => (points >= l
 export const bondKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
 const MIN = 60 * 1000;
+const DAY = 24 * 60 * MIN;
+export const TRIM_DAYS = 5; // 剪毛後幾天長回來（原作）
+const TRIM_AFFECTION = 10; // 猜的，可調整
 const localDate = t => {
   const d = new Date(t);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -69,6 +72,7 @@ export class Game {
     this.state.lastSeenAt = t;
     this.lastTick = t;
     this.checkDailyGift();
+    this.expireTrims();
     return away;
   }
 
@@ -90,6 +94,8 @@ export class Game {
     }
     this.checkDailyGift();
     this.maybePartnerGift(t);
+    this.expireTrims();
+    this.checkItems(); // 陪伴也會加好感
     this.emit('tick');
   }
 
@@ -153,6 +159,55 @@ export class Game {
   afterAffection(mon, heartsBefore) {
     const now = amie.hearts(mon.affection);
     if (now > heartsBefore) this.emit('heartsUp', { uid: mon.uid, hearts: now });
+    this.checkItems();
+  }
+
+  // 蒂安希的好感第一次滿了：拿到蒂安希進化石（之後可以超級進化）
+  checkItems() {
+    if (this.state.bag.items.diancite) return;
+    const diancie = this.state.mons.find(m => m.species === 719 && m.affection >= amie.MAX);
+    if (!diancie) return;
+    this.state.bag.items.diancite = true;
+    this.emit('item', { item: 'diancite', uid: diancie.uid });
+  }
+
+  // ---- 對戰形態（只影響演出，不存檔） ----
+  canMega(uid) {
+    const mon = this.mon(uid);
+    return Boolean(mon?.species === 719 && this.state.bag.items.diancite);
+  }
+  // 牽絆變身：好感滿的甲賀忍蛙，而且有一個「最好的朋友」（感情 200 以上）
+  canBondForm(uid) {
+    const mon = this.mon(uid);
+    return Boolean(mon?.species === 658 && mon.affection >= amie.MAX && (this.bestFriend(uid)?.points ?? 0) >= BOND_LEVELS[3].at);
+  }
+
+  // ---- 多麗米亞美容 ----
+  // 花一個泡芙請牠剪毛；5 天後長回原本的樣子（跟原作一樣）
+  trim(uid, style, puff) {
+    const mon = this.mon(uid);
+    if (mon?.species !== 676) return { ok: false, reason: 'not-furfrou' };
+    if (style === defaultForm(676) || canonicalForm(676, style) !== style) return { ok: false, reason: 'bad-style' };
+    if (!(this.state.bag.puffs[puff] > 0)) return { ok: false, reason: 'no-puff' };
+    const before = amie.hearts(mon.affection);
+    this.state.bag.puffs[puff]--;
+    mon.form = style;
+    mon.trimAt = this.now();
+    amie.addAffection(mon, TRIM_AFFECTION);
+    this.recordForm(676, style, 'caught');
+    this.afterAffection(mon, before);
+    this.emit('trimmed', { uid, style });
+    this.emit('bag');
+    return { ok: true };
+  }
+
+  expireTrims() {
+    for (const mon of this.state.mons) {
+      if (mon.species !== 676 || !mon.form || this.now() - (mon.trimAt ?? 0) < TRIM_DAYS * DAY) continue;
+      mon.form = null;
+      mon.trimAt = null;
+      this.emit('trimExpired', { uid: mon.uid });
+    }
   }
 
   // ---- 背包 ----
@@ -165,17 +220,28 @@ export class Game {
   }
 
   // ---- 遭遇與捕獲 ----
-  markSeen(speciesId) {
+  markSeen(speciesId, form = null) {
     const d = (this.state.dex[speciesId] ??= { seen: 0, caught: 0, firstSeenAt: this.now(), firstCaughtAt: null });
     const isNew = d.seen === 0;
     d.seen++;
+    this.recordForm(speciesId, form, 'seen');
     if (isNew) this.emit('dexSeen', { speciesId });
     return isNew;
   }
 
+  // 圖鑑分形態記錄（花蓓蓓的花色…）；預設形態用它的名稱（'red'）當 key
+  recordForm(speciesId, form, field) {
+    if (!FORMS[speciesId]) return;
+    const d = (this.state.dex[speciesId] ??= { seen: 0, caught: 0, firstSeenAt: this.now(), firstCaughtAt: null });
+    const key = canonicalForm(speciesId, form) ?? defaultForm(speciesId);
+    const f = ((d.forms ??= {})[key] ??= { seen: 0, caught: 0 });
+    f[field]++;
+    if (field === 'caught' && f.seen === 0) f.seen = 1;
+  }
+
   startEncounter(plan) {
     this.state.stats.encounters++;
-    this.markSeen(plan.speciesId);
+    this.markSeen(plan.speciesId, plan.form);
     return { ...plan, puff: 'none', failedThrows: 0, done: false };
   }
 
@@ -225,7 +291,8 @@ export class Game {
     const isNewSpecies = d.caught === 0;
     d.caught++;
     d.firstCaughtAt ??= t;
-    const mon = this.createMon(wild.speciesId, { shiny: wild.shiny, nature: wild.nature, ball });
+    const mon = this.createMon(wild.speciesId, { shiny: wild.shiny, nature: wild.nature, ball, form: wild.form });
+    this.recordForm(wild.speciesId, wild.form, 'caught');
     // 餵過牠喜歡或討厭的泡芙，抓到時就已經知道牠的口味
     if (wild.puff === 'liked' || wild.puff === 'disliked') mon.tasteKnown = true;
     if (wild.puff !== 'none') amie.addAffection(mon, 10);
@@ -354,6 +421,7 @@ export class Game {
     d.caught++;
     d.firstCaughtAt ??= this.now();
     if (mon.shiny) d.shiny = (d.shiny ?? 0) + 1;
+    this.recordForm(mon.species, mon.form, 'caught');
     this.state.stats.evolutions++;
     this.checkCharm();
     this.emit('evolved', { uid, from, to: mon.species, isNewSpecies });

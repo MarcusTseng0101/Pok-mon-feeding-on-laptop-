@@ -3,6 +3,7 @@ import { blit } from '../gfx/pixel.js';
 import * as art from '../gfx/art.js';
 import { pixelCircle } from './fx.js';
 import { RING_MIN } from '../../core/capture.js';
+import { spriteKey } from '../../core/forms.js';
 
 // ---------- 氣息點 ----------
 export class Spot {
@@ -122,7 +123,7 @@ export class WildMon {
     if (encounter.shiny) { stage.fx.sparkles(this.x, this.y - 30 * S, S, 16, 40); stage.fx.stars(this.x, this.y - 30 * S, S, 8); }
   }
 
-  get asset() { return this.stage.sprites.peek(this.enc.speciesId, this.enc.shiny); }
+  get asset() { return this.stage.sprites.peek(spriteKey(this.enc.speciesId, this.enc.form), this.enc.shiny); }
   restY() { return this.groundY - this.alt * this.stage.S; }
   set(state) { this.state = state; this.stateT = 0; }
 

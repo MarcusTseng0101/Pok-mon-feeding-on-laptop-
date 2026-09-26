@@ -69,6 +69,11 @@ async function open({ query = {}, fresh = true, viewport = { width: 1280, height
     errors,
     base,
     async shot(name) {
+      // 測試用程式直接選了御三家，但 app 在圖片載好之後才決定要不要跳出歡迎視窗，會蓋住畫面
+      await page.evaluate(() => {
+        const { game, ui } = window.__kalos;
+        if (game.state.starterChosen && ui.modal.querySelector('.starter')) ui.modal.classList.add('hidden');
+      });
       const file = path.join(ROOT, 'docs/screens', `${name}.png`);
       await page.screenshot({ path: file });
       return file;
