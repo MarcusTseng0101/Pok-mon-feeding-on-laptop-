@@ -35,13 +35,17 @@ run('mind', async ({ page, shot }, check) => {
     for (const p of [a, b]) p.set('idle', 999);
     const chat = (await import('/src/renderer/scene/social.js')).groupOptions(a, [b]).find(o => o[0] === 'chat');
     chat[2]();
+    // 先走過去（approach 最多 16 秒）再聊 4～6.5 秒：跑到聊完為止，最多 30 秒
     const emotes = new Set();
-    for (let i = 0; i < 15 * 30; i++) {
+    let chatted = false;
+    for (let i = 0; i < 30 * 30; i++) {
       stage.update(1 / 30);
-      if (a.state === 'chat' || b.state === 'chat') for (const p of [a, b]) if (p.emote) emotes.add(`${p.uid}:${p.emote.img.width}`);
+      const chatting = a.state === 'chat' || b.state === 'chat';
+      if (chatting) { chatted = true; for (const p of [a, b]) if (p.emote) emotes.add(`${p.uid}:${p.emote.img.width}`); }
+      if (chatted && !chatting) break;
       if (i % 60 === 0) await new Promise(res => setTimeout(res, 0));
     }
-    out.chat = { emoteSpeakers: new Set([...emotes].map(e => e.split(':')[0])).size, ended: a.state !== 'chat' && b.state !== 'chat' };
+    out.chat = { emoteSpeakers: new Set([...emotes].map(e => e.split(':')[0])).size, ended: chatted && a.state !== 'chat' && b.state !== 'chat' };
 
     // 3) 切磋：分出輸贏 → 競爭心、記憶
     stage.fire('duelResult', a, c);
