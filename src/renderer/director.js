@@ -1,6 +1,6 @@
 // 導演：把遊戲規則（core/）和舞台演出（scene/）、介面（ui/）串起來。
 import { Pet } from './scene/pet.js';
-import { watchEating } from './scene/behaviors.js';
+import { watchEating, WALK_SPEED } from './scene/behaviors.js';
 import { Spot, PeekSpot, WildMon, ThrownBall, Prop } from './scene/wild.js';
 import { EggProp } from './scene/egg.js';
 import { REFRESH_MS } from '../core/weather.js';
@@ -237,9 +237,10 @@ export class Director {
       const b = p.bounds(), S = st.S;
       p.target = { x: Math.max(b.x0, Math.min(b.x1, st.pointer.x - 60 * S)), y: Math.max(b.y0, Math.min(b.y1, st.pointer.y + 40 * S)) };
       p.set('walk');
-      p.walkLimit = 8;
+      // 走得到就好：依距離給時間（一起累、很累的時候走比較慢），最少 8 秒
+      p.walkLimit = Math.max(8, Math.hypot(p.target.x - p.x, p.target.y - p.gy) / (WALK_SPEED * S * 0.6) + 3);
       p.reserved = true; // 走過去的路上別隻不能找牠玩
-      setTimeout(() => { p.reserved = false; }, 12_000);
+      setTimeout(() => { p.reserved = false; }, (p.walkLimit + 1) * 1000);
       p.onArrive = () => { p.reserved = false; p.facing = st.pointer.x > p.x ? 1 : -1; p.set('sit', 20); p.showEmote('Z', 3); this.bedtimeSat = { uid: p.uid, x: p.x, y: p.gy }; };
       this.bedtimePet = p.uid; // 測試用
       this.ui?.toast(`${this.game.displayName(p.mon)}揉揉眼睛，靠到你旁邊……已經 ${clockOf(minuteOf(Date.now()))} 了，早點休息吧`);
