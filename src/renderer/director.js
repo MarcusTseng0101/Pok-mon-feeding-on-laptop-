@@ -210,8 +210,10 @@ export class Director {
       const b = p.bounds(), S = st.S;
       p.target = { x: Math.max(b.x0, Math.min(b.x1, st.pointer.x - 60 * S)), y: Math.max(b.y0, Math.min(b.y1, st.pointer.y + 40 * S)) };
       p.set('walk');
-      p.walkLimit = 20;
-      p.onArrive = () => { p.facing = st.pointer.x > p.x ? 1 : -1; p.set('sit', 20); p.showEmote('Z', 3); };
+      p.walkLimit = 8;
+      p.reserved = true; // 走過去的路上別隻不能找牠玩
+      setTimeout(() => { p.reserved = false; }, 12_000);
+      p.onArrive = () => { p.reserved = false; p.facing = st.pointer.x > p.x ? 1 : -1; p.set('sit', 20); p.showEmote('Z', 3); this.bedtimeSat = { uid: p.uid, x: p.x, y: p.gy }; };
       this.bedtimePet = p.uid; // 測試用
       this.ui?.toast(`${this.game.displayName(p.mon)}揉揉眼睛，靠到你旁邊……已經 ${clockOf(minuteOf(Date.now()))} 了，早點休息吧`);
     });
@@ -607,8 +609,10 @@ export class Director {
 
   celebrateFocus() {
     this.audio.jingle('hearts');
+    // 大家都來跳（正在忙的：被拎著、在視窗上、在放招、在吃東西的不算）
     for (const p of this.stage.pets.values()) {
-      if (p.perch || !p.free) continue;
+      if (p.perch || p.leaving || p.inBattle || ['held', 'fall', 'evolving', 'move', 'duel', 'eat', 'sleep'].includes(p.state)) continue;
+      p.endPlay?.();
       p.set('dance', 3);
       p.showEmote('♪', 2);
     }
