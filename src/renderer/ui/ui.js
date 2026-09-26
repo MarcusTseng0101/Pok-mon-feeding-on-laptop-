@@ -88,6 +88,7 @@ export class UI {
       if (b.dataset.mood) { this.game.setMood(b.dataset.mood); this.moodEditing = false; this.renderMoodRow(); return; }
       if (b.dataset.moodact === 'skip') { this.game.skipMood(); this.renderMoodRow(); return; }
       if (b.dataset.moodact === 'edit') { this.moodEditing = true; this.renderMoodRow(); return; }
+      if (b.dataset.open) this.open(b.dataset.open);
       if (b.dataset.act === 'quiet') this.toggleQuiet();
       if (b.dataset.act === 'focus') { if (this.game.state.focus.active) this.stopFocus(); else this.startFocus(); }
     };
