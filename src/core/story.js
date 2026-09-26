@@ -21,10 +21,11 @@ export const DAY = 86_400_000;
 export const GAP_MS = 10 * 60_000; // 補上錯過的事件時，兩件之間至少隔 10 分鐘
 export const LOG_KEPT = 80;
 
-// 登場人物：sprites＝Pokémon Showdown 訓練家圖的檔名（依序試，都失敗就用剪影）；color＝投影和剪影的顏色
+// 登場人物：sprites＝Pokémon Showdown 訓練家圖的檔名（依序試，都失敗就用剪影；檔名對照 Showdown 的
+// sprites/trainers/index.php，帥哥的沒有確認過）；color＝投影和剪影的顏色
 export const CAST = {
-  sycamore: { zh: '布拉塔諾博士', sprites: ['sycamore'], color: '#4a8ad8' },
-  shauna: { zh: '莎娜', sprites: ['shauna'], color: '#ff7eb0' },
+  sycamore: { zh: '布拉塔諾博士', sprites: ['sycamore', 'sycamore-masters'], color: '#4a8ad8' },
+  shauna: { zh: '莎娜', sprites: ['shauna', 'shauna-masters'], color: '#ff7eb0' },
   tierno: { zh: '蒂艾爾諾', sprites: ['tierno'], color: '#f0a030' },
   trevor: { zh: '特雷維', sprites: ['trevor'], color: '#5ab04a' },
   lysandre: { zh: '弗拉達利', sprites: ['lysandre', 'lysandre-masters'], color: '#e8402a' },
@@ -37,12 +38,12 @@ export const CAST = {
   valerie: { zh: '瑪繪', sprites: ['valerie'], color: '#ff9ad0' },
   olympia: { zh: '葛吉花', sprites: ['olympia'], color: '#b070e0' },
   wulfric: { zh: '得撫', sprites: ['wulfric'], color: '#8ad0f0' },
-  grunt: { zh: '閃焰隊的手下', sprites: ['teamflaregrunt', 'flaregrunt', 'teamflaregruntf'], color: '#ff5a2a' },
+  grunt: { zh: '閃焰隊的手下', sprites: ['flaregrunt', 'flaregruntf'], color: '#ff5a2a' },
   malva: { zh: '帕琦拉', sprites: ['malva'], color: '#ff4a3a' },
   siebold: { zh: '志米', sprites: ['siebold'], color: '#4a8af0' },
   wikstrom: { zh: '雁鎧', sprites: ['wikstrom'], color: '#b8b8d0' },
   drasna: { zh: '朵拉塞娜', sprites: ['drasna'], color: '#7a6af0' },
-  diantha: { zh: '卡露乃', sprites: ['diantha'], color: '#f0f0f0' },
+  diantha: { zh: '卡露乃', sprites: ['diantha', 'diantha-masters'], color: '#f0f0f0' },
   looker: { zh: '帥哥', sprites: ['looker'], color: '#a09070' },
 };
 

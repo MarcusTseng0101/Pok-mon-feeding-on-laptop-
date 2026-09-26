@@ -1,7 +1,6 @@
 // 故事裡的人的圖：Pokémon Showdown 的訓練家圖（play.pokemonshowdown.com/sprites/trainers/<名字>.png）。
 // Showdown 拿不到（沒有這張、或連不上）時，再試 Smogon 在 GitHub 上的原始檔（smogon/sprites，同一批圖）。
 // 第一次需要時下載，存在 userData/trainers，之後離線也能用；兩邊都沒有這張（404）就記一個空檔，不再下載。
-// 兩邊都沒有的人，畫面會用手繪的圖（renderer/gfx/trainerart.js）。
 // 圖不放進 repo；有些是同好畫的，出處見 README。
 import { net } from 'electron';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -47,7 +46,7 @@ export function createTrainerCache(dir) {
     return buf;
   }
 
-  // 回傳 data URL；沒有或下載失敗回傳 null（畫面會用手繪的圖或剪影）
+  // 回傳 data URL；沒有或下載失敗回傳 null（畫面會用剪影）
   return function getTrainerSprite(name) {
     if (!isTrainerName(name)) return Promise.resolve(null);
     if (!inflight.has(name)) {
