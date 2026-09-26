@@ -22,7 +22,15 @@ async function main() {
 
   const audio = new AudioEngine();
   const sprites = new SpriteBank(api, dex);
-  const stage = new Stage({ canvas: document.getElementById('stage'), api, dex, sprites, audio, game });
+  // 寶可夢自己玩的時候的小音效：你設定「完全不主動打擾」就不出聲（你操作時的聲音照舊，走 director 的 audio）
+  const petAudio = new Proxy(audio, {
+    get(t, k) {
+      if (k === 'sfx') return (...a) => (game.state.settings.interruptions === '0' ? undefined : t.sfx(...a));
+      const v = t[k];
+      return typeof v === 'function' ? v.bind(t) : v;
+    },
+  });
+  const stage = new Stage({ canvas: document.getElementById('stage'), api, dex, sprites, audio: petAudio, game });
   const director = new Director({ stage, game, dex, sprites, audio, api, rng, dev: DEV });
   const ui = new UI({ root: document.getElementById('ui'), game, dex, sprites, audio, stage, director, api, dev: DEV });
   director.ui = ui;

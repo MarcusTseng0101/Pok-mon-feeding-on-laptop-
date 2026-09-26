@@ -27,6 +27,7 @@ import { Portraits } from '../gfx/portraits.js';
 import { HoloCaster } from './holocaster.js';
 import { BattleHud } from './battlehud.js';
 import { MEGA, KEY_ITEMS, ITEM_IDS } from '../../core/items.js';
+import { LIMIT_ZH } from '../../core/attention.js';
 import * as cards from '../gfx/postcards.js';
 import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
 import { transform as transformForm, revert as revertForm } from '../scene/battleforms.js';
@@ -739,6 +740,8 @@ export class UI {
       <label><input type="checkbox" data-set="muted" ${s.muted ? 'checked' : ''}> 靜音</label>
       <label><input type="checkbox" data-set="calmFx" ${s.calmFx ? 'checked' : ''}> 減少閃光和畫面震動（招式的演出比較安靜）</label>
       <div>野生寶可夢出現頻率：${rates}</div>
+      <label>寶可夢主動找你（跳通知、跑到游標旁、故事的電話）：<select data-interrupt>${Object.entries(LIMIT_ZH).map(([k, zh]) => `<option value="${k}" ${s.interruptions === k ? 'selected' : ''}>${zh}</option>`).join('')}</select></label>
+      <p class="hint">超過次數的事會排隊，晚一點才告訴你（故事、禮物、信不會不見）。專注和勿擾的時候完全不打擾。</p>
       <label><input type="checkbox" data-set="showLauncher" ${s.showLauncher ? 'checked' : ''}> 顯示右下角的精靈球按鈕（隱藏後可從系統匣開啟選單）</label>
       <label><input type="checkbox" data-set="quiet" ${s.quiet ? 'checked' : ''}> 勿擾模式（收起所有寶可夢、暫停遭遇）</label>
       <label><input type="checkbox" data-login> 開機時自動啟動</label>
@@ -846,6 +849,7 @@ export class UI {
       if (t.dataset.set === 'quiet') this.toggleQuiet(t.checked);
       else this.game.setSetting(t.dataset.set, t.checked);
     }
+    if (t.dataset.interrupt !== undefined) this.game.setSetting('interruptions', t.value);
     if (t.dataset.login !== undefined) this.api.setLoginItem(t.checked);
     if (t.dataset.bmonth !== undefined || t.dataset.bday !== undefined) {
       const m = Number(this.win.querySelector('[data-bmonth]').value), d = Number(this.win.querySelector('[data-bday]').value);
