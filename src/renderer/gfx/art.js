@@ -377,3 +377,61 @@ export function medal(got = true) {
     ? { K, R: '#e8404a', B: '#3a78e0', G: '#f8c830', H: '#fff2b0', D: '#c89818' }
     : { K: '#9a94a4', R: '#c8c4d0', B: '#c8c4d0', G: '#dcd8e2', H: '#eeeaf2', D: '#c8c4d0' });
 }
+
+// ---------- 節日的小裝飾（畫在夥伴頭上，core/calendar.js 的 deco）----------
+const DECO_PAL = { K, R: '#e8402a', r: '#b02a1a', Y: '#ffd84a', y: '#e0a020', W: '#ffffff', w: '#e8e8f0', G: '#5ab04a', P: '#ff7eb0', B: '#8a6a40', C: '#fff0c0' };
+export const decos = {
+  lantern: fromMap([
+    '...KK...',
+    '..KYYK..',
+    '.KRRRRK.',
+    'KRrRRrRK',
+    'KRrRRrRK',
+    'KRrRRrRK',
+    '.KRRRRK.',
+    '..KYYK..',
+    '...KY...',
+    '...Y....',
+  ], DECO_PAL),
+  moon: fromMap([
+    '..KKKK..',
+    '.KYYYYK.',
+    'KYYyYYYK',
+    'KYYYYyYK',
+    'KYyYYYYK',
+    'KYYYYYYK',
+    '.KYYYYK.',
+    '..KKKK..',
+  ], DECO_PAL),
+  santa: fromMap([
+    '.......KK',
+    '.....KKWWK',
+    '....KRRKWK',
+    '...KRRRK.',
+    '..KRRRRK.',
+    '.KRRRRRK.',
+    'KWWWWWWWK',
+    'KwwwwwwwK',
+    '.KKKKKKK.',
+  ], DECO_PAL),
+  party: fromMap([
+    '...KYK...',
+    '...KPK...',
+    '..KPPPK..',
+    '..KYYYK..',
+    '.KPPPPPK.',
+    '.KGGGGGK.',
+    'KPPPPPPPK',
+    'KKKKKKKKK',
+  ], DECO_PAL),
+  cake: fromMap([
+    '...KRK...',
+    '...KYK...',
+    '.KKKWKKK.',
+    'KPWPWPWPK',
+    'KCCCCCCCK',
+    'KPPPPPPPK',
+    'KCCCCCCCK',
+    'KKKKKKKKK',
+  ], DECO_PAL),
+};

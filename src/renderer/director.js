@@ -21,6 +21,9 @@ import * as mail from './gfx/letters.js';
 import { StoryBattle } from './scene/battle.js';
 import * as A from '../core/attention.js';
 import { routineDay, clockOf, minuteOf } from '../core/routine.js';
+import { HOLIDAYS } from '../core/calendar.js';
+import { MILESTONES } from '../core/together.js';
+import { MOODS } from '../core/mood.js';
 import { KEY_ITEMS } from '../core/items.js';
 import { CAST, BADGES, lossesOf } from '../core/story.js';
 
@@ -95,7 +98,9 @@ export class Director {
   attentionOpts() {
     const s = this.game.state;
     const blocked = Boolean(s.focus.active || s.settings.quiet || this.ui?.minigames?.active);
-    return { limit: A.limitOf(s.settings.interruptions), blocked };
+    const limit = A.limitOf(s.settings.interruptions);
+    // 你說今天很累：額度降一級
+    return { limit: this.game.moodToday() === 'tired' ? A.lowerLimit(limit) : limit, blocked };
   }
   interrupt({ id, kind, ttl = Infinity }, run) {
     const now = Date.now();
@@ -133,11 +138,61 @@ export class Director {
     const active = (s.idleSeconds ?? Infinity) < 60;
     const evs = this.game.routineTick({ active, typing: Boolean(s.typing) });
     const day = routineDay(Date.now());
+    this.refreshDay();
     for (const e of evs) {
+      if (e === 'holiday') {
+        const h = HOLIDAYS[this.game.holidaysToday()[0]];
+        if (h) this.interrupt({ id: `holiday:${day}`, kind: 'greet', ttl: 12 * 3_600_000 }, () => this.greetUser(h.hello));
+      }
       if (e === 'greet') this.interrupt({ id: `greet:${day}`, kind: 'greet', ttl: 2 * 3_600_000 }, () => this.greetUser('早安！夥伴們跑過來跟你打招呼了'));
       if (e === 'bedtime') this.bedtime();
     }
     return evs;
+  }
+
+  // 今天的樣子：節日的小裝飾、心情（很累：走慢一點、不跑來玩游標）
+  refreshDay() {
+    const env = this.stage.env, g = this.game;
+    const deco = g.holidaysToday().map(id => HOLIDAYS[id].deco)[0] ?? null;
+    env.holidayDeco = deco;
+    const mood = g.moodToday();
+    env.calm = mood === 'tired';
+    env.mood = mood;
+  }
+
+  // 心情的日常效果（每秒一次，只是動作、不出聲、不跳通知）：
+  //   很開心：偶爾有一隻跳起舞來；壓力大：好感最高的那隻安靜地坐到游標旁邊
+  moodTick(dt) {
+    const env = this.stage.env, st = this.stage;
+    if (!env.mood || env.focus || this.game.state.settings.quiet) return;
+    this.moodT = (this.moodT ?? 0) + dt;
+    if (env.mood === 'happy' && this.moodT > 45) {
+      this.moodT = 0;
+      const free = [...st.pets.values()].filter(p => p.free && !p.perch && !p.partner);
+      const p = free[Math.floor(Math.random() * free.length)];
+      if (p) { p.set('dance', 3); p.showEmote('♪', 1.5); }
+    }
+    if (env.mood === 'stressed' && this.moodT > 20) {
+      this.moodT = 0;
+      if (!st.pointer.known || st.pointerStill < 8 || [...st.pets.values()].some(p => p.state === 'cursorSit')) return;
+      // 最親近的那隻（正在忙的就等下一次）
+      const p = [...st.pets.values()].filter(q => !q.leaving && !q.perch && !q.inBattle).sort((a, b) => b.mon.affection - a.mon.affection)[0];
+      if (p?.free) { p.endPlay(); p.cursorSit = { seated: false, side: null }; p.set('cursorSit', 60); this.companion = p.uid; } // 正在跟別隻玩也先放下
+    }
+  }
+
+  // 你在選單選了今天的心情：馬上有反應（這是你操作的回應，不算打擾）
+  moodChosen(id) {
+    const st = this.stage;
+    this.refreshDay();
+    this.moodT = 100; // 開心、壓力大的效果馬上來一次
+    this.ui?.toast(`${MOODS[id].emoji} ${MOODS[id].reply}`);
+    for (const p of st.pets.values()) {
+      if (!p.free || p.perch) continue;
+      if (id === 'happy') { p.set('dance', 2.5); p.showEmote('♪', 1.5); }
+      else if (id === 'tired') { p.set('sit', 6); p.showEmote('…', 1.5); }
+      else p.showEmote('!', 1);
+    }
   }
 
   // 比平常晚睡：大家打哈欠（只是動作，不算打擾）；最喜歡你的那隻靠到游標旁邊坐下（要經過額度）
@@ -213,7 +268,7 @@ export class Director {
     const playing = Boolean(this.ui?.minigames.active); // 玩小遊戲的時候不會有野生寶可夢來打擾
     const focusing = Boolean(this.game.state.focus.active); // 專注中也不會
     this.stage.env.focus = focusing;
-    this.stage.env.noApproach = this.game.state.settings.interruptions === '0'; // 完全不主動打擾：也不跑來玩游標
+    this.stage.env.noApproach = this.game.state.settings.interruptions === '0' || this.stage.env.calm; // 完全不主動打擾、或你說今天很累：不跑來玩游標
     if (focusing && this.game.focusRemaining() <= 0) this.finishFocus();
     if (!focusing) this.typingReaction(now);
     if (!quiet && !playing && !focusing && !this.stage.spot && !this.enc && !this.stage.battle && now >= this.nextSpawnAt && this.game.state.starterChosen) this.spawn();
@@ -226,6 +281,8 @@ export class Director {
     if (this.evolution) this.updateEvolution(dt);
     this.tripT = (this.tripT ?? 0) + dt;
     if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); this.drainAttention(); }
+    if (!this.dayChecked) { this.dayChecked = true; this.refreshDay(); }
+    this.moodTick(dt);
     this.routineT = (this.routineT ?? 0) + dt;
     if (this.routineT >= 60) { this.routineT = 0; this.routineTick(); }
   }
@@ -1058,6 +1115,16 @@ export class Director {
       this.interrupt({ id: `eggFound:${egg.uid}`, kind: 'gift' }, () => this.ui?.toast(`${a}和${b}一起找到了一顆蛋！用游標、在電腦前待著，蛋就會慢慢孵化`, { icon: art.egg(this.eggColor(egg)) }));
     });
     g.on('eggReady', () => this.showReadyEggs());
+    // 里程碑：一定會告訴你（排隊也不會丟）
+    g.on('milestone', ({ id }) => {
+      const m = MILESTONES[id];
+      this.interrupt({ id: `milestone:${id}`, kind: 'milestone' }, () => {
+        this.audio.jingle('hearts');
+        for (const p of this.stage.pets.values()) if (!p.perch) { this.stage.fx.hearts(p.head().x, p.head().y, this.stage.S, 2); if (p.free) p.set('happy', 0.8); }
+        this.ui?.toast(`✦ ${m.zh}！${m.line}`, { icon: art.sparkle, kind: 'dex' });
+      });
+    });
+    g.on('mood', ({ mood }) => { if (mood) this.moodChosen(mood); else this.refreshDay(); });
     g.on('achievement', ({ id }) => {
       const a = ACHIEVEMENTS.find(x => x.id === id);
       this.audio.sfx('sparkle');

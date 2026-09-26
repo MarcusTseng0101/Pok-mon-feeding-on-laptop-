@@ -24,6 +24,8 @@ import { mergeLetters } from './letters.js';
 import { mergeStory } from './story.js';
 import { mergeAttention } from './attention.js';
 import { mergeRoutine } from './routine.js';
+import { mergeTogether } from './together.js';
+import { mergeMood } from './mood.js';
 import { mergeTrip, mergePostcards, mergeTripsDone } from './trips.js';
 
 export const SYNC_DIR = 'kalos-amie';
@@ -185,6 +187,8 @@ export function mergeShared(local, remote) {
   out.story = mergeStory(local.story, remote.story); // 主線故事：做過的取聯集，開始時間取早的
   out.attention = mergeAttention(local.attention, remote.attention); // 打擾額度：兩台電腦放行的時間合在一起
   out.routine = mergeRoutine(local.routine, remote.routine); // 作息：同一天取最早／最晚、時間加起來
+  out.together = mergeTogether(local.together, remote.together); // 里程碑取聯集、第一次見面取早的
+  out.mood = mergeMood(remote.mood, local.mood); // 心情：同一天兩邊都選了，用這台電腦的
   out.achievementRewards = { fancy: local.achievementRewards.fancy || remote.achievementRewards.fancy, pokeBall: local.achievementRewards.pokeBall || remote.achievementRewards.pokeBall };
   out.pendingVivillon = (local.pendingVivillon.length >= remote.pendingVivillon.length ? local : remote).pendingVivillon.slice();
   // 蛋：聯集，已經孵化的不要
