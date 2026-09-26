@@ -3,6 +3,8 @@ import { Pet } from './scene/pet.js';
 import { watchEating } from './scene/behaviors.js';
 import { Spot, WildMon, ThrownBall, Prop } from './scene/wild.js';
 import { EggProp } from './scene/egg.js';
+import { REFRESH_MS } from '../core/weather.js';
+import { ACHIEVEMENTS } from '../core/achievements.js';
 import { planSpawn, nextSpawnDelay, shouldDropCell, timeOfDay } from '../core/encounter.js';
 import { ringBonus, catchProbability, BALLS } from '../core/capture.js';
 import { shinyChance } from '../core/shiny.js';
@@ -40,6 +42,8 @@ export class Director {
       lure: this.lure && Date.now() < this.lure.until ? this.lure.flavor : null,
       lureTier: this.lure && Date.now() < this.lure.until ? parsePuffKey(this.lure.puff).tier : null,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, // 彩粉蝶的花紋依所在地區決定
+      weather: this.game.state.weather?.enabled ? this.weather ?? null : null,
+      vivillon: this.game.state.pendingVivillon[0], // 成就獎勵：下一隻粉蝶蟲的特別花紋（沒有就是 undefined）
     };
   }
 
@@ -86,6 +90,15 @@ export class Director {
   }
 
   // ---------- 夥伴同步 ----------
+  // 存檔整份換掉（同步之後）：桌面上的寶可夢改指到新的資料，再依照誰在外面叫出來／收回去
+  rebindPets() {
+    for (const p of this.stage.pets.values()) {
+      const m = this.game.mon(p.uid);
+      if (m) p.mon = m;
+    }
+    this.syncPets();
+  }
+
   syncPets() {
     const quiet = this.game.state.settings.quiet;
     const want = new Set(quiet ? [] : this.game.outMons().map(m => m.uid));
@@ -123,6 +136,25 @@ export class Director {
       this.ui?.toast('誘餌泡芙的香味散掉了');
     }
     if (this.evolution) this.updateEvolution(dt);
+  }
+
+  // ---------- 天氣 ----------
+  // 每 30 分鐘查一次；查不到（沒網路、網站掛了）就沿用上一次的結果，不會讓遊戲卡住
+  async refreshWeather(force = false) {
+    const w = this.game.state.weather;
+    if (!w?.enabled || this.game.state.settings.quiet) { if (!w?.enabled) this.setWeather(null); return; }
+    if (!force && Date.now() - (this.weatherAt ?? 0) < REFRESH_MS) return;
+    this.weatherAt = Date.now();
+    const r = await Promise.resolve(this.api.getWeather?.(w.lat, w.lon)).catch(() => null);
+    if (r?.weather) this.setWeather(r.weather);
+  }
+
+  setWeather(kind) {
+    if (this.weather === kind) return;
+    this.weather = kind;
+    this.stage.weatherFx.set(kind);
+    this.stage.env.weather = kind;
+    this.ui?.refreshSoon();
   }
 
   // ---------- 孵蛋 ----------
@@ -599,6 +631,15 @@ export class Director {
       this.ui?.toast(`${a}和${b}一起找到了一顆蛋！用游標、在電腦前待著，蛋就會慢慢孵化`, { icon: art.egg(this.eggColor(egg)) });
     });
     g.on('eggReady', () => this.showReadyEggs());
+    g.on('achievement', ({ id }) => {
+      const a = ACHIEVEMENTS.find(x => x.id === id);
+      this.audio.sfx('sparkle');
+      this.ui?.toast(`獲得獎章「${a.name}」：${a.desc}`, { icon: art.medal(true), kind: 'dex' });
+    });
+    g.on('vivillonReward', ({ form }) => {
+      this.ui?.toast(form === 'fancy' ? '收集了 20 個獎章！好像有一隻花紋很特別的粉蝶蟲在附近…' : '所有獎章都收集到了！有一隻帶著精靈球花紋的粉蝶蟲出現了…', { icon: art.sparkle, kind: 'dex' });
+      this.nextSpawnAt = Math.min(this.nextSpawnAt, Date.now() + 60_000);
+    });
     g.on('trimExpired', ({ uid }) => {
       const m = this.game.mon(uid);
       if (m) this.ui?.toast(`${this.game.displayName(m)}的毛長回來了`);

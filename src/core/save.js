@@ -51,9 +51,12 @@ export function defaultSave(now) {
     eggs: [], // [{ uid, species, form, shiny, steps, need, receivedAt }]
     eggDay: null, // 今天找過蛋了沒（每天一次機會）
     achievements: {}, // { [id]: 解鎖時間 }
+    achievementRewards: { fancy: false, pokeBall: false }, // 彩粉蝶花紋獎勵給過了沒
+    pendingVivillon: [], // 下一隻野生粉蝶蟲一族的特別花紋（'fancy'、'poke-ball'），抓到就用掉
     focus: { sessions: 0, totalMinutes: 0, streakDays: 0, lastDay: null, active: null }, // 番茄鐘；active＝{ startedAt, minutes }
     weather: null, // { city, lat, lon, enabled }
-    sync: null, // { folder, deviceId, rev, lastSyncedRev }
+    sync: null, // { folder, deviceId, rev, lastSyncedRev, origin, lastBag, ledger }（見 core/sync.js）
+    hatchedEggs: [], // 已經孵化的蛋（同步時用：別台電腦的存檔裡還有這顆蛋也不會再出現）
     minigames: { day: null, baked: 0, deluxe: 0 }, // 今天做了幾個泡芙（每天有上限）
     stats: {
       encounters: 0, throws: 0, catches: 0, puffsFed: 0, strokes: 0, evolutions: 0, shinies: 0,
@@ -106,6 +109,7 @@ export function normalizeMon(m, dex) {
     uid: String(m.uid),
     species: m.species,
     nickname: typeof m.nickname === 'string' && m.nickname.trim() ? m.nickname.slice(0, 12) : null,
+    nicknameAt: Number.isFinite(m.nicknameAt) ? m.nicknameAt : null, // 暱稱最後改的時間（同步時用新的）
     nature: dex.nature(m.nature) ? m.nature : 'hardy',
     shiny: Boolean(m.shiny),
     ball: ['poke', 'great', 'ultra'].includes(m.ball) ? m.ball : 'poke',
@@ -159,6 +163,7 @@ export function migrate(raw, dex, now) {
   s.stats = { ...base.stats };
   for (const [k, v] of Object.entries(raw.stats ?? {})) s.stats[k] = num(v, 0, 0);
   s.eggs = (Array.isArray(raw.eggs) ? raw.eggs : []).map(e => normalizeEgg(e, dex)).filter(Boolean).slice(0, MAX_EGGS);
+  s.hatchedEggs = (Array.isArray(raw.hatchedEggs) ? raw.hatchedEggs : []).filter(u => typeof u === 'string' && u.length <= 40).slice(-200);
   s.eggDay = typeof raw.eggDay === 'string' && DAY_RE.test(raw.eggDay) ? raw.eggDay : null;
   s.achievements = {};
   for (const [id, at] of Object.entries(raw.achievements ?? {})) if (/^[a-z0-9-]{1,40}$/.test(id) && Number.isFinite(at)) s.achievements[id] = at;
@@ -177,6 +182,8 @@ export function migrate(raw, dex, now) {
   s.weather = w && Number.isFinite(w.lat) && Number.isFinite(w.lon) && Math.abs(w.lat) <= 90 && Math.abs(w.lon) <= 180
     ? { city: str(w.city, 40) ?? '', lat: w.lat, lon: w.lon, enabled: Boolean(w.enabled) }
     : null;
+  s.achievementRewards = { fancy: Boolean(raw.achievementRewards?.fancy), pokeBall: Boolean(raw.achievementRewards?.pokeBall) };
+  s.pendingVivillon = (Array.isArray(raw.pendingVivillon) ? raw.pendingVivillon : []).filter(f => f === 'fancy' || f === 'poke-ball').slice(0, 2);
   const mg = raw.minigames ?? {};
   s.minigames = {
     day: typeof mg.day === 'string' && DAY_RE.test(mg.day) ? mg.day : null,
@@ -184,8 +191,20 @@ export function migrate(raw, dex, now) {
     deluxe: Math.floor(num(mg.deluxe, 0, 0, 99)),
   };
   const y = raw.sync;
-  s.sync = y && str(y.folder, 500) && str(y.deviceId, 40)
-    ? { folder: y.folder.slice(0, 500), deviceId: y.deviceId.slice(0, 40), rev: Math.floor(num(y.rev, 0, 0)), lastSyncedRev: Math.floor(num(y.lastSyncedRev, 0, 0)) }
+  const flat = o => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([k, v]) => /^(balls|puffs|berries)\.[a-z-]{1,24}$/.test(k) && Number.isFinite(v)).map(([k, v]) => [k, Math.round(v)]));
+  s.sync = y && str(y.folder, 500) && typeof y.deviceId === 'string' && /^[a-z0-9]{6,32}$/.test(y.deviceId)
+    ? {
+      folder: y.folder.slice(0, 500),
+      deviceId: y.deviceId,
+      rev: Math.floor(num(y.rev, 0, 0)),
+      lastSyncedRev: Math.floor(num(y.lastSyncedRev, 0, 0)),
+      origin: flat(y.origin), // 背包的起點（開始同步時）
+      lastBag: flat(y.lastBag), // 上次同步後這台電腦的背包
+      // 每台電腦自己造成的背包變化量（見 core/sync.js）
+      ledger: Object.fromEntries(Object.entries(y.ledger && typeof y.ledger === 'object' ? y.ledger : {})
+        .filter(([dev, e]) => /^[a-z0-9]{6,32}$/.test(dev) && e && typeof e === 'object')
+        .map(([dev, e]) => [dev, { rev: Math.floor(num(e.rev, 0, 0)), delta: flat(e.delta) }])),
+    }
     : null;
   s.zygardeCells = num(raw.zygardeCells, 0, 0, 10);
   s.shinyCharm = Boolean(raw.shinyCharm);

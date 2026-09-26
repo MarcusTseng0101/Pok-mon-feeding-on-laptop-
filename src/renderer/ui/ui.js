@@ -10,6 +10,8 @@ import { SPOTS } from '../../core/dex.js';
 import { STARTERS, BOND_LEVELS, bondLevel, TRIM_DAYS } from '../../core/game.js';
 import { shinyChance, chainRolls, BASE_ODDS, CHARM_AT } from '../../core/shiny.js';
 import { MAX_OUT } from '../../core/save.js';
+import { WEATHER_ZH } from '../../core/weather.js';
+import { ACHIEVEMENTS, REWARD_FANCY_AT } from '../../core/achievements.js';
 import { FORMS, spriteKey, formName, formsOf, defaultForm } from '../../core/forms.js';
 import { habitNames } from '../scene/habits.js';
 import { MOVES, movesetFor, useMove, practicePoint } from '../scene/moves.js';
@@ -41,7 +43,7 @@ export class UI {
     this.minigames = new MinigameHost(this);
     stage.uiHit = (x, y) => this.hitTest(x, y);
     game.on('change', ({ event }) => {
-      if (['tick', 'bag', 'party', 'caught', 'evolved', 'fed', 'heartsUp', 'dexSeen', 'cell', 'settings', 'focus'].includes(event)) this.refreshSoon();
+      if (['tick', 'bag', 'party', 'caught', 'evolved', 'fed', 'heartsUp', 'dexSeen', 'cell', 'settings', 'focus', 'achievement'].includes(event)) this.refreshSoon();
     });
   }
 
@@ -53,7 +55,7 @@ export class UI {
     this.launcher.onclick = () => this.toggleMenu();
     this.menu = h(`<div class="menu hit pix hidden">
       <button data-open="party">夥伴</button><button data-open="dex">圖鑑</button>
-      <button data-open="play">一起玩</button>
+      <button data-open="play">一起玩</button><button data-open="medals">獎章</button>
       <button data-open="bag">背包</button><button data-open="aura">氣息</button>
       <button data-open="settings">設定</button><button data-act="quiet">勿擾模式</button>
       <button data-act="focus">開始專注</button>
@@ -187,7 +189,7 @@ export class UI {
   }
 
   renderPanel() {
-    const titles = { party: '夥伴', dex: '卡洛斯圖鑑', play: '一起玩', bag: '背包', aura: '氣息', settings: '設定' };
+    const titles = { party: '夥伴', dex: '卡洛斯圖鑑', play: '一起玩', medals: '獎章', bag: '背包', aura: '氣息', settings: '設定' };
     this.win.querySelector('.title').textContent = titles[this.panel];
     const body = this.win.querySelector('.body');
     const scroll = body.querySelector('.scroll')?.scrollTop;
@@ -393,6 +395,23 @@ export class UI {
     return `<div class="forms"><div class="hint">${label}：見過 ${seen.length}・抓到 ${caught.length}／${all.length}${f.visible ? '' : '（進化成彩粉蝶才看得到花紋）'}</div><div class="chips">${chips}</div></div>`;
   }
 
+  // ---------- 獎章 ----------
+  render_medals() {
+    const got = this.game.state.achievements;
+    const n = ACHIEVEMENTS.filter(a => got[a.id]).length;
+    const rewards = this.game.state.achievementRewards;
+    const root = h(`<div class="medals"><div class="summary">收集了 ${n}／${ACHIEVEMENTS.length} 個
+      ・${rewards.fancy ? '✦ 幻彩花紋' : `收集 ${REWARD_FANCY_AT} 個會遇到特別的彩粉蝶`}${rewards.pokeBall ? '・✦ 球球花紋' : ''}</div><div class="grid scroll"></div></div>`);
+    const grid = root.querySelector('.grid');
+    for (const a of ACHIEVEMENTS) {
+      const at = got[a.id];
+      const el = h(`<div class="medal ${at ? 'got' : ''}"><div><b>${esc(a.name)}</b><small>${esc(a.desc)}</small>${at ? `<small class="date">${new Date(at).toLocaleDateString('zh-TW')}</small>` : ''}</div></div>`);
+      el.prepend(pixelImg(art.medal(Boolean(at)), 3));
+      grid.append(el);
+    }
+    return root;
+  }
+
   // ---------- 一起玩（小遊戲） ----------
   playPartner() {
     return this.game.mon(this.playUid) ?? this.game.outMons()[0] ?? this.game.state.mons[0] ?? null;
@@ -515,6 +534,8 @@ export class UI {
       <label>音樂音量 <input type="range" min="0" max="1" step="0.05" data-set="musicVolume" value="${s.musicVolume}"></label>
       <label>音效音量 <input type="range" min="0" max="1" step="0.05" data-set="sfxVolume" value="${s.sfxVolume}"></label>
       <label>專注時間 <input type="range" min="15" max="60" step="5" data-set="focusMinutes" value="${s.focusMinutes}"> <span class="focusmin">${s.focusMinutes} 分鐘</span></label>
+      ${this.weatherSettingsHtml()}
+      ${this.syncSettingsHtml()}
       <label><input type="checkbox" data-set="muted" ${s.muted ? 'checked' : ''}> 靜音</label>
       <div>野生寶可夢出現頻率：${rates}</div>
       <label><input type="checkbox" data-set="showLauncher" ${s.showLauncher ? 'checked' : ''}> 顯示右下角的精靈球按鈕（隱藏後可從系統匣開啟選單）</label>
@@ -536,6 +557,7 @@ export class UI {
       if (this.game.state.dex[id]?.seen) { this.selectedDex = id; this.dexForm = null; this.audio.sfx('click'); this.renderPanel(); }
       return;
     }
+    if (t.dataset.citypick !== undefined) { this.pickCity(Number(t.dataset.citypick)); return; }
     if (t.dataset.play) { this.minigames.open(t.dataset.play, this.playPartner()?.uid); return; }
     if (t.dataset.dexform) { this.dexForm = t.dataset.dexform; this.audio.sfx('click'); this.renderPanel(); return; }
     if (t.dataset.style) {
@@ -573,6 +595,10 @@ export class UI {
       }
       case 'spawn': this.director.spawnNow(); break;
       case 'shinyview': this.dexShiny = !this.dexShiny; this.audio.sfx('click'); this.renderPanel(); return;
+      case 'citysearch': this.searchCity(); return;
+      case 'syncsetup': this.sync?.setup().then(() => this.renderPanel()); return;
+      case 'syncnow': this.sync?.run(true); return;
+      case 'syncstop': this.confirm('停止同步？這台電腦的存檔會留著，只是之後不會再和其他電腦合併。', () => { this.sync?.stop(); this.renderPanel(); }); return;
       case 'trim': this.trimOpen = !this.trimOpen; this.audio.sfx('click'); this.renderPanel(); return;
       case 'devfill':
         for (const k of Object.keys(this.game.state.bag.puffs)) this.game.state.bag.puffs[k] += 5;
@@ -597,6 +623,11 @@ export class UI {
     if (t.dataset.login !== undefined) this.api.setLoginItem(t.checked);
     if (t.matches('.nick input')) this.game.rename(t.dataset.uid, t.value);
     if (t.dataset.partner !== undefined) { this.playUid = t.value; this.renderPanel(); }
+    if (t.dataset.weatheron !== undefined && this.game.state.weather) {
+      this.game.state.weather.enabled = t.checked;
+      this.game.emit('settings', { key: 'weather' });
+      this.director.refreshWeather(true);
+    }
     this.onSettings?.();
   }
 
@@ -607,6 +638,52 @@ export class UI {
       if (t.dataset.set === 'focusMinutes') t.parentElement.querySelector('.focusmin').textContent = `${t.value} 分鐘`;
       this.onSettings?.();
     }
+  }
+
+  // ---------- 同步設定 ----------
+  syncSettingsHtml() {
+    const y = this.game.state.sync, st = this.sync?.status;
+    if (!y) {
+      return `<fieldset class="sync"><legend>在兩台電腦之間同步</legend>
+        <p class="hint">選一個你自己的雲端同步資料夾（Google Drive、OneDrive、Dropbox…），兩台電腦都選同一個，夥伴、圖鑑、背包就會合在一起。不需要帳號，也不會把資料傳到別的地方。</p>
+        <button data-act="syncsetup">選同步資料夾…</button></fieldset>`;
+    }
+    const when = st ? new Date(st.at).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }) : '';
+    return `<fieldset class="sync"><legend>在兩台電腦之間同步</legend>
+      <div class="hint">資料夾：${esc(y.folder)}</div>
+      <div class="${st && !st.ok ? 'why' : 'hint'}">${st ? `${when} ${esc(st.msg)}` : '還沒同步過'}（每 5 分鐘自動同步）</div>
+      <div class="btns"><button data-act="syncnow">現在同步</button><button data-act="syncstop">停止同步</button></div></fieldset>`;
+  }
+
+  // ---------- 天氣設定 ----------
+  weatherSettingsHtml() {
+    const w = this.game.state.weather;
+    const now = this.director.weather ? WEATHER_ZH[this.director.weather] ?? '—' : '還沒查到';
+    const results = (this.cityResults ?? []).map((c, i) => `<button data-citypick="${i}">${esc(c.name)} <small>${esc(c.region)}</small></button>`).join('');
+    return `<fieldset class="weather"><legend>天氣</legend>
+      ${w ? `<label><input type="checkbox" data-weatheron ${w.enabled ? 'checked' : ''}> 依照「${esc(w.city)}」的天氣（現在：${esc(now)}）</label>`
+        : '<p class="hint">輸入你的城市，出現的寶可夢會跟著真實天氣變化（下雨時水屬性變多…）。用 Open-Meteo 查詢，不會用 IP 猜你的位置。</p>'}
+      <div class="cityrow"><input data-city maxlength="40" placeholder="城市，例如：中壢" value="${esc(this.cityQuery ?? '')}"><button data-act="citysearch">搜尋</button></div>
+      ${this.cityResults ? (results || '<p class="hint">找不到這個城市（或連不上網路）</p>') : ''}
+    </fieldset>`;
+  }
+
+  async searchCity() {
+    const q = this.win.querySelector('[data-city]')?.value.trim() ?? '';
+    this.cityQuery = q;
+    if (!q) return;
+    this.cityResults = await Promise.resolve(this.api.searchCity?.(q)).catch(() => []) ?? [];
+    this.renderPanel();
+  }
+
+  pickCity(i) {
+    const c = this.cityResults?.[i];
+    if (!c) return;
+    this.game.state.weather = { city: c.name, lat: c.lat, lon: c.lon, enabled: true };
+    this.cityResults = null;
+    this.game.emit('settings', { key: 'weather' });
+    this.director.refreshWeather(true).then(() => this.renderPanel());
+    this.toast(`之後會依照${c.name}的天氣`);
   }
 
   // ---------- 專注番茄鐘 ----------
@@ -774,6 +851,21 @@ export class UI {
       if (e.target.closest('[data-yes]')) { this.modal.classList.add('hidden'); onYes(); }
       if (e.target.closest('[data-no]')) this.modal.classList.add('hidden');
     };
+  }
+
+  // 多個選項的對話框：回傳選到的 value（取消是 null）
+  ask(text, options) {
+    return new Promise(resolve => {
+      this.modal.innerHTML = `<div class="dialog ask hit pix"><p></p><div class="choices">${options.map((o, i) => `<button data-choice="${i}" class="${i === 0 ? 'primary' : ''}">${esc(o.label)}${o.hint ? `<small>${esc(o.hint)}</small>` : ''}</button>`).join('')}</div></div>`;
+      this.modal.querySelector('p').textContent = text;
+      this.modal.classList.remove('hidden');
+      this.modal.onclick = e => {
+        const b = e.target.closest('[data-choice]');
+        if (!b) return;
+        this.modal.classList.add('hidden');
+        resolve(options[Number(b.dataset.choice)].value);
+      };
+    });
   }
 
   showStarter(onPick) {

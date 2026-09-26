@@ -132,6 +132,9 @@ run('perch', async ({ page, shot }, check) => {
     for (const p of pets) p.set('idle', 1); // 接下來測「自己跳上去」：大家自由活動
     // 6) 自己跳上去：有視窗的時候，自由活動 6 分鐘，至少會有一隻自己跳上去（權重低；3 分鐘大約有 3% 的機會一隻都沒有）
     api.emit('windows', [WIN]);
+    // 固定成白天：半夜（1–6 點）大家都在睡覺，本來就不會跳上視窗（測試不能看真的時鐘）
+    window.__kalos.director.updateEnv = () => {};
+    Object.assign(stage.env, { sleepy: false, userActive: true, hour: 14 });
     const before = window.__kalos.game.state.stats.perches;
     out.candidates = pets.map(p => P.perchCandidates(p).length);
     for (let f = 0; f < 6 * 60 * 20; f++) { stage.update(0.05); if (f % 40 === 0) await yieldNow(); }

@@ -359,3 +359,21 @@ export function egg(spot = '#7ac86a', cracks = 0) {
   for (let i = 0; i < Math.min(3, cracks); i++) for (const [x, y] of CR[i]) rows[y][x] = 'K';
   return fromMap(rows.map(r => r.join('')), { K, W: '#fbf6ea', D: '#e0d6c0', S: spot });
 }
+
+// 獎章：拿到的是金色，還沒拿到的是灰色
+export function medal(got = true) {
+  return fromMap([
+    '.RR..BB.',
+    '.RRRBBB.',
+    '..RRBB..',
+    '..KKKK..',
+    '.KGGHGK.',
+    'KGGHHGGK',
+    'KGHGGGGK',
+    'KGGGGGDK',
+    '.KGGGDK.',
+    '..KKKK..',
+  ], got
+    ? { K, R: '#e8404a', B: '#3a78e0', G: '#f8c830', H: '#fff2b0', D: '#c89818' }
+    : { K: '#9a94a4', R: '#c8c4d0', B: '#c8c4d0', G: '#dcd8e2', H: '#eeeaf2', D: '#c8c4d0' });
+}
