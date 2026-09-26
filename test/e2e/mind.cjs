@@ -81,11 +81,18 @@ run('mind', async ({ page, shot }, check) => {
   check(r.early < 0.6 && r.late >= 0.6, `停留時間不對：${r.early} ${r.late}`);
 
   // 截圖：想法泡泡
-  await page.evaluate(() => {
-    const { stage } = window.__kalos;
+  // 想法和名字是同一個元素：不會疊在一起，泡泡在名字上面、兩個都在寶可夢頭上
+  const bub = await page.evaluate(() => {
+    const { stage, ui } = window.__kalos;
     stage.hoverPet.thought = { key: 'social.friend', text: '想找好朋友哈力栗玩', cat: 'social' };
+    ui.update();
     stage.draw();
+    const th = document.querySelector('.label .thought'), tag = document.querySelector('.label .tag');
+    const a = th.getBoundingClientRect(), b = tag.getBoundingClientRect(), rc = stage.hoverPet.rect();
+    const top = rc.y / stage.dpr, cx = (rc.x + rc.w / 2) / stage.dpr;
+    return { shown: !th.classList.contains('hidden') && th.textContent === '想找好朋友哈力栗玩', gap: Math.round(b.top - a.bottom), aboveHead: b.bottom <= top + 1, centered: Math.abs((a.left + a.right) / 2 - cx) < 30 };
   });
+  check(bub.shown && bub.gap >= 4 && bub.aboveHead && bub.centered, `想法泡泡的位置不對：${JSON.stringify(bub)}`);
   await shot('mind-thought');
 
   // 夥伴資料頁：心情、需求、最近在想什麼

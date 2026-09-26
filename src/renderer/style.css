@@ -213,6 +213,16 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 .encounter button { padding: 3px 8px; display: inline-flex; align-items: center; gap: 4px; }
 .encounter .hint { font-size: 11px; margin: 4px 4px 0; }
 .label {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  pointer-events: none;
+  --tail: 50%;
+}
+.label.below { flex-direction: column-reverse; }
+.label .tag {
   background: rgba(42, 32, 48, 0.82);
   color: #fff;
   padding: 2px 8px;
@@ -220,6 +230,32 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
   white-space: nowrap;
 }
 .label .hearts i { color: rgba(255, 255, 255, 0.3); }
+/* 想法泡泡：白底深色框，兩顆小方塊當尾巴（想，不是說），尾巴對準頭的正中間 */
+.label .thought {
+  position: relative;
+  align-self: stretch;
+  background: #fff;
+  color: #2a2030;
+  border: 2px solid #2a2030;
+  padding: 3px 8px;
+  font-size: 13px;
+  white-space: nowrap;
+  text-align: center;
+  box-shadow: 0 2px 0 rgba(42, 32, 48, 0.25);
+}
+.label .thought i {
+  position: absolute;
+  left: var(--tail);
+  width: 4px;
+  height: 4px;
+  background: #fff;
+  border: 2px solid #2a2030;
+  transform: translateX(-50%);
+}
+.label .thought i:first-of-type { top: calc(100% + 1px); }
+.label .thought i:last-of-type { top: calc(100% + 10px); width: 2px; height: 2px; margin-left: 3px; }
+.label.below .thought i:first-of-type { top: auto; bottom: calc(100% + 1px); }
+.label.below .thought i:last-of-type { top: auto; bottom: calc(100% + 10px); }
 
 .picker {
   position: fixed;
@@ -386,13 +422,16 @@ h4 { margin: 10px 0 4px; font-size: 14px; }
 /* 信箱、信 */
 .mailbox { display: flex; flex-direction: column; gap: 8px; height: 100%; }
 .mailbox .list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+.mailbox .letter-item { display: flex; gap: 4px; align-items: stretch; margin-bottom: 4px; }
+.mailbox .letter-item .letter-row { flex: 1; min-width: 0; }
+.mailbox .letter-item .del { flex: none; padding: 0 8px; font-size: 11px; color: var(--muted); }
 .mailbox .letter-row { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; align-items: center; text-align: left; padding: 6px 8px; }
 .mailbox .letter-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mailbox .letter-row small { color: var(--muted); font-size: 10px; }
 .mailbox .letter-row.unread { background: #fff6c8; }
 .dialog.letter { max-width: 400px; text-align: left; }
-.dialog.letter .paper { background: repeating-linear-gradient(#fffdf6 0 21px, #e8dcc6 21px 22px) 0 12px; padding: 10px 14px; box-shadow: 0 0 0 2px var(--line); }
+.dialog.letter .paper { background: repeating-linear-gradient(#fffdf6 0 21px, #e8dcc6 21px 22px) 0 10px; padding: 10px 14px; box-shadow: 0 0 0 2px var(--line); }
 .dialog.letter .body { white-space: pre-wrap; margin: 0; line-height: 22px; }
 .dialog.letter .sign { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 8px; color: var(--muted); }
-.dialog.letter .btns { text-align: center; margin-top: 10px; }
+.dialog.letter .btns { display: flex; justify-content: center; gap: 8px; margin-top: 10px; }
 .settings .birthday select { margin: 0 2px; }

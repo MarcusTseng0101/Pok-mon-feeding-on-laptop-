@@ -158,3 +158,26 @@ test('存檔、同步：讀回來一樣；兩邊的信取聯集、打開過的�
   assert.equal(migrate({ ...defaultSave(T0), settings: { birthday: '13-40' } }, dex, T0).settings.birthday, null);
   assert.equal(migrate({ ...defaultSave(T0), settings: { birthday: '10-01' } }, dex, T0).settings.birthday, '10-01');
 });
+
+test('刪信：收件夾拿掉、記在 deleted；同步時另一台還留著也不會跑回來，也不會再寄一次', () => {
+  let t = T0;
+  const g = new Game({ dex, state: migrate(defaultSave(T0), dex, T0), rng: createRng(5), now: () => t });
+  g.chooseStarter(650);
+  g.state.lastSeenAt = t; t += 8 * HOUR; g.catchUp();
+  const id = g.state.letters.inbox[0].id;
+  const other = structuredClone(g.state); // 另一台電腦：還沒刪
+  assert.equal(g.deleteLetter(id), true);
+  assert.equal(g.deleteLetter(id), false);
+  assert.equal(g.state.letters.inbox.length, 0);
+  assert.deepEqual(g.state.letters.deleted, [id]);
+  const back = migrate(JSON.parse(JSON.stringify(g.state)), dex, t);
+  assert.deepEqual(back.letters.deleted, [id]);
+  for (const m of [mergeShared(g.state, other), mergeShared(other, g.state)]) {
+    assert.equal(m.letters.inbox.some(l => l.id === id), false);
+    assert.ok(m.letters.deleted.includes(id));
+  }
+  assert.equal(L.queue(g.state.letters, { key: id, kind: 'away', uid: g.state.mons[0].uid, due: t }), false);
+  // 舊存檔沒有 deleted：補成空陣列
+  const old = structuredClone(other); delete old.letters.deleted;
+  assert.deepEqual(migrate(old, dex, t).letters.deleted, []);
+});

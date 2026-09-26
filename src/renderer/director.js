@@ -195,21 +195,29 @@ export class Director {
   }
 
   // ---------- 信 ----------
+  // 桌面上常駐的信箱：放在秘密基地院子靠螢幕中間的那一側；有沒看的信就立旗子
   refreshMail() {
-    const st = this.stage, S = st.S;
-    const unread = this.game.unreadLetters();
-    if (!unread.length) { if (this.envelope) { this.envelope.life = 0; this.envelope = null; } return; }
-    if (this.envelope && !this.envelope.gone) return;
-    // 右下角（精靈球按鈕的左邊一點）
-    this.envelope = new Prop(st, { kind: 'letter', x: st.W - 90 * S, y: st.H - 10 * S, onClick: () => this.openNextLetter() });
-    st.props.push(this.envelope);
+    const st = this.stage;
+    if (!this.mailbox || this.mailbox.gone) {
+      this.mailbox = new Prop(st, { kind: 'mailbox', x: 0, y: 0, anchor: () => this.mailboxSpot(), onClick: () => this.openMailbox() });
+      Object.assign(this.mailbox, this.mailboxSpot());
+      st.props.push(this.mailbox);
+    }
+    this.mailbox.unread = this.game.unreadLetters().length;
   }
 
-  openNextLetter() {
+  mailboxSpot() {
+    const st = this.stage, S = st.S, L = st.baseView?.layout();
+    if (!L) return { x: st.W - 90 * S, y: st.H - 8 * S };
+    const right = this.game.state.base?.side === 'right';
+    return { x: right ? L.x - 14 * S : L.x + L.w + 14 * S, y: L.y + L.h };
+  }
+
+  // 點信箱：有沒看的信就直接打開最舊的那封，沒有就打開信箱（收件夾）
+  openMailbox() {
     const l = this.game.unreadLetters()[0];
-    if (!l) return;
-    this.audio.sfx('open');
-    this.ui?.showLetter(l);
+    if (l) { this.audio.sfx('open'); this.ui?.showLetter(l); return; }
+    this.ui?.open('mail');
   }
 
   // ---------- 秘密基地 ----------
@@ -824,6 +832,7 @@ export class Director {
     // 信：有沒打開的信，桌面角落就有一個信封
     g.on('letter', l => { this.refreshMail(); this.audio.sfx('open'); this.ui?.toast(`${l.name}寫了一封信給你`, { icon: mail.envelope }); });
     g.on('letterOpened', () => this.refreshMail());
+    g.on('letterDeleted', () => this.refreshMail());
     g.on('bondUp', ({ a, b, level, zh }) => {
       if (level < 2) return;
       const pa = this.stage.pets.get(a), pb = this.stage.pets.get(b);

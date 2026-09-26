@@ -747,6 +747,16 @@ export class Game {
     return l;
   }
   unreadLetters() { return this.state.letters.inbox.filter(l => !l.opened); }
+  // 刪掉一封信（記在 deleted，同步時才不會跑回來）
+  deleteLetter(id) {
+    const box = this.state.letters;
+    const i = box.inbox.findIndex(x => x.id === id);
+    if (i < 0) return false;
+    box.inbox.splice(i, 1);
+    box.deleted = [...(box.deleted ?? []), id].slice(-L.DELETED_KEPT);
+    this.emit('letterDeleted', id);
+    return true;
+  }
 
   // ---- 記憶 ----
   remember(uid, event) {

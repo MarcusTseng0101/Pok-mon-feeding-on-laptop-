@@ -15,6 +15,7 @@ import { ACHIEVEMENTS, REWARD_FANCY_AT } from '../../core/achievements.js';
 import { FORMS, spriteKey, formName, formsOf, defaultForm } from '../../core/forms.js';
 import { habitNames } from '../scene/habits.js';
 import { describe as describeMind } from '../scene/mindlink.js';
+import { THOUGHT_HOVER } from '../scene/stage.js';
 import { NEEDS, NEED_ZH, MOOD_ZH } from '../../core/mind.js';
 import { PLACES, PLACE_IDS } from '../../core/trips.js';
 import { STAGES, FURNITURE, MATERIALS, enough, trophiesAllowed } from '../../core/base.js';
@@ -89,7 +90,8 @@ export class UI {
     this.picker = h('<div class="picker hit pix hidden"></div>');
     this.picker.onclick = e => this.onPickerClick(e);
     this.toasts = h('<div class="toasts"></div>');
-    this.label = h('<div class="label hidden"></div>');
+    // 名字標籤＋想法泡泡是同一個元素，一起移動，不會分開或疊在一起
+    this.label = h('<div class="label hidden"><div class="thought hidden"><span></span><i></i><i></i></div><div class="tag"></div></div>');
     this.modal = h('<div class="modal hidden"></div>');
     this.focusHud = h('<div class="focus-hud pix hidden"></div>');
     r.append(this.focusHud, this.label, this.bubble, this.encBar, this.picker, this.menu, this.win, this.launcher, this.toasts, this.modal);
@@ -128,10 +130,15 @@ export class UI {
     const pet = st.hoverPet;
     if (pet && pet !== this.bubblePet && !st.mode && !st.drag?.held) {
       const n = hearts(pet.mon.affection);
-      this.label.innerHTML = `${esc(this.game.displayName(pet.mon))} <span class="hearts">${'♥'.repeat(n)}<i>${'♥'.repeat(5 - n)}</i></span>`;
+      const tag = `${esc(this.game.displayName(pet.mon))} <span class="hearts">${'♥'.repeat(n)}<i>${'♥'.repeat(5 - n)}</i></span>`;
+      if (tag !== this.labelTag) { this.label.querySelector('.tag').innerHTML = tag; this.labelTag = tag; }
+      // 滑鼠停 0.6 秒才出現想法
+      const think = st.hoverT >= THOUGHT_HOVER && pet.thought?.text ? pet.thought.text : '';
+      const th = this.label.querySelector('.thought');
+      th.classList.toggle('hidden', !think);
+      if (think && th.firstChild.textContent !== think) th.firstChild.textContent = think;
       this.label.classList.remove('hidden');
-      const hd = pet.head();
-      place(this.label, hd.x, hd.y);
+      this.placeLabel(pet);
     } else {
       this.label.classList.add('hidden');
     }
@@ -140,6 +147,21 @@ export class UI {
       const r = w.rect();
       place(this.encBar, r.x + r.w / 2, r.y - 12 * st.S);
     }
+  }
+
+  // 名字（和想法）放在頭上；上面放不下就放到腳下，泡泡的尾巴改成朝上
+  placeLabel(pet) {
+    const st = this.stage, el = this.label, r = pet.rect();
+    const top = st.toCss(r.x + r.w / 2, r.y), feet = st.toCss(r.x + r.w / 2, r.y + r.h);
+    const w = el.offsetWidth, hh = el.offsetHeight;
+    const x = Math.max(8, Math.min(window.innerWidth - w - 8, top.x - w / 2));
+    let y = top.y - hh - 8;
+    const below = y < 8;
+    if (below) y = Math.min(window.innerHeight - hh - 8, feet.y + 6);
+    el.classList.toggle('below', below);
+    // 尾巴對準頭的正中間（標籤被螢幕邊擋住、往內收的時候也一樣）
+    el.style.setProperty('--tail', `${Math.round(Math.max(12, Math.min(w - 12, top.x - x)))}px`);
+    el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
   }
 
   // ---------- 提示 ----------
@@ -482,7 +504,7 @@ export class UI {
     if (!inbox.length) list.append(h('<p class="empty">還沒有信。你離開很久、夥伴旅行回來、好感滿了、或是你的生日（在設定裡填），夥伴會寫信給你。</p>'));
     for (const l of inbox) {
       const first = l.text.split('\n').find(s => s.trim()) ?? '';
-      const row = h(`<button class="letter-row ${l.opened ? '' : 'unread'}" data-letter="${esc(l.id)}"><b>${l.opened ? '' : '✉ '}${esc(l.name)}</b><span>${esc(first)}</span><small>${esc(LETTER_KINDS[l.kind].zh)}・${new Date(l.at).toLocaleDateString('zh-TW')}</small></button>`);
+      const row = h(`<div class="letter-item"><button class="letter-row ${l.opened ? '' : 'unread'}" data-letter="${esc(l.id)}"><b>${l.opened ? '' : '✉ '}${esc(l.name)}</b><span>${esc(first)}</span><small>${esc(LETTER_KINDS[l.kind].zh)}・${new Date(l.at).toLocaleDateString('zh-TW')}</small></button><button class="del" data-letterdel="${esc(l.id)}" title="刪除這封信">刪除</button></div>`);
       list.append(row);
     }
     return root;
@@ -492,13 +514,19 @@ export class UI {
   showLetter(l) {
     const sp = this.dex.get(l.species);
     const color = art.TYPE_COLORS[sp?.types?.[0]] ?? '#ff6fa5';
-    this.modal.innerHTML = `<div class="dialog letter hit pix"><div class="paper"><p class="body"></p><div class="sign"><span class="who"></span></div></div><div class="btns"><button data-yes class="primary">收好</button></div></div>`;
+    this.modal.innerHTML = `<div class="dialog letter hit pix"><div class="paper"><p class="body"></p><div class="sign"><span class="who"></span></div></div><div class="btns"><button data-del>刪除</button><button data-yes class="primary">收進信箱</button></div></div>`;
     this.modal.querySelector('.body').textContent = l.text;
     this.modal.querySelector('.who').textContent = `—— ${l.name}`;
     this.modal.querySelector('.sign').append(pixelImg(mail.pawprint(color), 3));
     this.modal.classList.remove('hidden');
     this.game.openLetter(l.id);
-    this.modal.onclick = e => { if (e.target.closest('[data-yes]')) { this.modal.classList.add('hidden'); if (this.panel === 'mail') this.renderPanel(); } };
+    this.modal.onclick = e => {
+      const del = e.target.closest('[data-del]');
+      if (!del && !e.target.closest('[data-yes]')) return;
+      if (del) { this.game.deleteLetter(l.id); this.audio.sfx('close'); }
+      this.modal.classList.add('hidden');
+      if (this.panel === 'mail') this.renderPanel();
+    };
   }
 
   // ---------- 相簿（旅行帶回來的明信片） ----------
@@ -687,6 +715,7 @@ export class UI {
       return;
     }
     if (t.dataset.citypick !== undefined) { this.pickCity(Number(t.dataset.citypick)); return; }
+    if (t.dataset.letterdel) { this.game.deleteLetter(t.dataset.letterdel); this.audio.sfx('close'); this.renderPanel(); return; }
     if (t.dataset.letter) { const l = this.game.state.letters.inbox.find(x => x.id === t.dataset.letter); if (l) { this.audio.sfx('open'); this.showLetter(l); } return; }
     if (t.dataset.basekind) { this.closePanel(); this.director.startBasePlace(t.dataset.basekind); return; }
     if (t.dataset.basemove) { this.closePanel(); this.stage.fire('furnitureClick', this.game.state.base.items.find(i => i.id === t.dataset.basemove)); return; }
