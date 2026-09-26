@@ -183,6 +183,7 @@ export function weights(mind, lv, traits, ctx = {}) {
     if (c === 'need' && lv.food >= 70) m = MULT_MIN; // 不餓就不會去找吃的
     if (c === 'cursor' && !ctx.userActive) m = MULT_MIN;
     if (c === 'trip' && !ctx.canTrip) m = MULT_MIN;
+    if (c === 'rest' && ctx.bedFree && lv.energy < 30) m *= 0.4; // 有床可以睡，就不想在地上打瞌睡
     if (c === sCat && n >= BORED_AFTER) m *= BORED_MULT; // 做膩了
     out[c] = clamp(m, MULT_MIN, MULT_MAX);
   }

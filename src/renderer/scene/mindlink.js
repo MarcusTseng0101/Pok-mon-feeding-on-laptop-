@@ -5,6 +5,7 @@
 // 心智不自己選行為；選行為的只有 Pet.decide()。
 import * as M from '../../core/mind.js';
 import { recall, summary } from '../../core/memory.js';
+import { freeBeds } from './home.js';
 
 const MIN = 60_000;
 const SLEEP_STATES = new Set(['sleep', 'nap']);
@@ -68,7 +69,7 @@ export function levelsOf(pet) {
 export function weigh(pet, choices) {
   if (pet.stage.mindOff) return choices;
   const mind = ensureMind(pet);
-  const w = M.weights(mind, M.levels(mind, pet.mon), M.traitsOf(pet.mon.nature), { rival: Boolean(topRival(pet)), userActive: Boolean(pet.stage.env.userActive), canTrip: Boolean(pet.stage.game?.canDepart(pet.uid)) && !pet.perch });
+  const w = M.weights(mind, M.levels(mind, pet.mon), M.traitsOf(pet.mon.nature), { rival: Boolean(topRival(pet)), userActive: Boolean(pet.stage.env.userActive), canTrip: Boolean(pet.stage.game?.canDepart(pet.uid)) && !pet.perch, bedFree: freeBeds(pet).length > 0 });
   return choices.map(([n, wt, f, cat]) => [n, wt * (w[cat] ?? 1), f, cat]);
 }
 

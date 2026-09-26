@@ -15,7 +15,7 @@ import { integrateKnock } from './physics.js';
 import { updateForm, drawForm } from './battleforms.js';
 import { PERCH_ACTIONS, perchBounds, perchedChoices, perchOption } from './perching.js';
 import { tag, weigh, afterChoice, tickMind } from './mindlink.js';
-import { homeOptions, homeNight } from './home.js';
+import { homeOptions, homeNight, exhausted } from './home.js';
 import { TRAVEL_ACTIONS, startDepart, drawCarried } from './travel.js';
 import { traitsOf } from '../../core/mind.js';
 import { CURSOR_ACTIONS, cursorOptions, wantsToPounce, startPounce, besideCursor } from './cursor.js';
@@ -532,9 +532,10 @@ export class Pet {
     // 站在視窗上、正在往上跳的不算（不會被拉去玩）
     const others = [...st.pets.values()].filter(o => o !== this && o.free && !o.partner && !o.perch && o.state !== 'perchUp');
     if (st.env.sleepy) {
-      // 晚上：大部分會先回秘密基地（床空著就上床，不然去基地跟大家擠在一起）
+      // 晚上：先回秘密基地（床空著就上床，不然去基地跟大家擠在一起）。
+      // 睡著了要到早上才會醒，所以一定要先回到家再睡
       const home = homeNight(this);
-      if (home && Math.random() < 0.7) { this.choose(tag([home], 'base')); return; }
+      if (home) { this.choose(tag([home], 'base')); return; }
       // 想睡了：有其他夥伴在睡的話靠過去一起睡
       const cuddle = socialOptions(this, others).find(([n]) => n === 'cuddle');
       if (cuddle && Math.random() < 0.6) { cuddle[2](); afterChoice(this, [...cuddle, 'social']); return; }
@@ -544,6 +545,8 @@ export class Pet {
       afterChoice(this, [nap, 1, null, 'rest']);
       return;
     }
+    const tired = exhausted(this); // 累壞了：直接回床上睡
+    if (tired) { this.choose(tag([tired], 'base')); return; }
     const h = hearts(this.mon.affection);
     const settings = st.game?.state.settings;
     const musicOn = settings && !settings.muted && settings.musicVolume > 0.05;

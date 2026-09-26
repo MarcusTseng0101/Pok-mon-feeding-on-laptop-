@@ -66,7 +66,7 @@ const test = async ({ page, shot }, check) => {
     let sawBed = null;
     for (let i = 0; i < 60 * 30 && !sawBed; i++) {
       stage.update(1 / 30);
-      if (a.state === 'sleep' && a.bedId) sawBed = { bed: a.bedId, x: a.x, gy: a.gy };
+      if (a.state === 'nap' && a.bedId) sawBed = { bed: a.bedId, x: a.x, gy: a.gy };
       if (i % 300 === 0) await new Promise(r => setTimeout(r, 0));
     }
     const bed = sawBed && game.state.base.items.find(i => i.id === sawBed.bed);

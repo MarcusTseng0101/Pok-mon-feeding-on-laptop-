@@ -122,3 +122,11 @@ test('旅行會帶回 1–3 個材料（那個地方比較容易撿到的）', (
   const r = g.settleTrip(g.state.mons[0].uid);
   for (const [k, n] of Object.entries(r.gifts.materials)) assert.equal(g.state.bag.materials[k], n);
 });
+
+test('心智：很累又有床的時候，比較不想在地上打瞌睡', async () => {
+  const M = await import('../src/core/mind.js');
+  const lv = { food: 90, fun: 60, energy: 15, social: 70, curiosity: 70, comfort: 70 };
+  const noBed = M.weights({ recent: [] }, lv, M.traitsOf('hardy'), {});
+  const bed = M.weights({ recent: [] }, lv, M.traitsOf('hardy'), { bedFree: true });
+  assert.ok(bed.rest < noBed.rest * 0.5 && bed.base === noBed.base, JSON.stringify({ noBed, bed }));
+});

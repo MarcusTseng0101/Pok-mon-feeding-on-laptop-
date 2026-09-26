@@ -82,7 +82,7 @@ export function yard(gw, gh, stage) {
   return paint(w, h, set => {
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const edge = Math.min(x, y, w - 1 - x, h - 1 - y);
-      if (edge >= 3 || (edge >= 1 && (x + y) % 2 === 0) || (edge === 0 && (x + y) % 4 === 0)) set(x, y, (x * 7 + y * 3) % 11 === 0 ? '#b8a070' : tint);
+      if (edge >= 3 || (edge >= 1 && (x + y) % 2 === 0) || (edge === 0 && (x + y) % 4 === 0)) set(x, y, (((x * 73856093) ^ (y * 19349663)) >>> 0) % 17 === 0 ? '#b8a070' : tint); // 零散的小石子（不要排成斜線）
     }
   });
 }

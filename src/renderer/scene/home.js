@@ -6,7 +6,7 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = list => list[Math.floor(Math.random() * list.length)];
 
 // 床上已經有人（一張床睡一隻）
-function freeBeds(pet) {
+export function freeBeds(pet) {
   const view = pet.stage.baseView;
   if (!view) return [];
   const taken = new Set([...pet.stage.pets.values()].filter(o => o !== pet && o.bedId).map(o => o.bedId));
@@ -28,7 +28,8 @@ export function goToBed(pet, { night = false } = {}) {
   walkThen(pet, spot, () => {
     pet.x = spot.x; pet.gy = spot.y;
     pet.bedId = bed.id;
-    pet.set('sleep', night ? rnd(30, 60) : rnd(15, 30));
+    // 晚上的 sleep 會睡到早上；白天用 nap（睡一陣子就起來）
+    pet.set(night ? 'sleep' : 'nap', night ? rnd(30, 60) : rnd(15, 30));
     pet.showEmote('Z', 1.5);
   });
   return true;
@@ -61,11 +62,19 @@ export function homeOptions(pet) {
   const energy = mind?.energy ?? 70, comfort = mind?.comfort ?? 70;
   const beds = freeBeds(pet).length;
   return [
-    ['goBed', beds && energy < 50 ? 6 : 0, () => goToBed(pet) || pet.set('sleep', rnd(8, 14))],
+    // 很累的時候最想回床上睡（比原地打瞌睡更想）；權重是猜的，可以調
+    ['goBed', !beds ? 0 : energy < 30 ? 30 : energy < 50 ? 8 : 0, () => goToBed(pet) || pet.set('nap', rnd(8, 14))],
     // 回基地坐坐：舒適度越低越想回去；就算不累，偶爾也會回家看看
     // （權重是猜的，可以調）
     ['goBase', atHome(pet) ? 0.5 : comfort < 70 ? 5 : 2.5, () => goHomeAndRest(pet) || pet.set('sit', rnd(3, 6))],
   ];
+}
+
+// 累壞了（體力 < 20）而且有空床：直接回床上睡，不再東摸西摸
+export const EXHAUSTED = 20;
+export function exhausted(pet) {
+  if (!pet.stage.baseView || pet.perch || (pet.mon.mind?.energy ?? 100) >= EXHAUSTED || !freeBeds(pet).length) return null;
+  return ['goBed', 1, () => goToBed(pet)];
 }
 
 // 晚上想睡：回基地（床空著就上床，不然去基地擠在一起）
