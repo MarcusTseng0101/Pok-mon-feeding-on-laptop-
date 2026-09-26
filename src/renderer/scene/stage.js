@@ -29,6 +29,7 @@ export class Stage {
     this.balls = [];
     this.props = [];
     this.decals = []; // 地上的裝飾（花、鑽石、根…），畫在夥伴後面，不能點
+    this.garden = null; // 螢幕下緣的花草（scene/garden.js，director 建）
     this.windows = []; // 其他視窗的位置（裝置像素，由上到下），只有位置和大小
     this.ledges = []; // 看得到、可以站的視窗頂邊
     this.weatherFx = new WeatherFx(this); // 下雨、下雪（只是畫面，不接收滑鼠）
@@ -301,6 +302,7 @@ export class Stage {
     this.balls = this.balls.filter(b => !b.gone);
     for (const p of this.props) p.update(dt);
     this.props = this.props.filter(p => !p.gone);
+    this.garden?.update(dt);
     for (const d of this.decals) d.t += dt;
     this.decals = this.decals.filter(d => d.t < d.life);
     this.fx.update(dt);
@@ -343,7 +345,8 @@ export class Stage {
   drawScene() {
     const ctx = this.ctx, S = this.S;
     if (this.hidden) { this.fx.draw(ctx, S); return; }
-    this.baseView?.draw(ctx); // 秘密基地在最底層
+    this.garden?.draw(ctx); // 花草在最底層
+    this.baseView?.draw(ctx); // 秘密基地在花草上面
     for (const d of this.decals) {
       const k = d.t / d.life, alpha = Math.min(1, d.t * 3, (1 - k) * 4);
       blit(ctx, d.img, d.x - (d.img.width * S) / 2, d.y - d.img.height * S, S, { alpha });

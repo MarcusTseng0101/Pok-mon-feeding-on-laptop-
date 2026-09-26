@@ -19,6 +19,7 @@ import * as S from './story.js';
 import * as R from './routine.js';
 import * as T from './together.js';
 import * as Mood from './mood.js';
+import * as Sym from './symbiosis.js';
 import { holidaysOn, HOLIDAYS } from './calendar.js';
 import { canMegaEvolve, KEY_ITEMS, STARTER_STONES, starterLine } from './items.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
@@ -376,6 +377,8 @@ export class Game {
       this.afterAffection(m, before);
     }
     const r = { puff, minutes: a.minutes, streak: f.streakDays, twoHours: R.addFocus(this.state.routine, this.now(), a.minutes) };
+    const bloom = Sym.mark(this.state.symbiosis, this.now(), 'focus');
+    if (bloom) this.emit('symbiosis', { events: [{ type: 'bloom', level: bloom }] });
     this.checkTogether(); // 第一次一天專注滿 3 小時
     this.emit('focus', { active: false, done: true, ...r });
     this.emit('bag');
@@ -395,6 +398,33 @@ export class Game {
     // 里程碑：01:00～05:00 還在、而且有夥伴在桌面上 → 第一次一起熬夜
     this.checkTogether({ lateNight: out && minute >= R.LATE_FALLBACK, holiday: out && holidays.length > 0 });
     return evs;
+  }
+
+  // ---- 共生（core/symbiosis.js）----
+  // 每分鐘一次（畫面呼叫，也會在閒置變長時多呼叫幾次）：idleSeconds＝現在閒置幾秒、longestIdle＝上一次以來最長的閒置秒數。
+  // 數值只在這裡加，而且只加不減（熬夜不扣任何東西）；畫面照回傳的事件演出
+  lifeTick({ idleSeconds = 0, longestIdle = 0 } = {}) {
+    if (!this.state.starterChosen) return [];
+    const home = this.homeMons();
+    const evs = Sym.tick(this.state.symbiosis, this.now(), { idleSeconds, longestIdle, pets: home.length > 0, busy: Boolean(this.state.focus.active) }, this.state.routine, this.rng);
+    for (const e of evs) {
+      if (e.type === 'presence') for (const m of home) m.xp += Sym.PRESENCE_XP;
+      if (e.type === 'fruitEaten') {
+        for (const m of home) {
+          const before = amie.hearts(m.affection);
+          this.mindDelta(m.uid, { fullness: Sym.FRUIT_GAIN.fullness, enjoyment: Sym.FRUIT_GAIN.enjoyment });
+          amie.addAffection(m, Sym.FRUIT_GAIN.affection);
+          m.xp += Sym.FRUIT_GAIN.xp;
+          this.afterAffection(m, before);
+        }
+      }
+    }
+    if (evs.length) this.emit('symbiosis', { events: evs });
+    return evs;
+  }
+  symbiosisView() {
+    const s = this.state.symbiosis, now = this.now();
+    return { fruit: s.fruit, bloom: Sym.bloomToday(s, now), flowers: Sym.pastFlowers(s, now), tired: Sym.isTired(s, now), fruitsToday: Sym.fruitsToday(s, now) };
   }
 
   // ---- 你和大家（core/together.js）、心情（core/mood.js）、日曆（core/calendar.js）----

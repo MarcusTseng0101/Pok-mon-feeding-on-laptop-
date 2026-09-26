@@ -9,7 +9,9 @@ import { planSpawn, nextSpawnDelay, shouldDropCell, timeOfDay, shouldPeek } from
 import { ringBonus, catchProbability, BALLS } from '../core/capture.js';
 import { shinyChance } from '../core/shiny.js';
 import { spriteKey, inheritForm } from '../core/forms.js';
-import { puffName, hearts, FLAVOR_ZH, parsePuffKey } from '../core/amie.js';
+import { puffName, hearts, FLAVOR_ZH, parsePuffKey, BERRIES } from '../core/amie.js';
+import { BREAK_IDLE } from '../core/symbiosis.js';
+import { Garden } from './scene/garden.js';
 import * as art from './gfx/art.js';
 import { socialized } from '../core/mind.js';
 import { PLACES } from '../core/trips.js';
@@ -49,6 +51,7 @@ export class Director {
     this.nextSpawnAt = Date.now() + (dev ? 5000 : 60_000); // 開啟後一分鐘內先來一隻
     this.bindStage();
     this.bindGame();
+    this.stage.garden = new Garden(this.stage, () => this.lifeView);
   }
 
   // ---------- 環境 ----------
@@ -73,6 +76,9 @@ export class Director {
     const returned = s.returnedAt && s.returnedAt !== this.signals.returnedAt;
     this.signals = s;
     this.updateEnv();
+    // 共生：記下這段時間最長的閒置；有果實在等、你也離開夠久了 → 不用等到整分鐘，現在就讓牠們吃
+    this.maxIdle = Math.max(this.maxIdle ?? 0, s.idleSeconds ?? 0);
+    if (this.game.state.symbiosis?.fruit && (s.idleSeconds ?? 0) >= BREAK_IDLE) this.lifeTick();
     // 回來了：早上第一次就說早安，不然是一般的「歡迎回來」
     if (returned && !this.routineTick().includes('greet')) this.welcomeBack();
   }
@@ -301,13 +307,180 @@ export class Director {
     }
     if (this.evolution) this.updateEvolution(dt);
     this.tripT = (this.tripT ?? 0) + dt;
-    if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); this.drainAttention(); }
+    if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); this.drainAttention(); this.refreshLife(); }
+    this.lifeAmbient(dt);
     if (!this.dayChecked) { this.dayChecked = true; this.refreshDay(); }
     this.moodTick(dt);
     this.phoneT = (this.phoneT ?? 25) + dt;
     if (this.phoneT >= 30) { this.phoneT = 0; this.pushPhone(); }
     this.routineT = (this.routineT ?? 0) + dt;
-    if (this.routineT >= 60) { this.routineT = 0; this.routineTick(); }
+    if (this.routineT >= 60) { this.routineT = 0; this.routineTick(); this.lifeTick(); }
+  }
+
+  // ---------- 共生（規則在 core/symbiosis.js）----------
+  // 這裡只演出：數值由 Game.lifeTick() 加，畫面不改任何數值。
+  // 果實、花草、一起累都不出聲、不跳通知（是環境裡的變化，不算打擾）。
+  lifeTick() {
+    const idle = this.signals?.idleSeconds ?? 0;
+    const longestIdle = Math.max(this.maxIdle ?? 0, idle);
+    this.maxIdle = idle;
+    const evs = this.game.lifeTick({ idleSeconds: idle, longestIdle }); // 事件從 game 的 'symbiosis' 來（見 bindGame）
+    this.refreshLife();
+    return evs;
+  }
+
+  // 每秒一次：畫面跟存檔對齊（重開 app 時果實還在、一起累的時間到了就恢復）
+  refreshLife() {
+    const g = this.game;
+    this.lifeView = g.state.starterChosen ? g.symbiosisView() : null;
+    this.stage.env.tired = Boolean(this.lifeView?.tired);
+    const fruit = this.lifeView?.fruit;
+    if (fruit && !this.fruitProp && !this.fruitOffering) this.placeFruit(fruit.berry, this.fruitSpot());
+    if (!fruit && this.fruitProp && !this.fruitEating) this.removeFruit();
+  }
+
+  onLife(events) {
+    for (const e of events) {
+      if (e.type === 'fruitOffered') this.offerFruit(e.berry);
+      if (e.type === 'fruitEaten') this.eatFruit(e.berry);
+      if (e.type === 'bloom') this.bloomed(e.level);
+      if (e.type === 'tired') this.yawnAll();
+    }
+    this.refreshLife();
+  }
+
+  // 果實放在哪：螢幕下緣、游標的正下方附近（游標不在就中間）
+  fruitSpot() {
+    const st = this.stage, S = st.S;
+    const x = st.pointer.known ? st.pointer.x : st.W / 2;
+    return { x: Math.max(40 * S, Math.min(st.W - 90 * S, x)), y: st.H - 4 * S };
+  }
+  // 誰去做：沒在忙、最親近你的。playing：正在跟別隻對打的也算（walkThen 會等牠打完再過去）
+  lifePets({ playing = false } = {}) {
+    const busy = ['held', 'fall', 'evolving', 'depart', ...(playing ? [] : ['move', 'duel'])];
+    return [...this.stage.pets.values()]
+      .filter(p => !p.leaving && !p.perch && !p.inBattle && (!p.reserved || p.uid === this.fruitBy) && !busy.includes(p.state))
+      .sort((a, b) => b.mon.affection - a.mon.affection);
+  }
+  placeFruit(berry, spot) {
+    const st = this.stage;
+    this.removeFruit();
+    this.fruitProp = new Prop(st, { kind: 'fruit', puff: berry, x: spot.x, y: spot.y, scale: 2, onClick: () => this.fruitClicked() });
+    st.props.push(this.fruitProp);
+    return this.fruitProp;
+  }
+  removeFruit() {
+    if (this.fruitProp) { this.fruitProp.life = this.fruitProp.t; this.fruitProp = null; }
+  }
+
+  // 走到 target 再做 arrive()：半路跌倒、被拎起來、被擋住，站起來以後繼續走（最多重走 tries 次）。
+  // 真的到不了（離開桌面、重走也不行、超過 60 秒）就呼叫 giveUp()。走的路上別隻不能把牠找走（reserved）
+  walkThen(p, target, arrive, { tries = 3, giveUp = () => {} } = {}) {
+    let left = tries, over = false, started = false;
+    const t0 = Date.now();
+    const end = ok => { if (over) return; over = true; clearInterval(timer); p.reserved = false; (ok ? arrive : giveUp)(); };
+    const onArr = () => end(true);
+    const go = () => { p.endPlay?.(); p.target = { ...target }; p.set('walk'); p.walkLimit = 45; p.onArrive = onArr; p.reserved = true; };
+    const timer = setInterval(() => {
+      if (!started) { // 正在跟別隻對打：等打完再出發（半路打斷會讓對手卡住）
+        if (p.leaving || Date.now() - t0 > 60_000) return end(false);
+        if (!['move', 'duel'].includes(p.state)) { started = true; go(); }
+        return;
+      }
+      if (p.onArrive === onArr && p.state === 'walk') return; // 還在走
+      if (p.leaving || !this.stage.pets.has(p.uid) || Date.now() - t0 > 60_000) return end(false);
+      if (['trip', 'held', 'fall', 'land'].includes(p.state)) return; // 等牠站起來
+      if (left-- > 0) go(); else end(false);
+    }, 400);
+    if (!['move', 'duel'].includes(p.state)) { started = true; go(); }
+  }
+
+  // 連續用電腦 90 分鐘：最親近的那隻把一顆樹果帶到游標下面的螢幕下緣，坐在旁邊等你
+  offerFruit(berry) {
+    const st = this.stage, S = st.S, spot = this.fruitSpot();
+    const p = this.lifePets()[0];
+    if (!p) { this.placeFruit(berry, spot); return; }
+    this.fruitOffering = true;
+    const b = p.bounds(), side = spot.x > st.W / 2 ? -1 : 1;
+    const target = { x: Math.max(b.x0, Math.min(b.x1, spot.x + side * (p.asset.w / 2 + 12) * S)), y: b.y1 };
+    const put = arrived => {
+      if (!this.fruitOffering) return;
+      this.fruitOffering = false;
+      if (!this.game.state.symbiosis.fruit) return; // 走過去的路上你就離開了、已經被吃掉
+      this.placeFruit(berry, spot);
+      st.fx.sparkles(spot.x, spot.y - 8 * S, S, 4, 8);
+      if (!arrived || p.leaving || p.perch) return; // 走不到：果實還是放好，牠就做自己的事
+      p.facing = spot.x > p.x ? 1 : -1;
+      p.set('sit', 30);
+      p.reserved = true; // 坐著等的時候別隻不能把牠找走
+      if (this.keeperTimer) clearTimeout(this.keeperTimer);
+      this.keeperTimer = setTimeout(() => { p.reserved = false; }, 30_000);
+      this.fruitBy = p.uid; // 測試用
+    };
+    this.walkThen(p, target, () => put(true), { giveUp: () => put(false) });
+  }
+
+  // 你離開了一下：大家走過去分著吃（你回來時看到的是吃完的樣子）
+  eatFruit(berry) {
+    const st = this.stage, S = st.S;
+    this.fruitOffering = false;
+    const prop = this.fruitProp ?? this.placeFruit(berry, this.fruitSpot());
+    this.fruitEating = true;
+    const eaters = this.lifePets({ playing: true }).slice(0, 4);
+    for (const p of eaters) p.reserved = false; // 在旁邊等的那隻也一起吃
+    const puff = `${BERRIES[berry] ?? 'sweet'}-basic`; // 碎屑的顏色跟樹果的味道一樣
+    let left = eaters.length;
+    const finish = () => {
+      if (!this.fruitEating) return;
+      this.fruitEating = false;
+      if (this.fruitProp === prop) this.removeFruit();
+      else prop.life = prop.t;
+    };
+    const done = () => { if (--left <= 0) setTimeout(finish, 1600); }; // 最後一隻吃完（吃 1.4 秒）
+    eaters.forEach((p, i) => {
+      const b = p.bounds(), side = i % 2 ? 1 : -1, dist = (p.asset.w / 2 + 10 + Math.floor(i / 2) * 16) * S;
+      const target = { x: Math.max(b.x0, Math.min(b.x1, prop.x + side * dist)), y: b.y1 };
+      this.walkThen(p, target, () => {
+        p.facing = prop.x > p.x ? 1 : -1;
+        p.startEat(puff);
+        st.fx.hearts(p.head().x, p.head().y, S);
+        done();
+      }, { giveUp: () => { (this.fruitGaveUp ??= []).push(p.uid); done(); } }); // fruitGaveUp：測試用
+    });
+    this.fruitEaters = eaters.map(p => p.uid); // 測試用
+    if (!eaters.length) setTimeout(finish, 500);
+  }
+
+  fruitClicked() {
+    // 你點了果實（回應，不算打擾）：說明一下，不催你
+    const p = this.stage.pets.get(this.fruitBy) ?? this.lifePets()[0];
+    if (p) p.showEmote('♪', 1.2);
+    this.ui?.toast('大家在等你離開電腦休息一下，回來就一起吃', { icon: art.berries[this.fruitProp?.puff] ?? art.berries.pecha });
+  }
+
+  // 今天又做到一件好事：花草長一點（只有閃一下，不出聲）
+  bloomed() {
+    const st = this.stage, S = st.S;
+    for (let i = 0; i < 5; i++) st.fx.sparkles(st.W * (0.1 + 0.2 * i), st.H - 6 * S, S, 2, 6);
+  }
+
+  // 昨天熬夜了：今天早上大家也有點累（只是動作，不扣任何東西、不說任何話）
+  yawnAll() {
+    this.lifePets().forEach((p, i) => setTimeout(() => {
+      if (p.leaving || p.perch || p.inBattle || p.reserved || ['held', 'fall', 'evolving', 'move', 'duel', 'eat', 'depart'].includes(p.state)) return;
+      p.endPlay?.(); // 正在玩的也先停下來打個哈欠
+      p.set('stretch', 1.4);
+      p.showEmote('Z', 2);
+    }, 800 + i * 500));
+  }
+  lifeAmbient(dt) {
+    if (!this.stage.env.tired || this.stage.env.focus) return;
+    this.yawnT = (this.yawnT ?? 0) + dt;
+    if (this.yawnT < 75) return; // 猜的，可調整
+    this.yawnT = 0;
+    const free = [...this.stage.pets.values()].filter(p => p.free && !p.partner && !p.perch);
+    const p = free[Math.floor(Math.random() * free.length)];
+    if (p) { p.set('stretch', 1.2); p.showEmote('Z', 1.6); }
   }
 
   // ---------- 出門旅行 ----------
@@ -1147,6 +1320,7 @@ export class Director {
         this.ui?.toast(`✦ ${m.zh}！${m.line}`, { icon: art.sparkle, kind: 'dex' });
       });
     });
+    g.on('symbiosis', ({ events }) => this.onLife(events));
     g.on('mood', ({ mood }) => { if (mood) this.moodChosen(mood); else this.refreshDay(); });
     g.on('achievement', ({ id }) => {
       const a = ACHIEVEMENTS.find(x => x.id === id);
