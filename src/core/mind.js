@@ -11,8 +11,8 @@
 
 export const NEEDS = ['food', 'energy', 'social', 'fun', 'curiosity', 'comfort'];
 export const NEED_ZH = { food: '肚子', energy: '體力', social: '想找人玩', fun: '開心', curiosity: '好奇心', comfort: '舒適' };
-export const CATEGORIES = ['rest', 'explore', 'play', 'social', 'habit', 'train', 'need'];
-export const CATEGORY_ZH = { rest: '休息', explore: '探索', play: '玩耍', social: '找朋友', habit: '習性', train: '練習', need: '找吃的' };
+export const CATEGORIES = ['rest', 'explore', 'play', 'social', 'habit', 'train', 'need', 'cursor'];
+export const CATEGORY_ZH = { rest: '休息', explore: '探索', play: '玩耍', social: '找朋友', habit: '習性', train: '練習', need: '找吃的', cursor: '跟滑鼠玩' };
 export const MOOD_ZH = { happy: '開心', calm: '平靜', lonely: '寂寞', bored: '無聊', sleepy: '想睡', grumpy: '不太高興' };
 
 export const MULT_MIN = 0.25;
@@ -122,6 +122,7 @@ export function satisfy(mind, category, { name = null, food = 100 } = {}) {
     case 'social': add('social', 30); mon.enjoyment = 3; break;
     case 'habit': add('curiosity', 12); mon.enjoyment = 3; break;
     case 'train': mon.enjoyment = 4; add('energy', -6); break;
+    case 'cursor': mon.enjoyment = 4; add('curiosity', 10); add('energy', -3); break;
     // 自己找到一點小樹果吃：只夠不餓，吃不飽（餵泡芙還是你的事）
     case 'need': if (food < 100) mon.fullness = 22; break;
     default: break;
@@ -166,12 +167,15 @@ export function weights(mind, lv, traits, ctx = {}) {
     habit: (def(lv.fun) + def(lv.curiosity)) * 0.4 + 0.1,
     train: def(lv.fun) * 0.4 + (lv.energy > 50 ? 0.15 : 0) + (ctx.rival ? 0.3 : 0),
     need: lv.food < 70 ? def(lv.food) * (0.8 + tr.greedy * 0.8) : 0,
+    // 跟你的游標玩：好奇、外向的比較愛玩，膽小的會躲；你不在電腦前就不玩
+    cursor: ctx.userActive ? ((def(lv.fun) * 0.6 + def(lv.curiosity) * 0.4) * (0.6 + tr.curious * 0.5 + tr.outgoing * 0.4) + 0.15) * (1 - tr.timid * 0.7) : 0,
   };
   const out = {};
   const { cat: sCat, n } = streakOf(mind);
   for (const c of CATEGORIES) {
     let m = 0.4 + urge[c] * 3; // 缺越多越想做
     if (c === 'need' && lv.food >= 70) m = MULT_MIN; // 不餓就不會去找吃的
+    if (c === 'cursor' && !ctx.userActive) m = MULT_MIN;
     if (c === sCat && n >= BORED_AFTER) m *= BORED_MULT; // 做膩了
     out[c] = clamp(m, MULT_MIN, MULT_MAX);
   }
@@ -188,6 +192,7 @@ export const REASONS = {
     calm: ['沒什麼事，發呆也不錯', '看看桌面，放空一下', '慢慢來，不急'],
   },
   explore: {
+    peeker: ['外面好像有誰在看？', '螢幕邊邊有東西！', '剛剛好像有誰探頭進來'],
     curiosity: ['好奇那邊有什麼', '那邊好像有東西，去看看！', '想到處走走，一直待著好悶', '剛剛好像聽到什麼聲音'],
     calm: ['隨便走走', '散個步', '換個地方待待看'],
   },
@@ -211,11 +216,17 @@ export const REASONS = {
     drive: ['想變得更強！', '來練習一下招式', '要多練習才會進步'],
     rival: ['上次輸給{name}，要多練習', '下次一定要贏{name}', '為了打贏{name}，練習！'],
   },
+  cursor: {
+    fun: ['那個箭頭在動！抓住它！', '好無聊…跟箭頭玩！', '箭頭跑來跑去，好好玩'],
+    curiosity: ['那個尖尖的是什麼？', '箭頭又出現了，去看看', '想知道箭頭會跑去哪裡'],
+    calm: ['你在忙嗎？我陪你', '靠過去看看你在做什麼', '在你旁邊待一下'],
+    memory: ['上次坐在箭頭旁邊被嚇到…這次要小心', '箭頭上次突然跑掉，這次要抓住', '記得箭頭會突然動，好刺激'],
+  },
   need: {
     food: ['肚子咕嚕叫，找找有沒有樹果', '好餓…附近應該有吃的', '想吃東西，去找找看', '肚子餓扁了'],
   },
 };
-const CITES = { energy: 'need', comfort: 'need', curiosity: 'need', fun: 'need', food: 'need', lonely: 'need', friend: 'relation', rival: 'relation', memory: 'memory' };
+const CITES = { peeker: 'memory', energy: 'need', comfort: 'need', curiosity: 'need', fun: 'need', food: 'need', lonely: 'need', friend: 'relation', rival: 'relation', memory: 'memory' };
 export const citesOf = key => CITES[key.split('.')[1]] ?? null;
 
 // 需求低於大約 60 就會在理由裡說出來（門檻是猜的，可以調）
@@ -237,6 +248,7 @@ export function reason(category, lv, rng, ctx = {}) {
     case 'habit': sub = lv.curiosity < 55 ? 'curiosity' : 'self'; break;
     case 'train': sub = other && other.rivalry >= 1 ? 'rival' : 'drive'; break;
     case 'need': sub = 'food'; break;
+    case 'cursor': sub = ctx.cursorSurprised ? 'memory' : lv.fun < 55 ? 'fun' : lv.curiosity < 65 ? 'curiosity' : 'calm'; break;
     default: sub = null;
   }
   if (category === 'social' && !sub) {

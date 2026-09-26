@@ -196,6 +196,7 @@ export class Stage {
     this.pointer.x = x;
     this.pointer.y = y;
     this.pointer.known = inside;
+    this.pointerMoved = true;
     const now = performance.now();
     this.trail.push({ x, y, t: now });
     while (this.trail.length > 6 || (this.trail.length > 1 && now - this.trail[0].t > 120)) this.trail.shift();
@@ -289,6 +290,9 @@ export class Stage {
   update(dt) {
     // 滑鼠停在同一隻身上多久（停 0.6 秒顯示想法泡泡）
     this.hoverT = this.hoverPet && this.hoverPet === this.lastHoverPet ? (this.hoverT ?? 0) + dt : 0;
+    // 游標停著不動多久了（舞台時間；坐到游標旁邊用）
+    this.pointerStill = this.pointerMoved || !this.pointer.known ? 0 : (this.pointerStill ?? 0) + dt;
+    this.pointerMoved = false;
     this.lastHoverPet = this.hoverPet;
     for (const p of this.pets.values()) p.update(dt);
     resolveCollisions(this, dt); // 夥伴之間不會互相穿過去

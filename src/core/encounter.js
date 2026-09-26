@@ -133,3 +133,13 @@ export function nextSpawnDelay(rate, ctx, rng, { dev = false } = {}) {
   if (ctx.returnedFromIdle) minutes = Math.min(minutes, rng.range(0.3, 0.7));
   return minutes * 60 * 1000;
 }
+
+// ---------- 探頭：野生寶可夢從螢幕邊緣只露出半個身體，慢慢靠近牠才會進來 ----------
+// 跟一般氣息點共用同一個出現時間（nextSpawnAt），不會讓野生寶可夢變多。
+// 每 3 次出現最多 1 次用探頭的方式：前 2 次都不是探頭，才有機會。
+export const PEEK_CHANCE = 0.5; // 猜的，可以調
+export function shouldPeek(recent, plan, rng) {
+  if (plan.special) return false; // 傳說、幻之寶可夢維持原本的出場方式
+  if (recent.slice(-2).includes('peek')) return false;
+  return rng() < PEEK_CHANCE;
+}

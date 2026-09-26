@@ -14,7 +14,8 @@ const REST_STATES = new Set(['sit', 'idle', 'sunbathe', 'chill', 'cuddle']);
 const NAME_CAT = {
   walk: 'explore', look: 'explore', dig: 'explore', slime: 'explore', soar: 'explore', perch: 'explore', down: 'explore',
   idle: 'rest', sit: 'rest', stretch: 'rest', shiver: 'rest', nap: 'rest', sunbathe: 'rest', chill: 'rest',
-  run: 'play', spin: 'play', dance: 'play', roll: 'play', follow: 'play', splash: 'play', ember: 'play', spark: 'play',
+  follow: 'cursor', pounce: 'cursor', chaseCursor: 'cursor', cursorSit: 'cursor',
+  run: 'play', spin: 'play', dance: 'play', roll: 'play', splash: 'play', ember: 'play', spark: 'play',
   bubbles: 'play', fade: 'play', teleport: 'play', shine: 'play', twirl: 'play',
   forage: 'need', sniff: 'need', hungry: 'need', beg: 'need',
   train: 'train',
@@ -65,7 +66,7 @@ export function levelsOf(pet) {
 export function weigh(pet, choices) {
   if (pet.stage.mindOff) return choices;
   const mind = ensureMind(pet);
-  const w = M.weights(mind, M.levels(mind, pet.mon), M.traitsOf(pet.mon.nature), { rival: Boolean(topRival(pet)) });
+  const w = M.weights(mind, M.levels(mind, pet.mon), M.traitsOf(pet.mon.nature), { rival: Boolean(topRival(pet)), userActive: Boolean(pet.stage.env.userActive) });
   return choices.map(([n, wt, f, cat]) => [n, wt * (w[cat] ?? 1), f, cat]);
 }
 
@@ -88,6 +89,7 @@ export function afterChoice(pet, [name, , , cat]) {
     other,
     recentFed: recall(mem, { k: 'fed', since: now - 10 * MIN }).length > 0,
     recentStroke: recall(mem, { k: 'stroked', since: now - 10 * MIN }).length > 0,
+    cursorSurprised: recall(mem, { k: 'cursor-surprised', since: now - 24 * 60 * MIN }).length > 0,
     playedWithOther: otherPet ? recall(mem, { k: 'played-with', with: otherPet.uid, since: now - 24 * 60 * MIN }).length > 0 : false,
   };
   const thought = M.reason(cat, lv, Math.random, ctx);
