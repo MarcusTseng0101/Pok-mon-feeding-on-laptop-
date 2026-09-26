@@ -401,12 +401,12 @@ export class Game {
   }
 
   // ---- 共生（core/symbiosis.js）----
-  // 每分鐘一次（畫面呼叫，也會在閒置變長時多呼叫幾次）：sig.idleSeconds＝上一次以來最長的閒置秒數。
+  // 每分鐘一次（畫面呼叫，也會在閒置變長時多呼叫幾次）：idleSeconds＝現在閒置幾秒、longestIdle＝上一次以來最長的閒置秒數。
   // 數值只在這裡加，而且只加不減（熬夜不扣任何東西）；畫面照回傳的事件演出
-  lifeTick({ idleSeconds = 0 } = {}) {
+  lifeTick({ idleSeconds = 0, longestIdle = 0 } = {}) {
     if (!this.state.starterChosen) return [];
     const home = this.homeMons();
-    const evs = Sym.tick(this.state.symbiosis, this.now(), { idleSeconds, pets: home.length > 0, busy: Boolean(this.state.focus.active) }, this.state.routine, this.rng);
+    const evs = Sym.tick(this.state.symbiosis, this.now(), { idleSeconds, longestIdle, pets: home.length > 0, busy: Boolean(this.state.focus.active) }, this.state.routine, this.rng);
     for (const e of evs) {
       if (e.type === 'presence') for (const m of home) m.xp += Sym.PRESENCE_XP;
       if (e.type === 'fruitEaten') {

@@ -22,7 +22,7 @@ export const FRUIT_GAIN = { fullness: 20, enjoyment: 10, affection: 1.5, xp: 2 }
 export const PRESENCE_XP = 2; // 每天第一次看到你（猜的，可調整）
 export const TIRED_UNTIL = 12 * 60 - 5 * 60; // 作息日的第幾分鐘以前還在累（12:00）
 export const FLOWERS_KEPT = 7;
-export const FRUIT_BERRIES = ['oran', 'pecha', 'sitrus', 'leppa']; // 畫面上的樣子，跟數值無關
+export const FRUIT_BERRIES = ['pecha', 'chesto', 'aspear', 'rawst', 'cheri']; // 畫面上的樣子（用現有的 art.berries），跟數值無關
 
 // 今天做到的好事：每一列一件，做到幾件，花草就長到幾級。
 // 要加新的連結（例如「你喝水了」）：加一列，再讓 Game 在那件事發生時呼叫 mark(sym, now, id)。
@@ -121,7 +121,8 @@ function keepFlower(s, day, level) {
 // 這個不存檔（normalize 會丟掉），重開 app 從頭算，不會一打開就有果實。
 const STALE_MS = 10 * 60_000;
 
-// sig：{ idleSeconds（上一次 tick 以來看到的最長閒置秒數，畫面負責記）, pets（桌面上有沒有夥伴）, busy（專注中：不放果實）}；routine：state.routine（看昨天幾點睡）
+// sig：{ idleSeconds（現在閒置幾秒：你在不在）, longestIdle（上一次 tick 以來最長的閒置秒數，畫面負責記：有沒有離開過）,
+//        pets（桌面上有沒有夥伴）, busy（專注中：不放果實）}；routine：state.routine（看昨天幾點睡）
 // 回傳事件（畫面照著演，Game 照著加數值）：
 //   { type: 'presence' }                 今天第一次看到你
 //   { type: 'tired' }                    昨天熬夜了，今天早上一起累
@@ -131,11 +132,12 @@ const STALE_MS = 10 * 60_000;
 export function tick(s, now, sig = {}, routine = null, rng = null) {
   const out = [];
   const idle = Number(sig.idleSeconds) || 0, active = idle < 60, pets = sig.pets !== false, busy = Boolean(sig.busy);
+  const away = Math.max(idle, Number(sig.longestIdle) || 0); // 這段時間離開最久的一次
   const day = routineDay(now), rec = dayRec(s, day);
 
   if (s.lastTickAt == null || now - s.lastTickAt > STALE_MS || now < s.lastTickAt) s.streakFrom = null;
   s.lastTickAt = now;
-  if (idle >= BREAK_IDLE) s.streakFrom = null;
+  if (away >= BREAK_IDLE) s.streakFrom = null;
   else if (active && s.streakFrom == null) s.streakFrom = now;
   const streak = s.streakFrom == null ? 0 : (now - s.streakFrom) / 1000;
 
@@ -153,7 +155,7 @@ export function tick(s, now, sig = {}, routine = null, rng = null) {
     }
   }
 
-  if (s.fruit && pets && idle >= BREAK_IDLE) {
+  if (s.fruit && pets && away >= BREAK_IDLE) {
     const berry = s.fruit.berry;
     s.fruit = null;
     rec.fruits = Math.min(FRUITS_PER_DAY, rec.fruits + 1);

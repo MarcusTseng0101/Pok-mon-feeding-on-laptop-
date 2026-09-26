@@ -425,8 +425,9 @@ export class ThrownBall {
 // ---------- 桌面上的小道具（誘餌泡芙、基格爾德核心） ----------
 export class Prop {
   // anchor()：每一幀重新算位置（信箱跟著秘密基地移動）；unread：信箱裡沒看的信
-  constructor(stage, { kind, x, y, puff = null, life = Infinity, onClick, anchor = null }) {
-    Object.assign(this, { stage, kind, x, y, puff, life, onClick, anchor });
+  // scale：比其他道具大幾倍（休息的果實畫大一點，一眼看得到）
+  constructor(stage, { kind, x, y, puff = null, life = Infinity, onClick, anchor = null, scale = 1 }) {
+    Object.assign(this, { stage, kind, x, y, puff, life, onClick, anchor, scale });
     this.unread = 0;
     this.t = 0;
     this.alpha = 0;
@@ -435,10 +436,11 @@ export class Prop {
   image() {
     if (this.kind === 'mailbox') return this.unread ? mail.mailbox.full : mail.mailbox.empty;
     if (this.kind === 'npc') return this.img; // 故事裡來拜訪的人（圖由外面給）
+    if (this.kind === 'fruit') return art.berries[this.puff] ?? art.berries.pecha; // 休息的果實（puff 放樹果的名字）
     return this.kind === 'cell' ? art.zygardeCell(this.t) : this.kind === 'note' ? cards.note : this.kind === 'letter' ? mail.envelope : art.puff(this.puff);
   }
   rect() {
-    const img = this.image(), S = this.stage.S;
+    const img = this.image(), S = this.stage.S * this.scale;
     let bob = this.kind === 'cell' || this.kind === 'letter' ? Math.round(Math.sin(this.t * 2)) * S : 0;
     if (this.kind === 'mailbox') bob = this.unread && Math.sin(this.t * 6) > 0.7 ? -S : 0; // 有信：輕輕跳
     return { x: Math.round(this.x - (img.width * S) / 2), y: Math.round(this.y - img.height * S + bob), w: img.width * S, h: img.height * S };
@@ -460,7 +462,7 @@ export class Prop {
   }
   draw(ctx) {
     const r = this.rect(), S = this.stage.S;
-    blit(ctx, this.image(), r.x, r.y, S, { alpha: this.alpha });
+    blit(ctx, this.image(), r.x, r.y, S * this.scale, { alpha: this.alpha });
     // 兩封以上：旗子旁邊寫數字
     if (this.kind === 'mailbox' && this.unread > 1) {
       const n = this.unread > 9 ? '9+' : String(this.unread);

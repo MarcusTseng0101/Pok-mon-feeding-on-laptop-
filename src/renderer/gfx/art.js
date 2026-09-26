@@ -266,6 +266,15 @@ export const key = fromMap(['.KKK....', 'KY.YKKKK', 'KY.YYYYK', '.KKKK.KK'], { K
 export const diamond = fromMap(['.KKK.', 'KWLLK', 'KLLLK', '.KLK.', '..K..'], { K: '#3a6a9a', W: '#ffffff', L: '#bfe8ff' });
 const FLOWER_COLORS = ['#ff5d8f', '#ffd84a', '#ffffff', '#7ab8ff', '#ff9d3a'];
 export const flowers = FLOWER_COLORS.map(c => fromMap(['.P.P.', 'PPYPP', '.PPP.', '..G..', '.GG..'], { P: c, Y: c === '#ffd84a' ? '#ff9d3a' : '#ffd84a', G: '#4a9a3a' }));
+// 螢幕下緣的花草（共生：今天做到的好事越多長得越多）
+const GRASS = { G: '#4a9a3a', L: '#7ad05a', D: '#2e6a2a' };
+export const tufts = [
+  fromMap(['.L...', '.G.L.', 'LG.G.', 'GDGDG'], GRASS),
+  fromMap(['...L..', '.L.G.L', '.G.GLG', 'GDGDGD'], GRASS),
+  fromMap(['..L.', 'L.G.', 'GLG.', 'DGDG'], GRASS),
+];
+// 過去每天留下的小花：做到 1／2／3 件好事的顏色
+export const dayFlowers = ['#ffffff', '#ffd84a', '#ff5d8f'].map(c => fromMap(['.P.', 'PYP', '.P.', '.G.', 'GG.'], { P: c, Y: c === '#ffd84a' ? '#ff9d3a' : '#ffd84a', G: '#4a9a3a' }));
 
 // ---------- 小遊戲 ----------
 // 樹果（顏色依原作：桃桃果粉紅、零餘果紫、利木果黃、莓莓果藍綠、櫻子果紅）

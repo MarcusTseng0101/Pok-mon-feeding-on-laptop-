@@ -337,7 +337,7 @@ export class Pet {
         break;
       case 'walk':
       case 'run': {
-        const speed = (this.state === 'run' ? RUN_SPEED : WALK_SPEED) * S * (st.env.calm ? 0.6 : 1); // 你說今天很累：大家走慢一點
+        const speed = (this.state === 'run' ? RUN_SPEED : WALK_SPEED) * S * (st.env.calm ? 0.6 : st.env.tired ? 0.75 : 1); // 你說今天很累、或昨天熬夜了（一起累）：大家走慢一點
         // 路被別隻擋住太久就放棄
         // 已經很近了（被別隻擋住最後幾步）就當作到了，不然放棄
         if (this.state === 'walk' && this.stateT > (this.walkLimit ?? 15)) {

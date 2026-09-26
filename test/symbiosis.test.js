@@ -231,3 +231,10 @@ test('Game：完成專注 → 花草長一級；同步兩份存檔各吃 3 顆 �
   const merged = mergeShared(a, b);
   assert.equal(merged.symbiosis.days[day].fruits, 3);
 });
+
+test('剛回來的第一次 tick：現在在（算「你出現了」），但這段時間離開過（果實被吃掉）', () => {
+  const s = Sym.defaultSymbiosis(), t0 = at(2026, 9, 26, 9);
+  use(s, t0, t0 + 95 * MIN);
+  const evs = Sym.tick(s, at(2026, 9, 27, 9), { idleSeconds: 2, longestIdle: 5000 });
+  assert.deepEqual(evs.map(e => e.type), ['presence', 'fruitEaten', 'bloom']);
+});
