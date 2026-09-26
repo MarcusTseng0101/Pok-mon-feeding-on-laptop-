@@ -11,6 +11,7 @@ import { meet } from './behaviors.js';
 import { knockFrom, knock } from './physics.js';
 import { duelHitChance } from '../../core/minigames.js';
 import { transform, endDuelForms } from './battleforms.js';
+import * as FX from './movefx.js';
 
 const T = art.TYPE_COLORS;
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -231,12 +232,21 @@ function lighten(hex, k = 0.45) {
 
 function burst(pet, x, y, colors, opts) { pet.stage.fx.burst(x, y, pet.S, colors, opts); }
 
-function impact(pet, def, at) {
-  const S = pet.S, c = def.c ?? [T[def.type], '#ffffff'];
+// 打中（原作風格：打擊火花、衝擊波、屬性碎片、頓一下、畫面震一下；效果絕佳更誇張）
+function impact(pet, def, at, eff = 1) {
+  const c = def.c ?? [T[def.type], '#ffffff'];
   burst(pet, at.x, at.y, c, { n: def.big ? 14 : 8, speed: def.big ? 80 : 55, spread: 6.3, g: 60, life: 0.5 });
-  if (def.big || def.heavy) pet.stage.fx.ring(at.x, at.y, S, c[0], 30);
-  else pet.stage.fx.stars(at.x, at.y, S, 3);
+  FX.impactFx(pet.stage, def, at.x, at.y, eff, { contact: def.kind === 'contact' });
   pet.stage.audio.sfx(def.kind === 'contact' ? 'land' : 'hit');
+}
+
+// 連續攻擊（猛推）的第 2、3 下：小一點的火花，不再頓
+function smallImpact(pet, def, at) {
+  const c = def.c ?? [T[def.type], '#ffffff'];
+  FX.hitSpark(pet.stage, at.x + rnd(-8, 8) * pet.S, at.y + rnd(-8, 8) * pet.S, c[1] ?? '#ffe066', 16);
+  burst(pet, at.x, at.y, c, { n: 5, speed: 70, spread: 6.3, g: 60, life: 0.35 });
+  pet.stage.shake(2, 0.12);
+  pet.stage.audio.sfx('hit');
 }
 
 function hit(pet) {
@@ -244,8 +254,8 @@ function hit(pet) {
   if (m.hitDone) return;
   m.hitDone = true;
   const at = targetPoint(m.target);
-  impact(pet, m.def, at);
   const eff = isPet(m.target) ? effectiveness(m.def.type, m.target.types) : 1;
+  impact(pet, m.def, at, eff);
   if (isPet(m.target)) m.target.flinchT = 0.4;
   // 擊退：衝撞最大力，擴散的會把旁邊的也一起推開；效果絕佳更遠、沒有效果不會動
   const power = { contact: 320, projectile: 220, beam: 200, line: 160, rain: 150, portal: 180, area: 260 }[m.def.kind] ?? 0;
@@ -271,6 +281,12 @@ export const MOVE_ACTIONS = {
       const t = pet.stateT, def = m.def, S = pet.S, c = def.c ?? [T[def.type], '#ffffff'];
       const from = pet.mouth(), to = targetPoint(m.target);
       if (isPet(m.target) && m.target.leaving) m.target = to;
+      // 蓄力：光從四周吸進嘴巴（擴散、替自己加能量的吸到身體中間）
+      if (def.kind !== 'contact' && t < 0.3) {
+        const at = ['area', 'self'].includes(def.kind) ? center(pet) : from;
+        FX.chargeUp(pet, at, c, dt);
+        if (!m.charged) { m.charged = true; FX.glow(pet.stage, at.x, at.y, c[0], (def.big ? 30 : 20) * S, { life: 0.4, grow: true, fadeIn: true, alpha: 0.6 }); }
+      }
       switch (def.kind) {
         case 'projectile': {
           const n = def.many ? 3 : 1;
@@ -281,25 +297,24 @@ export const MOVE_ACTIONS = {
             const extra = (n - m.emitted) * 0.08; // 同一串的後面幾發晚一點出發，一起到
             const L = Math.max(0.05, life - extra);
             const img = def.img ? def.img() : orb(c[0], c[1] ?? c[0], def.big ? 5 : 3);
-            pet.stage.fx.add({ img, x: from.x, y: from.y, vx: dx / L, vy: dy / L, life: L, fade: false });
+            FX.glow(pet.stage, from.x, from.y, c[0], (def.big ? 16 : 10) * S, { life: L, alpha: 0.55, vx: dx / L, vy: dy / L }); // 發光
+            pet.stage.fx.add({ img, x: from.x, y: from.y, vx: dx / L, vy: dy / L, life: L, fade: false, scale: def.big ? 2 : 1 });
+            if (m.emitted === 1) FX.hitSpark(pet.stage, from.x, from.y, c[1] ?? '#ffffff', def.big ? 14 : 10, 6); // 發射的瞬間
             // 大顆的旁邊加一圈小粒子
             if (def.big) for (let i = 0; i < 6; i++) pet.stage.fx.add({ rect: c[(i + 1) % c.length], size: S / 2, x: from.x + rnd(-6, 6) * S, y: from.y + rnd(-6, 6) * S, vx: dx / L, vy: dy / L, life: L });
           }
           // 飛行中留下一點尾巴
-          if (t > 0.35 && t < m.tl.hit && Math.random() < dt * 30) {
+          if (t > 0.35 && t < m.tl.hit && Math.random() < dt * 60) {
             const u = (t - 0.35) / Math.max(0.05, m.tl.hit - 0.35);
-            burst(pet, from.x + (to.x - from.x) * u, from.y + (to.y - from.y) * u, c, { n: 1, speed: 8, g: 0, life: 0.3 });
+            burst(pet, from.x + (to.x - from.x) * u, from.y + (to.y - from.y) * u, c, { n: def.big ? 3 : 2, speed: 14, spread: 6.3, g: 0, life: 0.35, size: S });
           }
           if (t > m.tl.hit) hit(pet);
           break;
         }
         case 'beam':
-          if (t > 0.3 && t < 1.0) {
-            for (let i = 0; i < 3; i++) {
-              const u = Math.random(), wig = def.zigzag ? (Math.random() - 0.5) * 12 * S : (Math.random() - 0.5) * 3 * S;
-              pet.stage.fx.add({ rect: c[i % c.length], size: S / 2 + (i === 0 ? S / 2 : 0), x: from.x + (to.x - from.x) * u + wig, y: from.y + (to.y - from.y) * u + wig, life: 0.12, fade: false });
-            }
-          }
+          // 光束本身在 drawOver 畫；打到以後目標那裡一直噴火花
+          if (t > m.tl.hit && t < 1.0 && Math.random() < dt * 40) burst(pet, to.x + rnd(-6, 6) * S, to.y + rnd(-6, 6) * S, c, { n: 2, speed: 90, spread: 6.3, g: 60, life: 0.35, size: S });
+          if (t > 0.3 && t < 1.0 && m.emitted === 0) { m.emitted = 1; FX.glow(pet.stage, from.x, from.y, c[0], 26 * S, { life: 0.75, alpha: 0.5 }); }
           if (t > m.tl.hit) hit(pet);
           break;
         case 'contact': {
@@ -319,9 +334,17 @@ export const MOVE_ACTIONS = {
           off.y = oy;
           if (def.jump) pet.z = t < T1 ? Math.sin((t / T1) * Math.PI * 0.9) * 40 : 0;
           if (def.trail && t < T1 && Math.random() < dt * 40) burst(pet, center(pet).x, center(pet).y, c, { n: 1, speed: 10, g: -10, life: 0.4 });
+          // 衝刺：身後留下殘影和速度線
+          if (t > 0.05 && t < T1) {
+            m.ghostT = (m.ghostT ?? 0) - dt;
+            if (m.ghostT <= 0) { m.ghostT = 0.045; FX.afterimage(pet); }
+            if (Math.random() < dt * 25) FX.streaks(pet);
+          }
+          if (def.slash && t > T1 && !m.slashed) { m.slashed = true; FX.slash(pet.stage, to.x, to.y, '#ffffff', { r: 26, dir: pet.facing, cross: true }); }
+          if (def.jump && t > T1 && !m.landed) { m.landed = true; FX.shockwave(pet.stage, pet.x, pet.gy, '#e0c090', 70, { flat: 0.35, thick: 4 }); }
           if (def.sneak && t < T1) pet.moveAlpha = 0.35; else pet.moveAlpha = 1;
           if (t > T1) hit(pet);
-          if (def.hits && t > T1 && t < T1 + 0.3 && Math.random() < dt * 12) impact(pet, def, to);
+          if (def.hits && t > T1 && t < T1 + 0.3 && Math.random() < dt * 12) smallImpact(pet, def, to);
           break;
         }
         case 'line':
@@ -333,7 +356,12 @@ export const MOVE_ACTIONS = {
           if (t > 0.2 && n < rings && n >= m.emitted) {
             m.emitted = n + 1;
             const cc = center(pet);
-            pet.stage.fx.ring(cc.x, def.ground ? pet.gy : cc.y, S, c[n % c.length], def.big ? 110 : 75);
+            FX.shockwave(pet.stage, cc.x, def.ground ? pet.gy : cc.y, c[n % c.length], def.big ? 120 : 85, { thick: def.big ? 6 : 4, flat: def.ground ? 0.35 : 0.8, inner: c[(n + 1) % c.length], life: 0.55 });
+            if (n === 0) {
+              if (!def.soft) FX.rays(pet.stage, cc.x, cc.y, c[0], def.big ? 140 : 100, { n: 16, life: 0.6 });
+              FX.glow(pet.stage, cc.x, cc.y, c[0], (def.big ? 80 : 55) * S, { life: 0.5, alpha: def.soft ? 0.35 : 0.6 });
+              if (def.ground || def.big) pet.stage.shake(def.big ? 5 : 4, 0.4);
+            }
           }
           if (t > 0.2 && t < 1.0 && Math.random() < dt * (def.soft ? 20 : 30)) {
             const cc = center(pet), a = Math.random() * Math.PI * 2;
@@ -349,13 +377,20 @@ export const MOVE_ACTIONS = {
         case 'rain':
           if (t > 0.3 && t < 1.1 && Math.random() < dt * 40) {
             const x = to.x + rnd(-24, 24) * S;
-            pet.stage.fx.add({ rect: pick(c), size: S, x, y: to.y - 90 * S, vy: 260 * S, life: 90 / 260, fade: false });
+            pet.stage.fx.add({ rect: pick(c), size: pick([2 * S, 3 * S]), x, y: to.y - 110 * S, vy: 320 * S, life: 110 / 320, fade: false });
+            FX.glow(pet.stage, x, to.y - 110 * S, c[0], 8 * S, { life: 110 / 320, alpha: 0.4, vy: 320 * S });
           }
           if (t > m.tl.hit) hit(pet);
           break;
         case 'self': {
           const cc = center(pet);
-          if (t > 0.2 && m.emitted < 3 && t > 0.2 + m.emitted * 0.35) { m.emitted++; pet.stage.fx.ring(cc.x, cc.y, S, pick(c), (pet.asset.w / 2) + 10); }
+          if (t > 0.2 && m.emitted < 3 && t > 0.2 + m.emitted * 0.35) {
+            m.emitted++;
+            FX.shockwave(pet.stage, cc.x, cc.y, pick(c), pet.asset.w / 2 + 16, { thick: 3, flat: 0.9, inner: '#ffffff' });
+            FX.glow(pet.stage, cc.x, cc.y, c[0], (pet.asset.w / 2 + 24) * S, { life: 0.5, alpha: 0.45 });
+          }
+          // 光柱往上升
+          if (t > 0.2 && t < 1.2 && Math.random() < dt * 30) pet.stage.fx.add({ rect: pick(c), size: S, x: cc.x + rnd(-1, 1) * (pet.asset.w / 2) * S, y: pet.gy, vy: -rnd(80, 160) * S, life: 0.5 });
           if (Math.random() < dt * 20) {
             if (def.img) pet.stage.fx.add({ img: def.img(), x: cc.x + rnd(-20, 20) * S, y: cc.y + rnd(-16, 16) * S, vy: -15 * S, life: 0.8 });
             else burst(pet, cc.x + rnd(-16, 16) * S, cc.y + rnd(-16, 16) * S, c, { n: 1, speed: 10, g: -15, life: 0.8 });
@@ -364,7 +399,8 @@ export const MOVE_ACTIONS = {
         }
         case 'portal': {
           if (t > 0.3 && t < 1.1 && Math.random() < dt * 20) burst(pet, to.x + rnd(-14, 14) * S, to.y + rnd(-14, 14) * S, c, { n: 1, speed: 20, spread: 6.3, g: 0, life: 0.4 });
-          if (def.rings && t > 0.3 && m.emitted < 3 && t > 0.3 + m.emitted * 0.15) { m.emitted++; pet.stage.fx.ring(to.x, to.y, S, pick(c), 26 - m.emitted * 6); }
+          if (def.rings && t > 0.3 && m.emitted < 3 && t > 0.3 + m.emitted * 0.15) { m.emitted++; FX.shockwave(pet.stage, to.x, to.y, pick(c), 34 - m.emitted * 8, { thick: 3, inner: '#ffffff' }); }
+          if (t > 0.3 && !m.portalGlow) { m.portalGlow = true; FX.glow(pet.stage, to.x, to.y, c[0], 40 * S, { life: 0.9, alpha: 0.5, grow: true, fadeIn: true }); }
           if (t > m.tl.hit) {
             if (!m.hitDone && def.flip && isPet(m.target)) m.target.flipT = 0.9; // 顛倒：對方倒過來一下
             hit(pet);
@@ -397,6 +433,18 @@ export const MOVE_ACTIONS = {
       const m = pet.moveCtx;
       if (!m) return;
       const S = pet.S, t = pet.stateT, def = m.def;
+      if (def.kind === 'beam') {
+        // 伸出去（0.3–0.45 秒）、維持、最後變細消失
+        const from = pet.mouth(), to = targetPoint(m.target);
+        const k = t < 0.3 ? 0 : Math.min(1, (t - 0.3) / 0.15);
+        const fade = t > 0.95 ? Math.max(0, 1 - (t - 0.95) / 0.15) : 1;
+        if (k > 0 && fade > 0) {
+          ctx.save();
+          ctx.globalAlpha = fade;
+          FX.drawBeam(ctx, from, to, S, def.c ?? [T[def.type], '#ffffff'], k, t, { zigzag: def.zigzag, width: (def.big ? 7 : 5) * fade });
+          ctx.restore();
+        }
+      }
       if (def.kind === 'line') {
         // 藤鞭／吐絲：伸出去再收回來
         const from = pet.mouth(), to = targetPoint(m.target);

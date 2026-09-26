@@ -292,7 +292,20 @@ export class Stage {
     this.draw();
   }
 
+  // ---------- 招式的演出：打中時停一下、畫面震一下 ----------
+  get calmFx() { return Boolean(this.game?.state.settings.calmFx); }
+  hitStop(sec) { this.stopT = Math.max(this.stopT ?? 0, sec); }
+  shake(power, sec = 0.25) {
+    if (this.calmFx) return;
+    this.shakeP = Math.max(this.shakeT > 0 ? this.shakeP : 0, power * this.S);
+    this.shakeT = Math.max(this.shakeT ?? 0, sec);
+    this.shakeDur = Math.max(this.shakeT, sec);
+  }
+
   update(dt) {
+    // 打中的瞬間：整個舞台放慢一下（原作的「頓一下」），畫面震動慢慢停
+    if (this.stopT > 0) { this.stopT -= dt; dt *= 0.12; }
+    if (this.shakeT > 0) this.shakeT = Math.max(0, this.shakeT - dt);
     // 滑鼠停在同一隻身上多久（停 0.6 秒顯示想法泡泡）
     this.hoverT = this.hoverPet && this.hoverPet === this.lastHoverPet ? (this.hoverT ?? 0) + dt : 0;
     // 游標停著不動多久了（舞台時間；坐到游標旁邊用）
@@ -336,8 +349,18 @@ export class Stage {
   }
 
   draw() {
-    const ctx = this.ctx, S = this.S;
+    const ctx = this.ctx;
     ctx.clearRect(0, 0, this.W, this.H);
+    const k = this.shakeT > 0 ? this.shakeT / this.shakeDur : 0;
+    const ox = k ? Math.round((Math.random() * 2 - 1) * this.shakeP * k) : 0, oy = k ? Math.round((Math.random() * 2 - 1) * this.shakeP * k * 0.6) : 0;
+    ctx.save();
+    if (ox || oy) ctx.translate(ox, oy);
+    this.drawScene();
+    ctx.restore();
+  }
+
+  drawScene() {
+    const ctx = this.ctx, S = this.S;
     if (this.hidden) { this.fx.draw(ctx, S); return; }
     this.baseView?.draw(ctx); // 秘密基地在最底層
     for (const d of this.decals) {

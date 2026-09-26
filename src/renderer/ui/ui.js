@@ -666,6 +666,7 @@ export class UI {
         <select data-bmonth><option value="">—</option>${Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}" ${s.birthday && +s.birthday.slice(0, 2) === i + 1 ? 'selected' : ''}>${i + 1} 月</option>`).join('')}</select>
         <select data-bday><option value="">—</option>${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${s.birthday && +s.birthday.slice(3) === i + 1 ? 'selected' : ''}>${i + 1} 日</option>`).join('')}</select></div>
       <label><input type="checkbox" data-set="muted" ${s.muted ? 'checked' : ''}> 靜音</label>
+      <label><input type="checkbox" data-set="calmFx" ${s.calmFx ? 'checked' : ''}> 減少閃光和畫面震動（招式的演出比較安靜）</label>
       <div>野生寶可夢出現頻率：${rates}</div>
       <label><input type="checkbox" data-set="showLauncher" ${s.showLauncher ? 'checked' : ''}> 顯示右下角的精靈球按鈕（隱藏後可從系統匣開啟選單）</label>
       <label><input type="checkbox" data-set="quiet" ${s.quiet ? 'checked' : ''}> 勿擾模式（收起所有寶可夢、暫停遭遇）</label>

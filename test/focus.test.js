@@ -80,3 +80,10 @@ test('專注：關掉遊戲再打開，進行中的專注還在（存檔會記�
   assert.deepEqual(back.focus.active, { startedAt: T0, minutes: 40 });
   assert.equal(migrate({ settings: { focusMinutes: 999 } }, dex, T0).settings.focusMinutes, 60);
 });
+
+test('設定「減少閃光和畫面震動」：預設關；只有 true 才算打開；讀回來一樣', () => {
+  assert.equal(defaultSave(T0).settings.calmFx, false);
+  assert.equal(migrate({ settings: { calmFx: 'yes' } }, dex, T0).settings.calmFx, false);
+  assert.equal(migrate({ settings: { calmFx: true } }, dex, T0).settings.calmFx, true);
+  assert.equal(migrate({}, dex, T0).settings.calmFx, false);
+});

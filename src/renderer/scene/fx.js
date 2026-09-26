@@ -56,6 +56,7 @@ export class Fx {
       const k = p.t / p.life;
       const alpha = p.fade ? Math.min(1, (1 - k) * 2) : 1;
       if (p.blink && Math.floor(p.t * 12) % 2) continue;
+      if (p.draw) { if (p.t >= 0) p.draw(ctx, p, k, S); continue; } // 自己畫的（招式的光、光束、打擊火花…）；t < 0 是還沒開始
       if (p.img) {
         const sc = S * (p.scale ?? 1);
         blit(ctx, p.img, p.x - (p.img.width * sc) / 2, p.y - (p.img.height * sc) / 2, sc, { alpha });
