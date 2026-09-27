@@ -109,16 +109,23 @@ function render(d) {
   $('.status').textContent = `更新於 ${time(d.at ?? Date.now())}・電腦上的 Kalos Amie 開著的時候才會更新`;
 }
 
+// 斷網也能用（sw.js，只在 HTTPS 下）：連不到電腦時，service worker 給上一次的 data.json，加一個 X-Kalos-Offline 標頭
+const hhmm = t => new Date(t).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
 async function load() {
   try {
     const res = await fetch('data.json', { cache: 'no-store' });
+    if (res.status === 404) { $('.status').textContent = '網址換了，請重新掃電腦上的 QR code'; return; }
     if (!res.ok) throw new Error(res.status);
-    render(await res.json());
+    const d = await res.json();
+    render(d);
+    if (res.headers.get('X-Kalos-Offline')) $('.status').textContent = `離線中，資料是 ${hhmm(d.at ?? Date.now())} 的・牠們照樣過日子，拍照也可以先存著`;
+    else if (typeof snapFlush === 'function') snapFlush(); // 連上電腦了：送出還沒送的
   } catch {
     if (last) render(last); // 牠們照樣過日子：用上次的生活表查現在
     $('.status').textContent = '連不到電腦（電腦關機、app 沒開，或手機不在同一個網路）';
   }
 }
+if (location.protocol === 'https:' && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
 load();
 setInterval(load, 60_000);

@@ -93,3 +93,17 @@ test('測試連線：GET https://<電腦>.ts.net/t/<token>/data.json；不是 ts
   assert.equal(down.ok, false);
   assert.match(down.error, /連不到/);
 });
+
+test('F26：sw.js 的 vendor 清單跟伺服器的白名單一樣；要存的頁面檔案 main.js 都有提供；快取名稱帶版本', async () => {
+  const { VENDOR } = await import('../src/main/phone.js');
+  const sw = readFileSync(new URL('../src/phone/sw.js', import.meta.url), 'utf8');
+  const vendorSw = JSON.parse(`[${/const VENDOR = \[([\s\S]*?)\];/.exec(sw)[1].replace(/'/g, '"').trim().replace(/,$/, '')}]`);
+  assert.deepEqual(vendorSw, VENDOR);
+  const page = JSON.parse(`[${/const PAGE = \[([\s\S]*?)\];/.exec(sw)[1].replace(/'/g, '"')}]`);
+  const main = readFileSync(new URL('../src/main/main.js', import.meta.url), 'utf8');
+  for (const f of page) if (f !== './' && f !== 'data.json') assert.match(main, new RegExp(`'${f.replace('.', '\\.')}': path\\.join`), f);
+  assert.match(main, /'sw\.js': path\.join\(phoneDir, 'sw\.js'\)/);
+  assert.match(sw, /const PAGE_CACHE = 'kalos-page-v\d+'/);
+  assert.match(sw, /const VENDOR_CACHE = 'kalos-vendor-tfjs4\.22\.0-cocossd2\.2\.3-v\d+'/);
+  assert.match(sw, /if \(k !== PAGE_CACHE && k !== VENDOR_CACHE\) await caches\.delete\(k\)/, '換版本時刪掉舊快取');
+});

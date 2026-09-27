@@ -52,13 +52,20 @@ test('選項跟電腦（core/checkin.js 的 SNAPS）一樣；生活表的字跟 
 
 test('F30：照片不離開手機（靜態檢查）', () => {
   const files = readdirSync(new URL('../src/phone/', import.meta.url)).filter(f => f.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['phone.js', 'snap.js']);
-  const code = files.map(f => read(`../src/phone/${f}`).replace(/^\s*\/\/.*$/gm, '')).join('\n');
-  assert.doesNotMatch(code, /FormData|XMLHttpRequest|sendBeacon|WebSocket|EventSource|navigator\.share/);
+  assert.deepEqual(files.sort(), ['phone.js', 'snap.js', 'sw.js']);
+  const strip = f => read(`../src/phone/${f}`).replace(/^\s*\/\/.*$/gm, '');
+  const code = ['phone.js', 'snap.js'].map(strip).join('\n'), sw = strip('sw.js');
+  assert.doesNotMatch(code + sw, /FormData|XMLHttpRequest|sendBeacon|WebSocket|EventSource|navigator\.share|postMessage/);
   assert.equal((code.match(/fetch\(/g) ?? []).length, 2);
   assert.match(code, /fetch\('data\.json'/);
-  assert.match(code, /fetch\('act', \{ method: 'POST', headers: \{ 'Content-Type': 'application\/json' \}, body: JSON\.stringify\(\{ kind, id: newId\(\), at: Date\.now\(\) \}\) \}\)/);
+  // 送出的 body 只有 kind、id、at（排隊的也一樣，F30）
+  assert.match(code, /fetch\('act', \{ method: 'POST', headers: \{ 'Content-Type': 'application\/json' \}, body: JSON\.stringify\(\{ kind: a\.kind, id: a\.id, at: a\.at \}\) \}\)/);
   assert.doesNotMatch(code, /randomUUID/, 'F25');
+  // 佇列只存 { kind, id, at }（照片不進佇列）
+  assert.match(code, /const a = \{ kind, id: newId\(\), at: Date\.now\(\) \};/);
+  // service worker 只管 GET，不送任何 body、不改請求
+  assert.match(sw, /if \(req\.method !== 'GET'\) return;/);
+  assert.doesNotMatch(sw, /method:|body:|\.formData\(|new Request\(/);
 });
 
 test('F33：不用 eval、WebAssembly；不連外部網址；模型從同一個小網站讀；CSP 沒有放寬', () => {
