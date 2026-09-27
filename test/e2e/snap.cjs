@@ -26,6 +26,7 @@ async function test({ page, shot: rawShot }, check) {
     while (stage.pets.size < 3 && Date.now() - t0 < 15000) await new Promise(r => setTimeout(r, 50));
     ui.modal.classList.add('hidden');
     director.nextSpawnAt = Infinity;
+    game.canDepart = () => false; // 測試中不要有夥伴自己去旅行（出發的那隻會跟別隻重疊、或不在家，跟這裡要測的無關）
     game.state.story.lastAt = Date.now() + 86_400_000;
     await ui.setPhone(true);
     const m = game.state.mons[1];

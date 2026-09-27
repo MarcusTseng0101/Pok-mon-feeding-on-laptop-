@@ -23,7 +23,8 @@ import { BaseView } from './scene/base.js';
 import { FURNITURE, STAGES } from '../core/base.js';
 import * as cards from './gfx/postcards.js';
 import { traceImg } from './gfx/traces.js';
-import { startLifeAct } from './scene/lifeacts.js';
+import { startLifeAct, busyWithLife, stopLifeAct } from './scene/lifeacts.js';
+import { endGroup } from './scene/social.js';
 import * as mail from './gfx/letters.js';
 import { StoryBattle } from './scene/battle.js';
 import * as A from '../core/attention.js';
@@ -43,6 +44,7 @@ const TYPING_COOLDOWN = 3 * 60 * 1000; // 猜的，可調整：不要一直跑�
 const LURE_MINUTES = 10;
 const TRACE_SEEN = 10 * 60; // 你在電腦前幾秒，痕跡就算看過了（猜的，可調整）
 // 拍照確認的事 → 桌面上那隻當下做的動作（scene/lifeacts.js）；休息沒有對應的動作，就交給生活（boostLife）
+const NO_HUDDLE = new Set(['held', 'evolving', 'depart', 'tripReturn', 'eat', 'sleep', 'nap', 'goIn', 'inside', 'goOut']); // 下雨時不會被叫過來的狀態
 const TOGETHER_ACT = { drink: ['sip', 5], read: ['read', 30], eat: ['munch', 5] };
 const EDGE = 24; // 拖到離螢幕左右邊緣幾 px 以內放開，就是帶牠出門（猜的，可調整）
 
@@ -783,7 +785,14 @@ export class Director {
   huddleUp() {
     const st = this.stage, S = st.S;
     if (!this.huddle || !W.isRainy(this.homeWeather())) return;
-    const pets = [...st.pets.values()].filter(p => p.free && !p.partner && !p.group && !p.perch && p.state !== 'sleep');
+    // 下雨了大家都過來：正在玩的（習性、追游標、一群一起玩、喝水看書…）也會停下來。
+    // 以前只找當下閒著的，但牠們大部分時間都在做事，常常一隻都沒來。不能打斷的：被抓著、進化、出門旅行、在吃你給的東西、在睡、坐在視窗上
+    const pets = [...st.pets.values()].filter(p => !p.leaving && !p.reserved && !p.perch && !p.inBattle && !NO_HUDDLE.has(p.state));
+    for (const p of pets) {
+      if (busyWithLife(p)) stopLifeAct(p);
+      if (p.group) endGroup(p.group, { happy: false });
+      p.endPlay?.();
+    }
     this.huddle.uids = pets.map(p => p.uid);
     pets.forEach((p, i) => {
       const b = p.bounds(), side = i % 2 ? 1 : -1, ring = 1 + Math.floor(i / 2);

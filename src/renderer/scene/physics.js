@@ -15,6 +15,7 @@ export function mass(pet) {
 // 這個狀態下不參與碰撞（被抓著、鑽在地下、半透明的鬼、騎在別隻背上…）
 function ghostly(p) {
   if (p.leaving || p.state === 'held' || p.state === 'appear' || p.state === 'evolving') return true;
+  if (p.state === 'depart' || p.state === 'tripReturn') return true; // 出發去旅行、旅行回來的路上：直直走，穿過別隻（推開會卡在半路）
   if (p.act?.intangible?.(p)) return true;
   if ((p.act?.sink?.(p) ?? 0) > 0.3) return true;
   if (p.habitName === 'ride' && p.state === 'habit') return true;
