@@ -3,6 +3,7 @@
 //   2. 三隻都累了：帳篷住得下 2 隻 → 2 隻鑽進去、第 3 隻去床上睡
 //   3. 在帳篷裡：看不見、點不到、滑鼠移過去沒有名字；偶爾從門口探頭；體力照樣恢復
 //   4. 睡飽了走出來（看得見、點得到）
+//   5. 晚上鑽進去的睡到早上才出來（時間到了也不出來，跟睡床一樣）
 const { run } = require('./lib.cjs');
 
 const holdRaf = () => {
@@ -107,6 +108,24 @@ const test = async ({ page, shot }, check) => {
   }, r.uid);
   check(out.states.includes('goOut') && out.alpha === 1, `沒有走出來：${JSON.stringify(out)}`);
 
+  // 5) 晚上鑽進去的：時間到了也不出來，睡到早上（跟睡床一樣）
+  const night = await page.evaluate(async uid => {
+    const { stage } = window.__kalos;
+    const p = stage.pets.get(uid);
+    const env = { ...stage.env };
+    stage.env.sleepy = true;
+    // 別隻先坐著、不找牠玩（強制把牠放進帳篷之前，先結束牠正在跟別隻做的事）
+    for (const o of stage.pets.values()) { o.meet = null; o.partner = null; o.group = null; if (o !== p) o.set('sit', 60); }
+    p.insideNight = true; p.peeking = 0; p.set('inside', 1);
+    for (let i = 0; i < 5 * 30; i++) stage.update(1 / 30);
+    const stillIn = p.state;
+    stage.env.sleepy = false; // 早上了
+    for (let i = 0; i < 2 * 30; i++) stage.update(1 / 30);
+    Object.assign(stage.env, env);
+    return { stillIn, morning: p.state };
+  }, r.uid);
+  check(night.stillIn === 'inside' && night.morning !== 'inside', `晚上沒有睡到早上：${JSON.stringify(night)}`);
+
   // 換回沙地
   await page.evaluate(() => { window.__holdRaf = false; });
   await page.click('.launcher');
@@ -114,7 +133,7 @@ const test = async ({ page, shot }, check) => {
   await page.click('.basepanel .floor button[data-basefloor="sand"]');
   const sand = await page.evaluate(() => window.__kalos.game.state.base.floor);
   check(sand === 'sand', `換不回沙地：${sand}`);
-  console.log(JSON.stringify({ park, r: { maxNow: r.maxNow, full: r.full, inside: r.inside.length, bed: r.bed.length, peek: r.peek, energy: [r.energy0, r.energy1] }, out }));
+  console.log(JSON.stringify({ night, park, r: { maxNow: r.maxNow, full: r.full, inside: r.inside.length, bed: r.bed.length, peek: r.peek, energy: [r.energy0, r.energy1] }, out }));
 };
 test.options = { init: holdRaf };
 run('tent', test);

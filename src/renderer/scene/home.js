@@ -72,6 +72,7 @@ export function goInside(pet, { night = false } = {}) {
     if (!roomInside(pet)) { pet.set('sit', rnd(3, 6)); return; } // 走到門口才發現住滿了
     pet.x = door.x; pet.gy = door.y;
     pet.insideFor = night ? rnd(30, 60) : rnd(15, 30); // 跟睡床一樣久
+    pet.insideNight = night; // 晚上鑽進去的：跟睡床一樣睡到早上才出來
     pet.set('goIn', 0.6);
   });
   return true;
@@ -87,7 +88,9 @@ export const TENT_ACTIONS = {
     update(pet, dt, done) {
       if (pet.peeking > 0) pet.peeking -= dt;
       else if ((pet.peekT -= dt) <= 0) { pet.peeking = PEEK; pet.peekT = rnd(8, 16); if (!pet.emote) pet.showEmote('Z', PEEK); } // 探頭看一下外面（猜的，可調整）
-      if (done) { pet.peeking = 0; pet.set('goOut', 0.6); }
+      // 白天小睡：時間到就出來；晚上：睡到早上（跟睡床的 sleep 一樣，env.sleepy 結束才醒）
+      const wake = pet.insideNight ? !pet.stage.env.sleepy : done;
+      if (wake) { pet.peeking = 0; pet.insideNight = false; pet.set('goOut', 0.6); }
     },
     pose(pet, p) { p.sx = 0.45; p.sy = 0.45; }, // 探頭的時候：站在門口裡面，比外面小（在後面；猜的，可調整）
     alpha: pet => (pet.peeking > 0 ? 1 : 0),
