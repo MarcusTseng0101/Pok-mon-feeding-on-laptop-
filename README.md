@@ -44,6 +44,7 @@ node test/e2e/attention.cjs    # 打擾額度：假時鐘模擬 8 小時，任�
 node test/e2e/phone.cjs        # 手機頁面：設定裡的網址和 QR code、真的小網站開在 127.0.0.1、手機大小的瀏覽器看得到信和明信片、暱稱裡的 HTML 原樣顯示、token 不對打不開
 node test/e2e/life.cjs         # 牠們自己的生活：午餐時間手機上寫的跟電腦算的一樣、斷線 30 分鐘照樣過、桌面上自己喝水看書吃東西（不跳通知、不一直重複）
 node test/e2e/snap.cjs         # 拍照一起做：真的模型猜杯子、空白照片不預選、改選讀書送出的是讀書、1 秒內手機上一起喝水、桌面上 hover 看得到因果、照片沒有離開手機、CSP 違規 0 次
+node test/e2e/offline.cjs      # 斷網也能用：本機 HTTPS 代理假裝 tailscale serve；設定裡測試連線、斷網重新整理還在、斷網拍照排隊、連回來送出（時間是按下去的那一刻）、清掉手機資料從電腦回來、換網址後舊的說網址換了
 node test/e2e/us.cjs           # 心情（選單最上面問、很累／很開心／壓力大的效果）、認識滿一週、中秋頭上的月亮、每週日的信
 node test/e2e/routine.cjs      # 作息：早上說早安、半夜打哈欠陪你（專注中不會）、專注兩小時慶祝
 node test/e2e/battle.cjs       # 道館對戰：館主點了才開打、選夥伴選招式打到贏、徽章與超級手環、上場就超級進化、認輸明天再來、傳說寶可夢抓到才算
@@ -471,6 +472,24 @@ X・Y 的主線節點，改成發生在你的桌面上（`src/core/story.js`）�
 3. 手機上打開 Tailscale（保持連線），點設定裡那個網址旁邊，換成它的 QR code 掃一次，加到主畫面
 4. 之後手機在外面用行動網路也打得開（電腦要開著、app 要開著）
 
+**在外面也能用：斷網也看得到牠們、拍照也能先存著**（Tailscale HTTPS＋service worker）
+
+![設定：在外面也能用](docs/screens/offline-settings.png)
+![手機斷網：離線中，牠們照樣過日子，小箭雀跟你一起喝水](docs/screens/offline-phone.png)
+
+1. 在 [Tailscale 的管理頁](https://login.tailscale.com/admin/dns) 打開 **MagicDNS** 和 **HTTPS 憑證**。
+2. 設定 →「在手機上看」→「在外面也能用」：照上面寫的，在**這台電腦的終端機**貼上那一行
+   `tailscale serve --bg --https=443 http://127.0.0.1:<連接埠>`（app 不會自己執行任何指令）。
+3. 貼上這台電腦的 Tailscale 網址（像 `https://laptop.tail1234.ts.net`），按「測試連線」。成功以後掃「在外面（HTTPS）」那個 QR code，**加到主畫面**。
+
+打開以後：
+- 頁面和牠們的生活表存在手機上。手機斷網、電腦關機，打開頁面還看得到牠們照真實時間在做什麼，最下面寫「離線中，資料是 HH:MM 的」。
+- 辨識照片的模型也存好了：斷網也能拍照、猜、一起做。確認的事先存在手機上，連回電腦就照順序送出；桌面上的時間是**你按下去的那一刻**，不是送到的時間（最多相信到 24 小時前）。
+- 重新產生網址以後，舊網址會寫「網址換了，請重新掃 QR code」，手機上存的東西也一起清掉。
+- **電腦才是唯一的資料來源**：手機上只存快取和還沒送出的事。iPhone 清掉資料（沒加到主畫面時 7 天沒打開會被清）也沒關係，連上電腦就全部回來；**只有還沒送出的事和照片會不見**。
+- 已知限制：斷網時手機上跟你一起做的是當時那一隻；如果連回電腦之前那一隻去旅行了，電腦會記成在家最親近的另一隻（手機連上以後照電腦的）。
+- 安全：只有打開這個選項，電腦才多聽 127.0.0.1（`tailscale serve` 會把請求轉到這裡）；不聽 0.0.0.0。從 127.0.0.1 進來的請求照樣要網址裡的密碼，不相信任何 Tailscale 或代理加的標頭。網址只收 `*.ts.net`（測試連線時網址裡帶著密碼，不能送到別的網站）。**不要用 Tailscale Funnel**（會把頁面公開到整個網路）。
+
 **安全**（`src/main/phone.js`）：
 - 預設關閉
 - 網址裡有一串 128-bit 的隨機密碼，沒有它一律 404；覺得外流了可以按「重新產生網址」，舊的馬上失效
@@ -645,7 +664,7 @@ src/main/                    Electron 主程序
   windows.js                 其他視窗的位置（Windows；只讀位置和大小，還沒接進遊戲）
   signals.js                 閒置時間、電源、CPU → 遭遇的「氣息」
   phone.js                   手機頁面的小網站（只監聽區網和 Tailscale、網址帶密碼；唯一的寫入是 POST act）
-src/phone/                   手機頁面本身（index.html、phone.js、phone.css；拍照一起做 snap.js、snap.css）
+src/phone/                   手機頁面本身（index.html、phone.js、phone.css；拍照一起做 snap.js、snap.css；斷網也能用 sw.js）
   vendor/                    手機上辨識照片用的 TensorFlow.js＋COCO-SSD（只給手機，電腦不載入；授權見 LICENSES.md）
   preload.cjs                給 renderer 的窄介面（contextIsolation + sandbox）
 src/core/minigames.js        小遊戲的計分與獎勵（純函式）

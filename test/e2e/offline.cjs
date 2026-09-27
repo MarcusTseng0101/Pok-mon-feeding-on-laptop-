@@ -104,6 +104,7 @@ async function test({ page, shot: rawShot }, check) {
     await page.waitForSelector('.settings [data-serve-status].ok', { timeout: 10000 });
     const set = await page.evaluate(() => ({ sel: document.querySelector('.settings .purl.sel')?.textContent, status: document.querySelector('[data-serve-status]').textContent }));
     check(/^在外面（HTTPS）：https:\/\/laptop\.tail1234\.ts\.net\/t\/[0-9a-f]{32}\/$/.test(set.sel ?? ''), `QR code 沒有換成 https 網址：${JSON.stringify(set)}`);
+    await page.evaluate(() => document.querySelector('.settings .serve').scrollIntoView({ block: 'end' }));
     await shot('offline-settings');
     await page.evaluate(() => document.querySelector('.window .close')?.click());
     snap = await page.evaluate(() => window.__kalos.director.pushPhone());
