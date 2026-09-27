@@ -1,6 +1,7 @@
 // 斷網也能用：手機頁面的 service worker（只在 HTTPS 下註冊，也就是 Tailscale 的「在外面也能用」）。
 //
-// - 頁面本身（html、js、css、字型）和 data.json：網路優先，連不到才用上一次存下來的（F26：連得到就一定是新的，不會卡在舊版）。
+// - 頁面本身（html、js、css、字型）和 data.json：網路優先，連不到（或電腦的 app 沒開、回 5xx）才用上一次存下來的
+//   （F26：連得到就一定是新的，不會卡在舊版）。
 //   用快取的 data.json 時加一個標頭 X-Kalos-Offline，手機頁面就寫「離線中，資料是 HH:MM 的」。
 // - 辨識照片用的 vendor 檔案（TensorFlow.js＋模型）：版本固定，存一次就一直用（VENDOR_CACHE 帶版本，換版本時刪掉舊的）。
 //   第一次打開就在背景存好，斷網也能拍照、猜、一起做。
@@ -66,6 +67,7 @@ self.addEventListener('fetch', e => {
     const key = new URL(name === '' ? './' : name, here);
     try {
       const r = await fetch(req, { cache: 'no-store' });
+      if (r.status >= 500) throw new Error(r.status); // 電腦的 app 沒開（tailscale serve 回 502）：跟斷網一樣
       if (r.status === 404 && (name === '' || name === 'data.json')) {
         await forget();
         return new Response(name === '' ? GONE : JSON.stringify({ gone: true }), { status: 404, headers: { 'Content-Type': name === '' ? 'text/plain; charset=utf-8' : 'application/json' } });

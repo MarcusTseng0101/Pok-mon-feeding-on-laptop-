@@ -99,6 +99,9 @@ export class UI {
     this.win.addEventListener('change', e => this.onPanelChange(e));
     this.win.addEventListener('input', e => this.onPanelInput(e));
     this.win.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches?.('[data-city]')) this.searchCity(); });
+    // 在外面也能用的網址：打到一半的字要留著（設定畫面重畫時不要被清掉）；按 Enter 就測試連線
+    this.win.addEventListener('input', e => { if (e.target.matches?.('[data-serve]')) this.serveDraft = e.target.value; });
+    this.win.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches?.('[data-serve]')) this.servePhone(e.target.value); });
     this.bubble = h('<div class="bubble hit pix hidden"></div>');
     this.bubble.onclick = e => this.onBubbleClick(e);
     this.encBar = h('<div class="encounter hit pix hidden"></div>');
@@ -254,7 +257,9 @@ export class UI {
   }
 
   refresh() {
-    if (this.panel) this.renderPanel();
+    // 你正在面板的文字框裡打字（城市、Tailscale 網址）：先不重畫，不然打到一半字和游標都會不見
+    const typing = this.win.contains(document.activeElement) && document.activeElement.matches('input:not([type]), input[type="text"]');
+    if (this.panel && !typing) this.renderPanel();
     if (this.director.enc && !this.director.enc.throwing && !this.encBar.classList.contains('hidden')) this.showEncounter(this.director.enc);
     if (this.bubblePet) this.renderBubble();
     this.applySettings();
@@ -957,12 +962,14 @@ export class UI {
   // 在外面也能用（Tailscale HTTPS）：app 只顯示指令、試連線，不執行 tailscale（src/main/phone.js）
   serveSettingsHtml() {
     const st = this.serveStatus;
+    const typed = this.win.querySelector('[data-serve]')?.value; // 重畫前畫面上打的字（還沒按測試連線）
+    if (typed != null && typed !== (this.phoneServe ?? '')) this.serveDraft = typed;
     return `<div class="serve"><b>在外面也能用（斷網也看得到、拍照也能先存著）</b>
       <p class="hint">1. 電腦和手機都裝 Tailscale、登入同一個帳號；在 Tailscale 的管理頁打開 MagicDNS 和 HTTPS 憑證。<br>
       2. 在這台電腦的終端機貼上這一行（app 不會自己執行）：</p>
       <code class="cmd">${esc(this.phoneCommand ?? '')}</code>
       <p class="hint">3. 貼上這台電腦的 Tailscale 網址，按「測試連線」。成功以後掃「在外面（HTTPS）」那個 QR code，加到主畫面。</p>
-      <div class="cityrow"><input data-serve maxlength="80" placeholder="https://你的電腦.xxxx.ts.net" value="${esc(this.phoneServe ?? '')}"><button data-act="servetest">測試連線</button>${this.phoneServe ? '<button data-act="servestop">關掉</button>' : ''}</div>
+      <div class="cityrow"><input data-serve maxlength="80" placeholder="https://你的電腦.xxxx.ts.net" value="${esc(this.serveDraft ?? this.phoneServe ?? '')}"><button data-act="servetest">測試連線</button>${this.phoneServe ? '<button data-act="servestop">關掉</button>' : ''}</div>
       ${st ? `<p class="hint ${st.ok ? 'ok' : 'warn'}" data-serve-status>${st.ok ? '連線成功：在外面也打得開了' : esc(st.error ?? '')}</p>` : ''}
     </div>`;
   }
@@ -974,6 +981,7 @@ export class UI {
     this.phoneServe = r.serve ?? null;
     this.phoneCommand = r.command ?? this.phoneCommand;
     this.serveStatus = base == null ? null : { ok: r.ok === true, error: r.error ?? null };
+    if (r.ok || base == null) this.serveDraft = null;
     const i = this.phoneUrls.findIndex(u => u.https);
     if (r.ok && i >= 0) this.phoneQr = i; // 成功：直接顯示 https 網址的 QR code
     if (this.panel === 'settings') this.renderPanel();
