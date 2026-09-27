@@ -28,6 +28,7 @@ run('habits', async ({ page }, check) => {
       for (const p of pets) {
         for (const [name, , start] of H.habitOptions(p, pets.filter(o => o !== p))) {
           for (const q of pets) { q.set('idle', 99); q.partner = null; q.habit = null; q.z = 0; }
+          stage.env.sleepy = false; // 半夜（01:00–06:00）跑測試的時候，做完習性會直接去睡（這裡只測習性本身會結束）
           start();
           runs++;
           let f = 0;

@@ -61,10 +61,12 @@ async function main() {
   const applyAudio = () => {
     const s = game.state.settings;
     const focusing = Boolean(game.state.focus.active); // 專注中：沒有音效、音樂小聲
-    audio.setVolumes({ music: s.musicVolume * (focusing ? 0.3 : 1), sfx: focusing ? 0 : s.sfxVolume, muted: s.muted });
+    // 有視窗全螢幕（看影片、簡報）：大家躲到角落，不出聲（director.hushed）
+    audio.setVolumes({ music: s.musicVolume * (focusing ? 0.3 : 1), sfx: focusing ? 0 : s.sfxVolume, muted: s.muted || Boolean(director.hushed) });
     api.updateTray({ muted: s.muted, quiet: s.quiet, focus: focusing, focusMinutes: s.focusMinutes });
   };
   ui.onSettings = applyAudio;
+  director.onHush = applyAudio;
   game.on('settings', applyAudio);
   game.on('focus', applyAudio);
   applyAudio();
@@ -82,7 +84,8 @@ async function main() {
   director.setSignals(await api.getSignals());
   api.on('signals', s => director.setSignals(s));
   api.on('display', () => stage.resize());
-  api.on('windows', list => stage.setWindows(list)); // 其他視窗的位置（寶可夢可以站在標題列上）
+  api.on('windows', list => { stage.setWindows(list); director.onWindows(list); }); // 其他視窗的位置（寶可夢可以站在標題列上；全螢幕）
+  api.on('screen', b => director.onScreen(b)); // 整個螢幕的範圍（分辨全螢幕和最大化）
 
   // ---- 開始 ----
   const away = game.catchUp();

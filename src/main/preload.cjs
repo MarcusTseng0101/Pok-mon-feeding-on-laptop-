@@ -1,7 +1,7 @@
 // renderer 只能透過這個窄窄的介面跟 main process 溝通
 const { contextBridge, ipcRenderer } = require('electron');
 
-const CHANNELS = ['cursor', 'signals', 'command', 'flush', 'display', 'windows'];
+const CHANNELS = ['cursor', 'signals', 'command', 'flush', 'display', 'windows', 'screen'];
 
 contextBridge.exposeInMainWorld('kalos', {
   platform: process.platform,
