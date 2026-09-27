@@ -1,6 +1,6 @@
 // 出門旅行的演出：走到螢幕邊緣、揮揮手、走出去；回來時從另一邊走進來，頭上頂著明信片。
 // 規則（能不能出發、帶什麼回來）在 core/trips.js；這裡只負責畫面。
-import { WALK_SPEED } from './behaviors.js';
+import { WALK_SPEED, RUN_SPEED } from './behaviors.js';
 import * as cards from '../gfx/postcards.js';
 import { blit } from '../gfx/pixel.js';
 
@@ -53,8 +53,10 @@ export const TRAVEL_ACTIONS = {
   tripReturn: {
     update(pet, dt) {
       const r = pet.returnTo;
-      if (!r || pet.moveTo(r.x, r.y, WALK_SPEED * pet.S * 1.2, dt)) {
+      // runHome：跟你出門回來，用跑的（core/outing.js）；旅行回來慢慢走
+      if (!r || pet.moveTo(r.x, r.y, (pet.runHome ? RUN_SPEED * 0.8 : WALK_SPEED * 1.2) * pet.S, dt)) {
         pet.returnTo = null;
+        pet.runHome = false;
         pet.showEmote('!', 1.2);
         pet.set('idle', 2);
       }

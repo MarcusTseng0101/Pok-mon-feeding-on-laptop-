@@ -17,7 +17,8 @@ import { habitNames } from '../scene/habits.js';
 import { describe as describeMind } from '../scene/mindlink.js';
 import { THOUGHT_HOVER } from '../scene/stage.js';
 import { NEEDS, NEED_ZH, MOOD_ZH } from '../../core/mind.js';
-import { PLACES, PLACE_IDS } from '../../core/trips.js';
+import { PLACES, PLACE_IDS, placeZh } from '../../core/trips.js';
+import { durationZh, minutesOut } from '../../core/outing.js';
 import { STAGES, FURNITURE, MATERIALS, enough, trophiesAllowed } from '../../core/base.js';
 import * as baseGfx from '../gfx/basegfx.js';
 import * as mail from '../gfx/letters.js';
@@ -341,8 +342,9 @@ export class UI {
       ${this.tripLine(m)}
       ${this.mindHtml(m)}
       <div class="actions">
-        ${m.out && this.game.tripStatus(m.uid) === 'away' ? ''
-          : m.out ? `<button data-act="recall">收回</button><button data-act="feed">餵泡芙</button>${this.game.canDepart(m.uid) ? '<button data-act="trip">讓牠去旅行</button>' : ''}`
+        ${m.outing ? '<button data-act="comeback" class="primary">回來了</button>'
+          : m.out && this.game.tripStatus(m.uid) === 'away' ? ''
+          : m.out ? `<button data-act="recall">收回</button><button data-act="feed">餵泡芙</button>${this.game.canDepart(m.uid) ? '<button data-act="trip">讓牠去旅行</button>' : ''}${this.game.canGoOut(m.uid) ? '<button data-act="goout">帶牠出門</button>' : ''}`
           : `<button data-act="sendout" ${out >= MAX_OUT ? 'disabled title="桌面上最多 6 隻"' : ''}>叫出來</button>`}
         ${m.species === 676 ? `<button data-act="trim" class="${this.trimOpen ? 'sel' : ''}">✂ 修剪</button>` : ''}
       </div>
@@ -386,6 +388,7 @@ export class UI {
 
   // 旅行中／回來了
   tripLine(m) {
+    if (m.outing) return `<p class="trip">👟 跟你出門中（${durationZh(minutesOut(m, Date.now()))}）。回來時點桌面上的紙條，或按「回來了」</p>`;
     const s = this.game.tripStatus(m.uid);
     if (s === 'home') return '';
     if (s === 'back') return '<p class="trip">✉ 旅行回來了！點桌面上的牠收下明信片</p>';
@@ -615,7 +618,7 @@ export class UI {
     const grid = root.querySelector('.grid');
     if (!g.postcards.length) grid.append(h('<p class="empty">還沒有明信片。夥伴有時候會自己出門旅行，也可以在夥伴頁讓牠去。</p>'));
     for (const p of [...g.postcards].reverse()) {
-      const el = h(`<button class="card" data-postcard="${esc(p.id)}"><b>${esc(PLACES[p.place].zh)}</b><small>${esc(p.name)}・${new Date(p.at).toLocaleDateString('zh-TW')}</small></button>`);
+      const el = h(`<button class="card" data-postcard="${esc(p.id)}"><b>${esc(placeZh(p.place))}</b><small>${esc(p.name)}・${new Date(p.at).toLocaleDateString('zh-TW')}</small></button>`);
       el.prepend(pixelImg(cards.postcard(p.place, p.seed), 2));
       grid.append(el);
     }
@@ -634,7 +637,7 @@ export class UI {
       ...Object.entries(gifts.materials ?? {}).map(([k, n]) => `${MATERIALS[k]}×${n}`),
     ].join('、') : '';
     this.modal.innerHTML = `<div class="dialog postcard hit pix"><h2></h2><div class="pic"></div><p class="diary"></p>${giftText ? '<p class="gifts"></p>' : ''}<p class="from"></p><div class="btns"><button data-yes class="primary">好</button></div></div>`;
-    this.modal.querySelector('h2').textContent = `來自${PLACES[p.place].zh}的明信片`;
+    this.modal.querySelector('h2').textContent = PLACES[p.place] ? `來自${PLACES[p.place].zh}的明信片` : '今天跟你出門';
     this.modal.querySelector('.pic').append(pixelImg(cards.postcard(p.place, p.seed), 5));
     this.modal.querySelector('.diary').textContent = `「${p.diary}」`;
     if (giftText) this.modal.querySelector('.gifts').textContent = `帶回來的東西：${giftText}`;
@@ -851,6 +854,8 @@ export class UI {
         this.renderPanel();
         return;
       }
+      case 'goout': if (this.director.takeOut(m.uid)) this.closePanel(); break;
+      case 'comeback': this.closePanel(); this.director.bringBack(m.uid); break;
       case 'trip':
         if (this.director.sendOnTrip(m.uid)) { this.toast(`${this.game.displayName(m)}出發去旅行了！`); this.closePanel(); }
         break;

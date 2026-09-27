@@ -28,6 +28,17 @@ function render(d) {
   for (const h of d.holidays ?? []) today.push(`今天是${h}`);
   $('.today').textContent = today.join('・');
 
+  // 跟你出門的那隻（最上面）：出門多久、一句話（天氣是設定的城市，所以說「家裡那邊」）
+  fill('outing', d.outing ? [d.outing].map(o => {
+    const e = el('div', 'trip');
+    const img = pic(d, o.pic);
+    if (img) e.append(img);
+    const t = el('div');
+    const h = Math.floor(o.minutes / 60), m = o.minutes % 60;
+    t.append(el('b', '', o.name), el('small', '', `出門 ${h ? `${h} 小時 ` : ''}${m} 分鐘`), el('span', 'line', o.line));
+    e.append(t);
+    return e;
+  }) : []);
   fill('pets', (d.pets ?? []).map(p => {
     const e = el('div', 'pet');
     const img = pic(d, p.pic);

@@ -28,6 +28,7 @@ import { mergeTogether } from './together.js';
 import { mergeMood } from './mood.js';
 import { mergeSymbiosis } from './symbiosis.js';
 import { mergeTrip, mergePostcards, mergeTripsDone } from './trips.js';
+import { mergeOuting } from './outing.js';
 
 export const SYNC_DIR = 'kalos-amie';
 export const DEVICE_RE = /^[a-z0-9]{6,32}$/;
@@ -120,6 +121,7 @@ function mergeMon(a, b) {
   m.tasteKnown = a.tasteKnown || b.tasteKnown;
   m.memory = mergeMemory(a.memory, b.memory); // 兩台電腦各自記得的事都留著
   m.trip = mergeTrip(a.trip, b.trip, new Set()); // 已經結算過的在 mergeShared 裡拿掉
+  Object.assign(m, mergeOuting(a, b)); // 跟你出門：比較新的那趟贏，已經回家的不會又出門
   return m;
 }
 
@@ -181,6 +183,10 @@ export function mergeShared(local, remote) {
   out.tripsDone = mergeTripsDone(local.tripsDone, remote.tripsDone);
   const tripsDone = new Set(out.tripsDone);
   for (const m of out.mons) if (m.trip && tripsDone.has(m.trip.id)) m.trip = null;
+  // 跟你出門：跟旅行互斥（旅行贏），一次只帶一隻（出門比較晚的那隻）
+  for (const m of out.mons) if (m.trip) m.outing = null;
+  const outings = out.mons.filter(m => m.outing).sort((x, y) => y.outing.since - x.outing.since || (x.uid < y.uid ? -1 : 1));
+  for (const m of outings.slice(1)) { m.outingDone = Math.max(m.outingDone ?? 0, m.outing.since); m.outing = null; }
   out.postcards = mergePostcards(local.postcards, remote.postcards);
   out.placesVisited = minMap(local.placesVisited, remote.placesVisited);
   out.base = mergeBase(local.base, remote.base); // 秘密基地：最後改的那一邊

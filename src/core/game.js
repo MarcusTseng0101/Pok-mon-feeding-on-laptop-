@@ -20,6 +20,7 @@ import * as R from './routine.js';
 import * as T from './together.js';
 import * as Mood from './mood.js';
 import * as Sym from './symbiosis.js';
+import * as Out from './outing.js';
 import { holidaysOn, HOLIDAYS } from './calendar.js';
 import { canMegaEvolve, KEY_ITEMS, STARTER_STONES, starterLine } from './items.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
@@ -147,6 +148,7 @@ export class Game {
     this.deliverLetters();
     this.maybeWeeklyLetter();
     this.checkTogether(); // 認識滿幾天
+    this.checkOutingOverdue();
     this.checkAchievements();
     this.emit('tick');
   }
@@ -390,7 +392,7 @@ export class Game {
   routineTick({ active = false, typing = false } = {}) {
     const now = this.now(), evs = R.tick(this.state.routine, now, { active, typing });
     if (!active || !this.state.starterChosen) return evs;
-    const out = this.outMons().filter(m => !m.trip).length > 0;
+    const out = this.outMons().filter(m => !m.trip && !m.outing).length > 0;
     const minute = R.minuteOf(now), day = R.routineDay(now);
     const holidays = this.holidaysToday();
     // 節日：那天第一次看到你時打招呼（一天一次）
@@ -669,6 +671,8 @@ export class Game {
       mind: createMind(this.rng),
       memory: [],
       trip: null,
+      outing: null, // 跟你出門中（core/outing.js）
+      outingDone: null,
     };
   }
 
@@ -718,8 +722,8 @@ export class Game {
   // ---- 旅行（core/trips.js）----
   tripStatus(uid) { return trips.tripStatus(this.mon(uid), this.now()); }
   canDepart(uid) { return trips.canDepart(this.state, uid); }
-  // 在家、在桌面上的（旅行中的不在桌面上；回來了還沒收明信片的會在桌面上）
-  homeMons() { return this.outMons().filter(m => trips.tripStatus(m, this.now()) !== 'away'); }
+  // 在家、在桌面上的（旅行中、跟你出門的不在桌面上；旅行回來了還沒收明信片的會在桌面上）
+  homeMons() { return this.outMons().filter(m => !m.outing && trips.tripStatus(m, this.now()) !== 'away'); }
 
   depart(uid, { curious = 0.5 } = {}) {
     if (!this.canDepart(uid)) return null;
@@ -765,6 +769,42 @@ export class Game {
     return result;
   }
 
+  // ---- 跟你出門（core/outing.js）----
+  canGoOut(uid) { return Out.canGoOut(this.state, uid); }
+  outingMon() { return Out.outingMon(this.state); }
+
+  goOut(uid) {
+    const o = Out.goOut(this.state, uid, this.now());
+    if (!o) return null;
+    this.emit('outingStart', { uid, since: o.since });
+    this.emit('party');
+    return o;
+  }
+
+  // 帶牠回家（在電腦上點紙條或夥伴頁的按鈕）。weather＝家裡那邊現在的天氣（寫進明信片）
+  //   出門 ≥ 20 分鐘：明信片放進相簿＋好感（跟摸一次一樣）；auto＝忘了帶回來、自己回家：不給明信片
+  comeBack(uid, { weather = null, auto = false } = {}) {
+    const mon = this.mon(uid);
+    const r = Out.comeBack(this.state, uid, this.now(), { weather, auto });
+    if (!r) return null;
+    if (r.postcard) {
+      r.postcard = { ...r.postcard, uid, name: this.displayName(mon) };
+      this.state.postcards = [...this.state.postcards, r.postcard].slice(-trips.POSTCARDS_KEPT);
+      const before = amie.hearts(mon.affection);
+      amie.addAffection(mon, r.affection);
+      this.afterAffection(mon, before);
+    }
+    this.emit('outingBack', { uid, ...r });
+    this.emit('party');
+    return r;
+  }
+
+  // 12 小時還沒帶回來：自己回家（Game.tick 每分鐘看一次）
+  checkOutingOverdue() {
+    const mon = Out.overdue(this.state, this.now());
+    return mon ? this.comeBack(mon.uid, { auto: true }) : null;
+  }
+
   // ---- 秘密基地（core/base.js）----
   basePlace(kind, x, y) {
     const r = baseRules.place(this.state, kind, x, y, this.now(), `${kind}${this.now().toString(36)}${Math.floor(this.rng() * 1e4).toString(36)}`);
@@ -779,7 +819,7 @@ export class Game {
   // ---- 信（core/letters.js）----
   // 誰來寫信：在桌面上、好感最高的
   letterWriter() {
-    const outs = this.outMons().filter(m => !m.trip);
+    const outs = this.outMons().filter(m => !m.trip && !m.outing);
     const list = outs.length ? outs : this.state.mons;
     return [...list].sort((a, b) => b.affection - a.affection || (a.uid < b.uid ? -1 : 1))[0] ?? null;
   }
@@ -961,6 +1001,7 @@ export class Game {
     const mon = this.mon(uid);
     if (!mon) return false;
     if (out && !mon.out && this.outMons().length >= MAX_OUT) return false;
+    if (!out && mon.outing) return false; // 跟你出門中：先帶牠回家
     mon.out = out;
     this.emit('party', { uid, out });
     return true;
