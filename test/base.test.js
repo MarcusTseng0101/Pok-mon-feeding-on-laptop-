@@ -130,3 +130,31 @@ test('心智：很累又有床的時候，比較不想在地上打瞌睡', async
   const bed = M.weights({ recent: [] }, lv, M.traitsOf('hardy'), { bedFree: true });
   assert.ok(bed.rest < noBed.rest * 0.5 && bed.base === noBed.base, JSON.stringify({ noBed, bed }));
 });
+
+test('地板：預設沙地、舊存檔讀進來也是沙地；換成遊樂園不用材料；不認識的地板不收；同步跟著基地走（最後改的那一邊）', () => {
+  const { g, tick } = game();
+  assert.equal(g.state.base.floor, 'sand');
+  const old = structuredClone(g.state.base); delete old.floor;
+  assert.equal(B.normalizeBase(old).floor, 'sand', '舊存檔');
+  assert.equal(B.normalizeBase({ ...old, floor: 'lava' }).floor, 'sand', '不認識的地板');
+  const mats = JSON.stringify(g.state.bag.materials);
+  tick(1000);
+  assert.equal(g.baseFloor('park'), true);
+  assert.equal(g.state.base.floor, 'park');
+  assert.equal(g.state.base.updatedAt, T0 + 1000);
+  assert.equal(JSON.stringify(g.state.bag.materials), mats, '不用材料');
+  assert.equal(g.baseFloor('park'), false, '一樣的不算改');
+  assert.equal(g.baseFloor('lava'), false);
+  assert.equal(B.normalizeBase(structuredClone(g.state.base)).floor, 'park', '存檔讀回來還是遊樂園');
+  // 另一台電腦比較晚改成沙地：用那一邊的
+  const other = structuredClone(g.state.base);
+  other.floor = 'sand'; other.updatedAt = T0 + 5000;
+  assert.equal(B.mergeBase(g.state.base, other).floor, 'sand');
+  assert.equal(B.mergeBase(other, g.state.base).floor, 'sand');
+});
+
+test('住的地方：可以鑽進去睡幾隻、門口在圖上的哪裡', () => {
+  assert.deepEqual(B.STAGES.map(s => s.sleeps), [2, 3, 4]);
+  for (const s of B.STAGES) assert.ok(Number.isInteger(s.door) && s.door > 0);
+  assert.deepEqual(B.FLOORS.map(f => f.id), ['sand', 'park']);
+});

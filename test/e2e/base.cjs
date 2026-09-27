@@ -1,6 +1,6 @@
 // v3 PR 4：秘密基地
 //   空地、帳篷點不到（滑鼠穿透），家具點得到；擺放模式放一張床、搬動桌子
-//   把一隻的體力設成 10 → 牠走去床上睡；晚上大家回基地睡
+//   把一隻的體力設成 10 → 牠鑽進帳篷睡；帳篷住滿了就走去床上睡；晚上大家回基地睡（鑽進帳篷、床上或擠在一起）
 const { run } = require('./lib.cjs');
 
 const holdRaf = () => {
@@ -57,9 +57,25 @@ const test = async ({ page, shot }, check) => {
   await page.mouse.click((await cellCss(0, 2)).x, (await cellCss(0, 2)).y);
   await page.mouse.move(640, 200);
 
-  // 3) 體力 10 → 走去床上睡
+  // 3) 體力 10 → 鑽進帳篷；帳篷住滿了（這裡暫時設成住 0 隻）→ 走去床上睡
+  const inTent = await page.evaluate(async () => {
+    const { stage } = window.__kalos;
+    const [a] = [...stage.pets.values()];
+    a.mon.mind.energy = 10;
+    a.set('idle', 0.05);
+    let inside = false;
+    for (let i = 0; i < 60 * 30 && !inside; i++) { stage.update(1 / 30); inside = a.state === 'inside'; if (i % 300 === 0) await new Promise(r => setTimeout(r, 0)); }
+    const door = stage.baseView.door();
+    const r = { inside, dist: Math.hypot(door.x - a.x, door.y - a.gy) };
+    a.set('idle', 0.05);
+    return r;
+  });
+  check(inTent.inside && inTent.dist < 5, `體力 10 沒有鑽進帳篷：${JSON.stringify(inTent)}`);
   const slept = await page.evaluate(async () => {
     const { stage, game } = window.__kalos;
+    const { STAGES } = await import('/src/core/base.js');
+    const sleeps = STAGES[0].sleeps;
+    STAGES[0].sleeps = 0; // 帳篷住滿了
     const [a] = [...stage.pets.values()];
     a.mon.mind.energy = 10;
     a.set('idle', 0.05);
@@ -69,11 +85,12 @@ const test = async ({ page, shot }, check) => {
       if (a.state === 'nap' && a.bedId) sawBed = { bed: a.bedId, x: a.x, gy: a.gy };
       if (i % 300 === 0) await new Promise(r => setTimeout(r, 0));
     }
+    STAGES[0].sleeps = sleeps;
     const bed = sawBed && game.state.base.items.find(i => i.id === sawBed.bed);
     const spot = bed && stage.baseView.spotOf(bed);
     return { sawBed, dist: spot ? Math.hypot(spot.x - sawBed.x, spot.y - sawBed.gy) : null, thoughts: a.mon.mind.thoughts.map(t => t.key) };
   });
-  check(slept.sawBed && slept.dist < 5, `體力 10 沒有去床上睡：${JSON.stringify(slept)}`);
+  check(slept.sawBed && slept.dist < 5, `帳篷住滿了，體力 10 沒有去床上睡：${JSON.stringify(slept)}`);
   check(slept.thoughts.some(k => k.startsWith('base.')), `沒有「回基地」的想法：${slept.thoughts}`);
 
   // 4) 晚上：大家回基地睡
@@ -85,13 +102,13 @@ const test = async ({ page, shot }, check) => {
     for (let i = 0; i < 70 * 30; i++) { stage.update(1 / 30); if (i % 300 === 0) await new Promise(r => setTimeout(r, 0)); }
     return pets.map(p => ({ home: stage.baseView.contains(p.x, p.gy, 20 * stage.S), state: p.state }));
   });
-  check(night.every(p => p.home && ['sleep', 'nap'].includes(p.state)), `晚上沒有回基地睡：${JSON.stringify(night)}`);
+  check(night.every(p => p.home && ['sleep', 'nap', 'inside'].includes(p.state)), `晚上沒有回基地睡：${JSON.stringify(night)}`);
   await page.evaluate(() => window.__kalos.stage.draw());
   await shot('base-night');
   await page.evaluate(() => window.__kalos.ui.open('base'));
   await page.waitForTimeout(400);
   await shot('base-panel');
-  console.log(JSON.stringify({ empty, overTent, overBed, placed, moved, slept, night }));
+  console.log(JSON.stringify({ empty, overTent, overBed, placed, moved, inTent, slept, night }));
 };
 test.options = { init: holdRaf };
 run('base', test);

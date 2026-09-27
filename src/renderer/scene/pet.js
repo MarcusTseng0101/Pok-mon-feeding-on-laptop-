@@ -16,7 +16,7 @@ import { integrateKnock } from './physics.js';
 import { updateForm, drawForm } from './battleforms.js';
 import { PERCH_ACTIONS, perchBounds, perchedChoices, perchOption } from './perching.js';
 import { tag, weigh, afterChoice, tickMind } from './mindlink.js';
-import { homeOptions, homeNight, exhausted } from './home.js';
+import { homeOptions, homeNight, exhausted, TENT_ACTIONS } from './home.js';
 import { TRAVEL_ACTIONS, startDepart, drawCarried } from './travel.js';
 import { traitsOf } from '../../core/mind.js';
 import { CURSOR_ACTIONS, cursorOptions, wantsToPounce, startPounce, besideCursor } from './cursor.js';
@@ -95,7 +95,7 @@ export class Pet {
   }
   get S() { return this.stage.S; }
   get types() { return this.stage.dex.get(this.mon.species).types; }
-  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state] ?? PERCH_ACTIONS[this.state] ?? CURSOR_ACTIONS[this.state] ?? TRAVEL_ACTIONS[this.state] ?? LIFE_ACTIONS[this.state]; }
+  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state] ?? PERCH_ACTIONS[this.state] ?? CURSOR_ACTIONS[this.state] ?? TRAVEL_ACTIONS[this.state] ?? LIFE_ACTIONS[this.state] ?? TENT_ACTIONS[this.state]; }
   // 圖的腳底在螢幕上的 y（含飄浮與離地高度，不含走路的上下晃動）
   get y() { return this.gy - (this.alt + this.z) * this.S; }
   restY() { return this.gy - this.alt * this.S; }

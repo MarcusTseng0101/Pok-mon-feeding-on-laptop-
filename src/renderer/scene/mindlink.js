@@ -8,7 +8,7 @@ import { recall, summary } from '../../core/memory.js';
 import { freeBeds } from './home.js';
 
 const MIN = 60_000;
-const SLEEP_STATES = new Set(['sleep', 'nap']);
+const SLEEP_STATES = new Set(['sleep', 'nap', 'inside']); // inside：鑽進住的地方睡（scene/home.js）
 const REST_STATES = new Set(['sit', 'idle', 'sunbathe', 'chill', 'cuddle']);
 
 // 選項名稱 → 類別。沒列出來的用來源預設（socialOptions → social、habitOptions → habit…）
@@ -19,7 +19,7 @@ const NAME_CAT = {
   run: 'play', spin: 'play', dance: 'play', roll: 'play', splash: 'play', ember: 'play', spark: 'play',
   bubbles: 'play', fade: 'play', teleport: 'play', shine: 'play', twirl: 'play',
   trip: 'trip', depart: 'trip',
-  goBed: 'base', goBase: 'base', homeNight: 'base',
+  goBed: 'base', goTent: 'base', goBase: 'base', homeNight: 'base',
   forage: 'need', sniff: 'need', hungry: 'need', beg: 'need', munch: 'need',
   sip: 'rest', read: 'rest', // 自己喝水、看書（scene/lifeacts.js）
   train: 'train',
