@@ -121,13 +121,19 @@ test('手機摘要：出門中的夥伴在 outing（最上面），不在「在�
   assert.equal(snap(g, t).postcards[0].place, '跟你出門');
 });
 
-test('F8：phoneAction 只是留著，不做任何事', () => {
+test('F8 → F15：phoneAction 只是留著，不做任何事；手機唯一的寫入是拍照確認後一起做（POST act），而且只收 { kind, id, at }', () => {
   const { g } = makeGame(at(2026, 9, 26, 9));
   const before = JSON.stringify(g.state);
   assert.equal(Out.phoneAction(g.state, { type: 'pet', uid: g.state.mons[0].uid }), null);
   assert.equal(JSON.stringify(g.state), before);
+  // 共生 v3（使用者決定開放少數寫入）：原本「沒有任何寫入的路由」改成「只有一條、而且照 F15 檢查」。
+  // 每一條限制的實際行為在 test/phoneact.test.js 用真的請求測；這裡守住「沒有第二條寫入的路」
   const phone = readFileSync(new URL('../src/main/phone.js', import.meta.url), 'utf8');
-  assert.ok(!/POST|PUT|req\.on\('data'/.test(phone), '手機頁面沒有寫入的路由');
+  assert.equal((phone.match(/req\.method === 'POST'/g) ?? []).length, 2, '只有 POST 的 token 檢查和 act 兩處');
+  assert.match(phone, /req\.method === 'POST' && m\[2\] === 'act'/);
+  assert.ok(!/'PUT'|'PATCH'|'DELETE'/.test(phone), '沒有其他寫入的方法');
+  assert.match(phone, /validAction\(JSON\.parse\(body\)\)/, '收到的東西一定經過 core/checkin.js 的 validAction');
+  assert.ok(!/state|mons|affection|fullness|save/i.test(phone.replace(/\/\/.*$/gm, '')), 'main/phone.js 不碰存檔和數值');
 });
 
 test('同步：since 比較新的贏；已經在一台電腦回家的，不會被另一台又拉出去；一次只帶一隻', () => {
