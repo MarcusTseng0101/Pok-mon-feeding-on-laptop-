@@ -1,6 +1,6 @@
 // 牠們自己的生活：跟你過一樣的日子（喝水、看書、吃東西、打盹、睡覺、玩、散步）。
 //
-// 「牠在某個時間在做什麼」是時間的純函式：activityAt(pet, t, ctx) 只看這隻的 uid（當種子）、性格、時間 t、你的作息（ctx）。
+// 「牠在某個時間在做什麼」是時間的純函式：activityAt(pet, t, ctx) 只看這隻的 uid（當種子）、性格、時間 t、你的作息和你確認過的事（ctx）。
 // 不是一步一步模擬出來的，所以手機和電腦在同一個時間一定算出一樣的答案（F20）；你不在的時候牠們也照樣過（動物森友會）。
 // 時間切成 10 分鐘一格，每一格用 hash(種子, 格子) 抽，不用 createRng 串流（串流的結果取決於之前抽過幾次）。
 //
@@ -26,16 +26,18 @@ const MEALS = [[12 * 60, 13 * 60], [18 * 60 + 30, 19 * 60 + 30]];
 const DRINK_EVERY = 9; // 醒著的時候每幾格喝一次水（9 格＝90 分鐘，猜的）
 
 // ---------- 你的作息 → 牠們的一天 ----------
-// 回傳 { sleepFrom, sleepTo }（當地時間的第幾分鐘，00:00＝0）
-export function lifeCtx(routine, now) {
+// 回傳 { sleepFrom, sleepTo }（當地時間的第幾分鐘，00:00＝0）；有跟你一起做的事時再加 together
+// together：[{ uid, act, from, until }]（core/checkin.js 的 spans）：那段時間那一隻在做跟你一樣的事
+export function lifeCtx(routine, now, together = []) {
   const u = routine ? usual(routine, now) : null;
-  if (!u) return { sleepFrom: SLEEP_FROM, sleepTo: SLEEP_TO };
+  const tg = together?.length ? { together } : {};
+  if (!u) return { sleepFrom: SLEEP_FROM, sleepTo: SLEEP_TO, ...tg };
   const clock = m => (((m + DAY_START) % 1440) + 1440) % 1440;
   const from = clock(u.last + BED_AFTER), to = clock(u.first - WAKE_BEFORE);
   const len = (to - from + 1440) % 1440;
   // 太短或太長（資料怪怪的）就用預設
-  if (len < 4 * 60 || len > 13 * 60) return { sleepFrom: SLEEP_FROM, sleepTo: SLEEP_TO };
-  return { sleepFrom: from, sleepTo: to };
+  if (len < 4 * 60 || len > 13 * 60) return { sleepFrom: SLEEP_FROM, sleepTo: SLEEP_TO, ...tg };
+  return { sleepFrom: from, sleepTo: to, ...tg };
 }
 
 const inRange = (m, a, b) => (a <= b ? m >= a && m < b : m >= a || m < b); // 可以跨過午夜
@@ -60,6 +62,10 @@ function hash01(seed, n, salt = 0) {
 export function activityAt(pet, t, ctx) {
   const slot = Math.floor(t / SLOT), start = slot * SLOT;
   const seed = seedOf(pet.uid);
+  // 跟你一起做的事最優先（你半夜喝水，牠也醒來一起喝）：這一格跟那段時間有重疊就算，同一格有好幾件取最晚開始的
+  let mine = null;
+  for (const g of ctx.together ?? []) if (g.uid === pet.uid && g.from < start + SLOT && g.until > start && (!mine || g.from > mine.from)) mine = g;
+  if (mine) return mine.act;
   const m = clockMinute(start + SLOT / 2); // 這一格中間是幾點
   if (inRange(m, ctx.sleepFrom, ctx.sleepTo)) return 'sleep';
   // 醒著：大約每 90 分鐘喝一次水（每隻錯開）

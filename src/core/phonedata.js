@@ -8,6 +8,7 @@ import { MILESTONES, daysTogether } from './together.js';
 import { holidaysOn, HOLIDAYS } from './calendar.js';
 import { hearts } from './amie.js';
 import { timeline, lifeCtx, ACT_ZH, CODE } from './life.js';
+import { spans } from './checkin.js';
 
 export const LETTERS_SHOWN = 20;
 const LIFE_ZH = Object.fromEntries(Object.entries(CODE).map(([act, c]) => [c, ACT_ZH[act]])); // 字 → 「在喝水」
@@ -21,7 +22,7 @@ export function phoneSnapshot(state, { now, nameOf, speciesName, spriteKeyOf, we
   const mons = state.mons ?? [];
   const home = mons.filter(m => m.out && !m.outing && !(m.trip && now < m.trip.returnAt));
   const out = outingMon(state);
-  const ctx = lifeCtx(state.routine, now);
+  const ctx = lifeCtx(state.routine, now, spans(state.symbiosis?.checkins ?? {})); // 跟你一起做的事也在生活表裡
   return {
     at: now,
     // 跟你出門的那隻（手機頁面最上面）：出門多久、一句話。沒有出門就沒有這個欄位

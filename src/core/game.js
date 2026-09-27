@@ -21,6 +21,7 @@ import * as T from './together.js';
 import * as Mood from './mood.js';
 import * as Sym from './symbiosis.js';
 import * as Life from './life.js';
+import * as CI from './checkin.js';
 import * as Out from './outing.js';
 import * as World from './world.js';
 import { holidaysOn, HOLIDAYS } from './calendar.js';
@@ -430,9 +431,42 @@ export class Game {
   }
   // ---- 牠們自己的生活（core/life.js）----
   // 這隻在 t 這個時間在做什麼（喝水、看書…）：時間的純函式，手機和桌面一樣
+  // 跟你一起做過的事（core/checkin.js）也算：那段時間牠在做跟你一樣的事
   lifeAt(uid, t = this.now()) {
     const m = this.mon(uid);
-    return m ? Life.activityAt(m, t, Life.lifeCtx(this.state.routine, t)) : null;
+    return m ? Life.activityAt(m, t, Life.lifeCtx(this.state.routine, t, CI.spans(this.state.symbiosis.checkins))) : null;
+  }
+
+  // ---- 拍照，一起做（core/checkin.js）----
+  // 跟你一起做的那一隻：跟你出門的那隻；沒出門就是在家、好感度最高的那隻
+  togetherMon() {
+    const out = this.outingMon();
+    if (out) return out;
+    return [...this.homeMons()].sort((a, b) => b.affection - a.affection || (a.uid < b.uid ? -1 : 1))[0] ?? null;
+  }
+  // action：伺服器檢查過的 { kind, id, at }（validAction）。回傳給手機 { ok, kind, name, line, until }。
+  // 不改任何數值，只記下「誰、幾點到幾點、一起做什麼」，算進今天做到的好事（F16：只加不減）。重複的 id 回一樣的話（F18）
+  snapTogether(action) {
+    if (!this.state.starterChosen || !action) return null;
+    const c = this.state.symbiosis.checkins;
+    const r = CI.apply(c, action, this.now(), this.togetherMon()?.uid ?? null);
+    if (!r) return null;
+    const mon = r.rec.uid ? this.mon(r.rec.uid) : null;
+    const name = mon ? this.displayName(mon) : null;
+    if (!r.dup) {
+      const link = CI.kindOf(r.rec.kind)?.link;
+      const bloom = link ? Sym.mark(this.state.symbiosis, r.rec.at, link) : null;
+      this.emit('together', { id: r.id, rec: r.rec, name });
+      if (bloom) this.emit('symbiosis', { events: [{ type: 'bloom', level: bloom }] });
+    }
+    return { ok: true, kind: r.rec.kind, name, line: name ? CI.replyLine(r.rec.kind, name) : null, until: r.rec.until };
+  }
+  // 桌面上的痕跡：最近一起做過的事（最多 3 個）＋文字
+  togetherTraces() {
+    return CI.recent(this.state.symbiosis.checkins, this.now()).map(r => {
+      const mon = r.uid ? this.mon(r.uid) : null;
+      return { ...r, trace: CI.kindOf(r.kind).trace, line: CI.traceLine(r, mon ? this.displayName(mon) : '牠們') };
+    });
   }
 
   symbiosisView() {
