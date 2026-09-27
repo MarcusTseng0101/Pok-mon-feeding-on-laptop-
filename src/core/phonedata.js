@@ -7,6 +7,7 @@ import { MOODS, moodToday } from './mood.js';
 import { MILESTONES, daysTogether } from './together.js';
 import { holidaysOn, HOLIDAYS } from './calendar.js';
 import { hearts } from './amie.js';
+import { buttons } from './checkin.js';
 
 export const LETTERS_SHOWN = 20;
 export const POSTCARDS_SHOWN = 8;
@@ -22,6 +23,7 @@ export function phoneSnapshot(state, { now, nameOf, speciesName, spriteKeyOf, we
     at: now,
     // 跟你出門的那隻（手機頁面最上面）：出門多久、一句話。沒有出門就沒有這個欄位
     ...(out ? { outing: { name: nameOf(out), since: out.outing.since, minutes: minutesOut(out, now), line: outingLine({ minutes: minutesOut(out, now), now, weather }), pic: spriteKeyOf(out) } } : {}),
+    checkins: buttons(), // 打卡的按鈕（core/checkin.js 的 CHECKINS 表；按下去送到 POST act）
     daysTogether: Number.isFinite(t.firstMet) ? daysTogether(t, now) : null,
     mood: mood ? { id: mood, zh: MOODS[mood].zh, emoji: MOODS[mood].emoji } : null,
     holidays: holidaysOn(now, { birthday: state.settings?.birthday, firstMet: t.firstMet }).map(id => HOLIDAYS[id].zh),

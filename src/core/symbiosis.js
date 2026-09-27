@@ -13,6 +13,7 @@
 // 從你的行為來的效果只加不減：熬夜不扣任何數值、不寫進記憶、沒有責怪的文字。
 // 這裡不用內建亂數、不讀時鐘：時間一律由參數 now 提供（測試要能重現）。
 import { routineDay, minuteOf, lateAfter, LATE_FALLBACK } from './routine.js';
+import { defaultCheckins, normalizeCheckins, mergeCheckins } from './checkin.js';
 
 export const FRUIT_AFTER = 90 * 60; // 連續操作幾秒給果實（猜的，可調整）
 export const BREAK_IDLE = 180; // 閒置幾秒算「離開了一下」（猜的，可調整）
@@ -24,30 +25,37 @@ export const TIRED_UNTIL = 12 * 60 - 5 * 60; // 作息日的第幾分鐘以前�
 export const FLOWERS_KEPT = 7;
 export const FRUIT_BERRIES = ['pecha', 'chesto', 'aspear', 'rawst', 'cheri']; // 畫面上的樣子（用現有的 art.berries），跟數值無關
 
-// 今天做到的好事：每一列一件，做到幾件，花草就長到幾級。
+// 今天做到的好事：每一列一件，做到幾件，花草就長到幾級（最多 MAX_BLOOM 級）。
 // 要加新的連結（例如「你喝水了」）：加一列，再讓 Game 在那件事發生時呼叫 mark(sym, now, id)。
+// 手機打卡（core/checkin.js）的 link 就是這裡的 id：meal、water、walk 是打卡才有的
 export const LINKS = [
   { id: 'rest', zh: '有休息' },
   { id: 'focus', zh: '完成一次專注' },
   { id: 'sleep', zh: '昨天準時睡' },
+  { id: 'meal', zh: '有好好吃飯' },
+  { id: 'water', zh: '有喝水' },
+  { id: 'walk', zh: '有出門走走' },
 ];
-export const MAX_BLOOM = LINKS.length;
+export const MAX_BLOOM = 3; // 花草的圖只有 3 級（renderer/scene/garden.js）
 
 // ---------- 存檔 ----------
-// days：{ 作息日: { fruits, rest, focus, sleep, seen } }；fruit：畫面上等著被吃的那一顆（同時只有一顆）
-// flowers：過去每天留下的小花 [{ day, level }]；tiredDay：哪一個作息日的早上在累
+// days：{ 作息日: { fruits, rest, focus, sleep, seen, 其他 LINKS（做到了才有） } }；fruit：畫面上等著被吃的那一顆（同時只有一顆）
+// flowers：過去每天留下的小花 [{ day, level }]；tiredDay：哪一個作息日的早上在累；checkins：手機打卡（core/checkin.js）
 export function defaultSymbiosis() {
-  return { days: {}, fruit: null, flowers: [], tiredDay: null };
+  return { days: {}, fruit: null, flowers: [], tiredDay: null, checkins: defaultCheckins() };
 }
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAYS_KEPT = 14;
 const bool = v => v === true;
+const BASE_LINKS = ['rest', 'focus', 'sleep']; // 一直都在的欄位；其他 LINKS 做到了才寫進去（舊存檔的樣子不變）
 function normalizeDay(d) {
-  return {
+  const out = {
     fruits: Math.max(0, Math.min(FRUITS_PER_DAY, Math.floor(Number(d?.fruits) || 0))),
     rest: bool(d?.rest), focus: bool(d?.focus), sleep: bool(d?.sleep), seen: bool(d?.seen),
   };
+  for (const l of LINKS) if (!BASE_LINKS.includes(l.id) && d?.[l.id] === true) out[l.id] = true;
+  return out;
 }
 export function normalizeSymbiosis(raw) {
   const s = defaultSymbiosis();
@@ -61,6 +69,7 @@ export function normalizeSymbiosis(raw) {
     .map(f => ({ day: f.day, level: Math.max(1, Math.min(MAX_BLOOM, Math.round(f.level))) }));
   s.flowers = dedupeFlowers(s.flowers);
   s.tiredDay = typeof raw.tiredDay === 'string' && DAY_RE.test(raw.tiredDay) ? raw.tiredDay : null;
+  s.checkins = normalizeCheckins(raw.checkins);
   return s;
 }
 function prune(s) {
@@ -79,17 +88,19 @@ export function mergeSymbiosis(a, b) {
   for (const k of new Set([...Object.keys(A.days), ...Object.keys(B.days)])) {
     const x = A.days[k] ?? normalizeDay(null), y = B.days[k] ?? normalizeDay(null);
     out.days[k] = { fruits: Math.max(x.fruits, y.fruits), rest: x.rest || y.rest, focus: x.focus || y.focus, sleep: x.sleep || y.sleep, seen: x.seen || y.seen };
+    for (const l of LINKS) if (!BASE_LINKS.includes(l.id) && (x[l.id] || y[l.id])) out.days[k][l.id] = true;
   }
   prune(out);
   out.fruit = A.fruit ?? null; // 畫面上的果實是這台電腦自己的
   out.flowers = dedupeFlowers([...A.flowers, ...B.flowers]);
   out.tiredDay = [A.tiredDay, B.tiredDay].filter(Boolean).sort().pop() ?? null;
+  out.checkins = mergeCheckins(A.checkins, B.checkins); // 同一天取 id 的聯集（F18）
   return out;
 }
 
 // ---------- 查詢 ----------
 const dayRec = (s, day) => (s.days[day] ??= normalizeDay(null));
-export const bloomOf = rec => (rec ? LINKS.filter(l => rec[l.id]).length : 0);
+export const bloomOf = rec => (rec ? Math.min(MAX_BLOOM, LINKS.filter(l => rec[l.id]).length) : 0);
 export const bloomToday = (s, now) => bloomOf(s.days[routineDay(now)]);
 export const fruitsToday = (s, now) => s.days[routineDay(now)]?.fruits ?? 0;
 // 現在夥伴是不是還在累（只影響走路和打哈欠）

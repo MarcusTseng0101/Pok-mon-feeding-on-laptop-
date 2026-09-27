@@ -20,6 +20,7 @@ import * as R from './routine.js';
 import * as T from './together.js';
 import * as Mood from './mood.js';
 import * as Sym from './symbiosis.js';
+import * as CI from './checkin.js';
 import * as Out from './outing.js';
 import * as World from './world.js';
 import { holidaysOn, HOLIDAYS } from './calendar.js';
@@ -427,6 +428,60 @@ export class Game {
     if (evs.length) this.emit('symbiosis', { events: evs });
     return evs;
   }
+  // ---- 手機打卡（core/checkin.js）----
+  // 做這件事的那一隻：跟你出門的那隻；沒出門就是在家、好感度最高的那隻
+  checkinMon() {
+    const out = this.outingMon();
+    if (out) return out;
+    return [...this.homeMons()].sort((a, b) => b.affection - a.affection || (a.uid < b.uid ? -1 : 1))[0] ?? null;
+  }
+  // action：伺服器檢查過的 { kind, id, at }（core/checkin.js 的 validAction）。
+  // 回傳給手機的東西 { ok, kind, uid, name, line, anim }；數值只在這裡加，而且只加不減（F16）。重複的 id 回一樣的話、不再加（F18）
+  checkin(action) {
+    if (!this.state.starterChosen || !action) return null;
+    const now = this.now(), c = this.state.symbiosis.checkins;
+    const give = (mon, { fullness = 0, enjoyment = 0, affection = 0, xp = 0 }) => {
+      const before = amie.hearts(mon.affection);
+      this.mindDelta(mon.uid, { fullness, enjoyment });
+      amie.addAffection(mon, affection);
+      mon.xp += xp;
+      this.afterAffection(mon, before);
+    };
+    if (action.kind === CI.VISIT) {
+      const who = this.checkinMon();
+      const r = CI.visit(c, now, who?.uid ?? null);
+      if (r.gain && who) give(who, { affection: CI.VISIT_AFFECTION });
+      return { ok: true, kind: CI.VISIT, uid: who?.uid ?? null, name: who ? this.displayName(who) : null, line: who ? CI.visitLine(this.displayName(who)) : null, anim: null };
+    }
+    const who = this.checkinMon();
+    const r = CI.apply(c, action, now, who?.uid ?? null);
+    if (!r) return null;
+    const mon = (r.rec.uid && this.mon(r.rec.uid)) || who;
+    const name = mon ? this.displayName(mon) : null;
+    if (!r.dup) {
+      if (r.rec.gain && mon) give(mon, CI.GAIN);
+      const link = CI.kindOf(r.rec.kind)?.link;
+      const bloom = link ? Sym.mark(this.state.symbiosis, r.rec.at, link) : null;
+      this.emit('checkin', { id: r.id, rec: r.rec, name });
+      if (bloom) this.emit('symbiosis', { events: [{ type: 'bloom', level: bloom }] });
+    }
+    return { ok: true, kind: r.rec.kind, uid: mon?.uid ?? null, name, line: name ? CI.replyLine(r.rec.kind, name) : null, anim: CI.kindOf(r.rec.kind)?.anim ?? null };
+  }
+  // 桌面上的痕跡：最近的打卡（最多 3 個）＋文字
+  checkinTraces() {
+    const now = this.now();
+    return CI.recent(this.state.symbiosis.checkins, now).map(r => {
+      const mon = r.uid ? this.mon(r.uid) : null;
+      return { ...r, trace: CI.kindOf(r.kind).trace, line: CI.traceLine(r, mon ? this.displayName(mon) : '牠們') };
+    });
+  }
+  // 你打開過手機頁面想著牠：下一次回到電腦，牠第一個發現你（用一次就清掉）
+  takeMissed() {
+    const c = this.state.symbiosis.checkins, m = c.missed;
+    c.missed = null;
+    return m?.uid ?? null;
+  }
+
   symbiosisView() {
     const s = this.state.symbiosis, now = this.now();
     return { fruit: s.fruit, bloom: Sym.bloomToday(s, now), flowers: Sym.pastFlowers(s, now), tired: Sym.isTired(s, now), fruitsToday: Sym.fruitsToday(s, now) };
