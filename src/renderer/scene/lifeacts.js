@@ -52,6 +52,10 @@ export function startLifeAct(pet, name, dur) {
   st.lifeLog?.push({ uid: pet.uid, name }); // 測試用
 }
 
+// 自己喝水、看書、吃東西到一半，被別的事叫走（下雨擠到游標旁邊…）：把杯子、書、碗收起來
+export const busyWithLife = pet => Object.hasOwn(LIFE_ACTIONS, pet.state);
+export function stopLifeAct(pet) { finish(pet); }
+
 function finish(pet) {
   if (pet.lifeProp) { pet.lifeProp.life = Math.min(pet.lifeProp.life, pet.lifeProp.t); pet.lifeProp = null; }
 }

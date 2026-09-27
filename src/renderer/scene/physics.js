@@ -15,6 +15,7 @@ export function mass(pet) {
 // 這個狀態下不參與碰撞（被抓著、鑽在地下、半透明的鬼、騎在別隻背上…）
 function ghostly(p) {
   if (p.leaving || p.state === 'held' || p.state === 'appear' || p.state === 'evolving') return true;
+  if (p.state === 'depart' || p.state === 'tripReturn') return true; // 出發去旅行、旅行回來的路上：直直走，穿過別隻（推開會卡在半路）
   if (p.act?.intangible?.(p)) return true;
   if ((p.act?.sink?.(p) ?? 0) > 0.3) return true;
   if (p.habitName === 'ride' && p.state === 'habit') return true;
@@ -119,7 +120,7 @@ const collides = (a, b) => sameLayer(a, b) && !together(a, b) && heightOverlap(a
 // 每一幀：把重疊的推開；跑太快撞在一起會彈開、被丟出去的會把別隻撞飛
 export function resolveCollisions(stage, dt) {
   const pets = [...stage.pets.values()].filter(p => !ghostly(p));
-  const now = performance.now();
+  const now = (stage.clock ?? 0) * 1000; // 舞台時間（毫秒）：快轉時碰撞的冷卻也照舞台的時間，不看真的時鐘
   const S = stage.S;
   for (let i = 0; i < pets.length; i++) {
     for (let j = i + 1; j < pets.length; j++) {

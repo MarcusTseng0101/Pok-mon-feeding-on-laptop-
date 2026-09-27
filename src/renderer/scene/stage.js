@@ -284,6 +284,7 @@ export class Stage {
   }
 
   update(dt) {
+    this.clock = (this.clock ?? 0) + dt; // 舞台時間（秒）：快轉時也照舞台的時間走（physics 的碰撞冷卻用）
     // 打中的瞬間：整個舞台放慢一下（原作的「頓一下」），畫面震動慢慢停
     if (this.stopT > 0) { this.stopT -= dt; dt *= 0.12; }
     if (this.shakeT > 0) this.shakeT = Math.max(0, this.shakeT - dt);

@@ -20,7 +20,7 @@ const valid = p => p && !p.leaving && p.state !== 'held' && p.state !== 'evolvin
 const CHAT_EMOTES = { happy: ['♪', '♥', '!'], calm: ['…', '♪', '?'], lonely: ['♥', '…'], bored: ['?', '…'], sleepy: ['Z', '…'], grumpy: ['💢', '…'] };
 
 // 一群一起玩的遊戲：group = { kind, members, ... }，每一隻的 pet.group 指向它
-function endGroup(g, { happy = true } = {}) {
+export function endGroup(g, { happy = true } = {}) {
   if (g.over) return;
   g.over = true;
   for (const p of g.members) {
