@@ -7,6 +7,7 @@
   <title>Kalos Amie</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="phone.css">
+  <link rel="stylesheet" href="snap.css">
   <script src="phone.js" defer></script>
 </head>
 <body>
@@ -19,6 +20,21 @@
     <section class="mail"><h2>信箱</h2><div class="list"></div></section>
     <section class="cards"><h2>明信片</h2><div class="list"></div></section>
     <section class="miles"><h2>我們的里程碑</h2><div class="list"></div></section>
+    <!-- 拍照，一起做（snap.js）：照片只在這支手機上猜、只存在這支手機上；送到電腦的只有「幾點、做什麼」 -->
+    <section class="snap">
+      <label class="shoot">📷 我現在…<input type="file" accept="image/*" capture="environment"></label>
+      <div class="guess" hidden>
+        <canvas class="photo"></canvas>
+        <p class="q"></p>
+        <div class="opts"></div>
+        <button type="button" class="go" disabled>一起做</button>
+      </div>
+      <p class="reply" aria-live="polite"></p>
+      <button type="button" class="done" hidden>讀完了</button>
+      <h2 class="album-title">今天一起做的事</h2>
+      <div class="album"></div>
+      <p class="note">照片只在這支手機上，不會送到電腦；想留著就按「存到手機相簿」。</p>
+    </section>
   </main>
   <footer><p class="status">讀取中…</p></footer>
 </body>

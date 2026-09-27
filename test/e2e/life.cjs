@@ -36,7 +36,7 @@ async function test({ page, shot: rawShot }, check) {
   const snap = await page.evaluate(() => window.__kalos.director.pushPhone());
   const { createPhoneServer } = await import(path.join(ROOT, 'src/main/phone.js'));
   const dir = path.join(ROOT, 'src/phone');
-  const server = createPhoneServer({ getSnapshot: () => snap, files: { '': path.join(dir, 'index.html'), 'phone.js': path.join(dir, 'phone.js'), 'phone.css': path.join(dir, 'phone.css'), 'font.woff2': path.join(ROOT, 'src/renderer/fonts/Cubic_11.woff2') } });
+  const server = createPhoneServer({ getSnapshot: () => snap, files: { '': path.join(dir, 'index.html'), 'phone.js': path.join(dir, 'phone.js'), 'phone.css': path.join(dir, 'phone.css'), 'snap.js': path.join(dir, 'snap.js'), 'snap.css': path.join(dir, 'snap.css'), 'font.woff2': path.join(ROOT, 'src/renderer/fonts/Cubic_11.woff2') } });
   const [u] = await server.start([{ address: '127.0.0.1', tailscale: false }], 39500 + Math.floor(Math.random() * 400));
   const phone = await page.context().browser().newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
   await phone.addInitScript(at => { const real = Date.now.bind(Date); const off = at - real(); window.__phoneClock = { off }; Date.now = () => real() + window.__phoneClock.off; }, setup.at + 30_000);

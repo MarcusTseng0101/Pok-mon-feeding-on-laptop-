@@ -90,6 +90,10 @@ async function test({ page, shot }, check) {
   const focus = await page.evaluate(async () => {
     const { game, director, stage } = window.__kalos;
     const { routineDay } = await import('../../src/core/routine.js');
+    // 撥時鐘到 15:00 以後，別的主動事件（撿到泡芙、星期日的信、主線的開場）會在某一次 tick 先用掉這一小時唯一的打擾額度，
+    // 慶祝就只能排隊——誰先到要看 tick 的時機，所以偶爾失敗。這裡只測「專注兩小時會慶祝」：額度設成不限制（額度本身在 attention.cjs 測）
+    const limit = game.state.settings.interruptions;
+    game.state.settings.interruptions = 'unlimited';
     const day = routineDay(Date.now());
     game.state.routine.days[day] = { ...(game.state.routine.days[day] ?? { first: 0, last: 0, typing: 0 }), focus: 100 };
     game.state.routine.focusDone = null;
@@ -97,7 +101,9 @@ async function test({ page, shot }, check) {
     window.__toasts.length = 0;
     director.finishFocus();
     await new Promise(r => setTimeout(r, 3000));
-    return { log: director.attnLog.slice(-6).map(e => [e.id, e.granted]), queue: (director.attnQueue ?? []).map(q => q.id), toasts: [...window.__toasts], toast: window.__toasts.find(t => /兩小時/.test(t)), dancing: [...stage.pets.values()].filter(p => p.state === 'dance').length };
+    const out = { log: director.attnLog.slice(-6).map(e => [e.id, e.granted]), queue: (director.attnQueue ?? []).map(q => q.id), toasts: [...window.__toasts], toast: window.__toasts.find(t => /兩小時/.test(t)), dancing: [...stage.pets.values()].filter(p => p.state === 'dance').length };
+    game.state.settings.interruptions = limit;
+    return out;
   });
   check(focus.toast && focus.dancing >= 1, `專注兩小時沒有慶祝：${JSON.stringify(focus)}`);
   await shot('routine-focus');
