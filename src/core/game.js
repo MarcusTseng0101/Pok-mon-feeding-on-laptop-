@@ -21,6 +21,7 @@ import * as T from './together.js';
 import * as Mood from './mood.js';
 import * as Sym from './symbiosis.js';
 import * as Out from './outing.js';
+import * as World from './world.js';
 import { holidaysOn, HOLIDAYS } from './calendar.js';
 import { canMegaEvolve, KEY_ITEMS, STARTER_STONES, starterLine } from './items.js';
 import { CHARM_AT, CHAIN_STEPS, advanceChain, breakChain, shinyChance } from './shiny.js';
@@ -405,8 +406,10 @@ export class Game {
   // ---- 共生（core/symbiosis.js）----
   // 每分鐘一次（畫面呼叫，也會在閒置變長時多呼叫幾次）：idleSeconds＝現在閒置幾秒、longestIdle＝上一次以來最長的閒置秒數。
   // 數值只在這裡加，而且只加不減（熬夜不扣任何東西）；畫面照回傳的事件演出
-  lifeTick({ idleSeconds = 0, longestIdle = 0 } = {}) {
+  //   watching＝這段時間有視窗全螢幕（看影片、簡報）：你在看螢幕，不算離開休息（core/world.js）
+  lifeTick({ idleSeconds = 0, longestIdle = 0, watching = false } = {}) {
     if (!this.state.starterChosen) return [];
+    ({ idleSeconds, longestIdle } = World.breakSignals({ idleSeconds, longestIdle, watching }));
     const home = this.homeMons();
     const evs = Sym.tick(this.state.symbiosis, this.now(), { idleSeconds, longestIdle, pets: home.length > 0, busy: Boolean(this.state.focus.active) }, this.state.routine, this.rng);
     for (const e of evs) {
