@@ -45,6 +45,7 @@ function pickWeighted(list) {
 }
 
 // 動畫播放速度（原作的待機動畫；走路、跑步時播快一點，看起來像在邁步）
+const TINY = 0.55; // 全螢幕時縮小到幾倍（猜的，可調整）
 const ANIM_SPEED = { walk: 1.5, approach: 1.5, walkTogether: 1.5, run: 2, chase: 2, flee: 2, chaseCursor: 2, pounce: 1.6, dance: 1.6, held: 1.4, sit: 0.7, sleep: 0.3, dizzy: 0.5, shiver: 2.5 };
 
 export class Pet {
@@ -193,6 +194,7 @@ export class Pet {
     this.act?.pose?.(this, p, k);
     if (this.flinchT > 0) p.ox += Math.floor(this.flinchT * 30) % 2 ? 2 : -2;
     if (this.squashT > 0) { const s = this.squashT / 0.18; p.sx *= 1 + 0.22 * s; p.sy *= 1 - 0.2 * s; }
+    if (this.stage.env.tiny) { p.sx *= TINY; p.sy *= TINY; } // 有視窗全螢幕：躲在角落、變小（director.js）
     return p;
   }
 
@@ -416,7 +418,8 @@ export class Pet {
         if (done) this.set('idle', 1.5);
         break;
       case 'sit':
-        if (near && st.env.userActive) this.facing = p.x > this.x ? 1 : -1;
+        if (this.t < (this.gazeWestUntil ?? 0)) this.facing = -1; // 看日落（director.js）：一直看著西邊
+        else if (near && st.env.userActive) this.facing = p.x > this.x ? 1 : -1;
         if (done) this.set('idle', 1);
         break;
       case 'sleep':

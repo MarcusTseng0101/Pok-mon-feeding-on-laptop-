@@ -127,13 +127,18 @@ function startWindowWatch() {
       return { x: d.x - b.x, y: d.y - b.y, width: d.width, height: d.height };
     },
   });
-  let last = '';
+  let last = '', lastScreen = '';
   const tick = async () => {
     if (!win || windowProbe.disabled) return;
     if (!trayState.quiet) {
       const list = await windowProbe.snapshot();
-      const key = JSON.stringify(list);
-      if (key !== last) { last = key; win?.webContents.send('windows', list); }
+      const key = JSON.stringify(list), changed = key !== last;
+      if (changed) { last = key; win?.webContents.send('windows', list); }
+      // 整個螢幕（含工作列）相對於我們視窗的位置：畫面用來分辨「全螢幕」和「最大化」（core/world.js）
+      const b = screen.getDisplayMatching(win.getBounds()).bounds, w = win.getBounds();
+      const scr = { x: b.x - w.x, y: b.y - w.y, width: b.width, height: b.height };
+      const skey = JSON.stringify(scr);
+      if (skey !== lastScreen || changed) { lastScreen = skey; win?.webContents.send('screen', scr); }
     }
     setTimeout(tick, 250);
   };

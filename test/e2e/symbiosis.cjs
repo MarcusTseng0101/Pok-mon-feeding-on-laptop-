@@ -57,10 +57,10 @@ async function test({ page, shot: rawShot }, check) {
   await page.waitForTimeout(1200);
   const fruit = await page.evaluate(() => {
     const { director, stage } = window.__kalos, f = director.fruitProp, p = stage.pets.get(director.fruitBy);
-    return f && { x: f.x, y: f.y, H: stage.H, pointer: stage.pointer.x, by: p && { state: p.state, dx: Math.round(Math.abs(p.x - f.x)), dy: Math.round(Math.abs(p.gy - f.y)), best: p.mon.affection } };
+    return f && { x: f.x, y: f.y, H: stage.H, pointer: stage.pointer.x, by: p && { state: p.state, dx: Math.round(Math.abs(p.x - f.x)), dy: Math.round(Math.abs(p.gy - f.y)), best: p.uid === window.__kalos.game.state.mons[0].uid } }; // best：是不是最親近的那隻（好感度會因為撥時鐘時的陪伴多一點點，所以比 uid）
   });
   check(fruit && Math.abs(fruit.x - fruit.pointer) < 60 && fruit.H - fruit.y < 20, `果實不在游標正下方的螢幕下緣：${JSON.stringify(fruit)}`);
-  check(fruit?.by && fruit.by.dx < 90 && fruit.by.dy < 20 && fruit.by.state === 'sit' && fruit.by.best === 200, `最親近的那隻沒有坐在果實旁邊：${JSON.stringify(fruit?.by)}`);
+  check(fruit?.by && fruit.by.dx < 90 && fruit.by.dy < 20 && fruit.by.state === 'sit' && fruit.by.best === true, `最親近的那隻沒有坐在果實旁邊：${JSON.stringify(fruit?.by)}`);
   await shot('symbiosis-fruit');
 
   // 2) 真的用滑鼠點果實

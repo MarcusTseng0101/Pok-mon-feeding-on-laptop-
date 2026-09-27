@@ -33,12 +33,15 @@ async function test({ page, shot }, check) {
 
   // 1) 早安
   await setClock(8, 0);
-  const greet = await page.evaluate(() => {
+  const greet = await page.evaluate(async () => {
     const { game, director, stage } = window.__kalos;
     game.state.routine.lastActiveAt = Date.now() - 5 * 3_600_000;
     const evs = director.routineTick();
     const again = director.routineTick();
-    return { evs, again, toast: window.__toasts.find(t => /早安/.test(t)), following: [...stage.pets.values()].filter(p => p.state === 'follow').length };
+    // （PR-F 以後）大家陸續發現你（0.5–4 秒），最親近的那一隻跑過來：等一下再數
+    let following = 0;
+    for (let i = 0; i < 50 && !following; i++) { await new Promise(r => setTimeout(r, 100)); following = [...stage.pets.values()].filter(p => p.state === 'follow').length; }
+    return { evs, again, toast: window.__toasts.find(t => /早安/.test(t)), following };
   });
   check(greet.evs.includes('greet') && greet.toast && greet.following >= 1, `早安不對：${JSON.stringify(greet)}`);
   check(!greet.again.includes('greet'), '同一個早上打了兩次招呼');

@@ -16,6 +16,8 @@ import * as art from './gfx/art.js';
 import { socialized } from '../core/mind.js';
 import { PLACES } from '../core/trips.js';
 import { FORGOT_LINE, POSTCARD_AFTER, durationZh } from '../core/outing.js';
+import * as W from '../core/world.js';
+import { startPerch } from './scene/perching.js';
 import { startDepart, startReturn } from './scene/travel.js';
 import { BaseView } from './scene/base.js';
 import { FURNITURE, STAGES } from '../core/base.js';
@@ -106,7 +108,7 @@ export class Director {
   // ttl：排隊多久還有意義（毫秒；Infinity＝一定要演）
   attentionOpts() {
     const s = this.game.state;
-    const blocked = Boolean(s.focus.active || s.settings.quiet || this.ui?.minigames?.active);
+    const blocked = Boolean(s.focus.active || s.settings.quiet || this.ui?.minigames?.active || this.hushed); // 全螢幕看影片的時候也不打擾
     const limit = A.limitOf(s.settings.interruptions);
     // 你說今天很累：額度降一級
     return { limit: this.game.moodToday() === 'tired' ? A.lowerLimit(limit) : limit, blocked };
@@ -250,16 +252,31 @@ export class Director {
     });
   }
 
+  // 你回來了：大家陸續發現（每隻過 0.5–4 秒，不會同一個畫面一起轉頭），只有最親近的那一隻跑過來（core/world.js）
   greetUser(text = '歡迎回來！夥伴們跑過來迎接你了') {
-    let greeted = 0;
-    for (const pet of this.stage.pets.values()) {
-      if (hearts(pet.mon.affection) >= 3 && pet.state !== 'held') {
-        pet.set('follow', 3);
-        pet.showEmote('♥', 2);
-        greeted++;
-      }
+    const st = this.stage;
+    // 正在為你做別的事的（守著果實、走過來陪你：reserved）不打斷
+    const pets = [...st.pets.values()].filter(p => !p.leaving && !p.inBattle && !p.reserved && !['held', 'evolving', 'depart', 'tripReturn', 'eat'].includes(p.state));
+    if (!pets.length) return;
+    const order = W.noticeOrder(pets.map(p => ({ uid: p.uid, affection: p.mon.affection })), this.rng);
+    this.greetOrder = order; // 測試用
+    for (const o of order) {
+      setTimeout(() => {
+        const p = st.pets.get(o.uid);
+        if (!p || p.leaving || p.inBattle || p.reserved || ['held', 'evolving', 'depart', 'tripReturn', 'eat', 'move', 'duel'].includes(p.state)) return;
+        p.facing = st.pointer.x > p.x ? 1 : -1;
+        if (o.run) {
+          p.endPlay?.(); p.group = null; p.perch = null;
+          p.set('follow', 3);
+          p.showEmote('♥', 2);
+        } else {
+          if (!p.partner && !p.group) p.set('look', 1.5);
+          p.showEmote('!', 1.2);
+        }
+        o.noticedAt = Date.now();
+      }, o.delay * 1000);
     }
-    if (greeted) this.ui?.toast(text);
+    this.ui?.toast(text);
   }
 
   // ---------- 夥伴同步 ----------
@@ -302,7 +319,7 @@ export class Director {
     this.stage.env.noApproach = this.game.state.settings.interruptions === '0' || this.stage.env.calm; // 完全不主動打擾、或你說今天很累：不跑來玩游標
     if (focusing && this.game.focusRemaining() <= 0) this.finishFocus();
     if (!focusing) this.typingReaction(now);
-    if (!quiet && !playing && !focusing && !this.stage.spot && !this.enc && !this.stage.battle && now >= this.nextSpawnAt && this.game.state.starterChosen) this.spawn();
+    if (!quiet && !playing && !focusing && !this.hushed && !this.stage.spot && !this.enc && !this.stage.battle && now >= this.nextSpawnAt && this.game.state.starterChosen) this.spawn();
     if (this.enc && !this.enc.throwing && now > this.enc.deadline) this.wildLeaves('等不及，自己跑走了…');
     if (this.lure && now > this.lure.until) {
       this.lure.prop.life = 0;
@@ -311,7 +328,7 @@ export class Director {
     }
     if (this.evolution) this.updateEvolution(dt);
     this.tripT = (this.tripT ?? 0) + dt;
-    if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); this.refreshOutings(); this.drainAttention(); this.refreshLife(); }
+    if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); this.refreshOutings(); this.drainAttention(); this.refreshLife(); this.refreshWorld(); }
     this.edgeHint();
     this.lifeAmbient(dt);
     if (!this.dayChecked) { this.dayChecked = true; this.refreshDay(); }
@@ -329,7 +346,9 @@ export class Director {
     const idle = this.signals?.idleSeconds ?? 0;
     const longestIdle = Math.max(this.maxIdle ?? 0, idle);
     this.maxIdle = idle;
-    const evs = this.game.lifeTick({ idleSeconds: idle, longestIdle }); // 事件從 game 的 'symbiosis' 來（見 bindGame）
+    const watching = Boolean(this.watchSeen || this.hushed); // 這段時間有視窗全螢幕：你在看螢幕，不是在休息
+    this.watchSeen = false;
+    const evs = this.game.lifeTick({ idleSeconds: idle, longestIdle, watching }); // 事件從 game 的 'symbiosis' 來（見 bindGame）
     this.refreshLife();
     return evs;
   }
@@ -625,6 +644,149 @@ export class Director {
       };
       arrived();
     });
+  }
+
+  // ---------- 牠們感受得到你的世界（core/world.js、core/sun.js）----------
+  // 其他視窗的位置、整個螢幕的範圍（只在 Windows 上有：F13，其他平台這些都不會啟動）
+  onWindows(list) { this.winList = Array.isArray(list) ? list : []; }
+  onScreen(b) { this.screenBounds = b && Number.isFinite(b.width) ? b : null; }
+
+  // 每秒一次
+  refreshWorld() {
+    const st = this.stage;
+    const watching = W.fullscreenNow(this.winList, this.screenBounds);
+    if (watching) this.watchSeen = true;
+    if (watching !== Boolean(this.hushed)) (watching ? this.hideAll() : this.unhideAll());
+    if (this.hushed || this.game.state.settings.quiet || !this.game.state.starterChosen) return;
+    this.rainTick();
+    this.awayTick();
+    this.sunsetTick();
+    st.env.away = W.isAway(this.signals?.idleSeconds ?? 0);
+  }
+
+  // 有視窗全螢幕（看影片、簡報）：大家躲到右下角、變小、不出聲；退出全螢幕就回來
+  hideAll() {
+    const st = this.stage, S = st.S;
+    this.hushed = true;
+    st.env.tiny = true;
+    this.onHush?.();
+    [...st.pets.values()].filter(p => !p.leaving && !['depart', 'tripReturn', 'held'].includes(p.state)).forEach((p, i) => {
+      p.endPlay?.(); p.group = null; p.perch = null; p.onArrive = null;
+      const b = p.bounds();
+      p.target = { x: b.x1 - 44 * S - i * 22 * S, y: b.y1 }; // 右下角（讓開選單的精靈球按鈕）
+      p.walkLimit = 20;
+      p.set('walk');
+      p.reserved = true;
+      p.onArrive = () => { p.facing = -1; p.set('sit', 3600); };
+    });
+  }
+
+  unhideAll() {
+    const st = this.stage;
+    this.hushed = false;
+    st.env.tiny = false;
+    this.onHush?.();
+    for (const p of st.pets.values()) if (p.reserved && (p.state === 'sit' || p.state === 'walk')) { p.reserved = false; p.onArrive = null; p.set('idle', 0.5 + Math.random()); }
+  }
+
+  // 下雨、打雷：沒事做的擠到游標旁邊躲雨（會走向你，所以要經過打擾額度；專注中不做），天晴了就散開
+  rainTick() {
+    const st = this.stage, rainy = W.isRainy(this.homeWeather());
+    if (rainy && !this.huddle && st.pointer.known) {
+      this.huddle = { at: Date.now(), uids: [] };
+      this.interrupt({ id: `rain:${new Date().toDateString()}:${new Date().getHours()}`, kind: 'ambient', ttl: 10 * 60_000 }, () => this.huddleUp());
+    }
+    if (!rainy && this.huddle) {
+      for (const uid of this.huddle.uids) {
+        const p = st.pets.get(uid);
+        if (!p || !p.huddling) continue;
+        p.huddling = false; p.reserved = false; p.onArrive = null;
+        if (['sit', 'walk', 'idle', 'trip'].includes(p.state)) { p.target = p.randomPoint(120, 300); p.set('walk'); } // 散開（還在走過去的也一樣）
+      }
+      this.huddle = null;
+    }
+  }
+
+  huddleUp() {
+    const st = this.stage, S = st.S;
+    if (!this.huddle || !W.isRainy(this.homeWeather())) return;
+    const pets = [...st.pets.values()].filter(p => p.free && !p.partner && !p.group && !p.perch && p.state !== 'sleep');
+    this.huddle.uids = pets.map(p => p.uid);
+    pets.forEach((p, i) => {
+      const b = p.bounds(), side = i % 2 ? 1 : -1, ring = 1 + Math.floor(i / 2);
+      p.target = { x: Math.max(b.x0, Math.min(b.x1, st.pointer.x + side * ring * 26 * S)), y: Math.max(b.y0, Math.min(b.y1, st.pointer.y + (40 + (i % 3) * 8) * S)) };
+      p.walkLimit = 30;
+      p.set('walk');
+      p.reserved = true;
+      p.huddling = true;
+      p.onArrive = () => { p.facing = st.pointer.x > p.x ? 1 : -1; p.set('sit', 600); p.showEmote('…', 1.5); };
+    });
+  }
+
+  // 你不在（閒置 10 分鐘以上）：醒著的偶爾自己玩鬼抓人（想睡的會自己回基地睡：env.sleepy）
+  awayTick() {
+    const st = this.stage;
+    if (!W.isAway(this.signals?.idleSeconds ?? 0)) { this.awayT = 0; return; }
+    this.awayT = (this.awayT ?? 0) + 1;
+    if (this.awayT % 20 !== 1) return;
+    const free = [...st.pets.values()].filter(p => p.free && !p.partner && !p.group && !p.perch && !['sleep', 'nap'].includes(p.state));
+    if (free.length < 2) return;
+    const [a, b] = free.sort(() => this.rng() - 0.5);
+    a.partner = b; b.partner = a;
+    a.set('chase', 4 + this.rng() * 3);
+    b.set('flee', a.dur);
+    st.fire('bond', a, b, 1);
+    (this.awayPlays ??= []).push([a.uid, b.uid]); // 測試用
+  }
+
+  // 日落前後 10 分鐘（設定的城市）：有空的走到最上層視窗的頂邊（沒有視窗就到螢幕下緣），排排坐面向西邊。一天一次
+  sunsetTick() {
+    const w = this.game.state.weather;
+    const place = w?.enabled && Number.isFinite(w.lat) ? { lat: w.lat, lon: w.lon } : null; // 沒設定城市就不做（不猜）
+    if (!W.sunsetDue(place, Date.now(), this.sunsetDay)) return;
+    this.sunsetDay = W.localDay(Date.now());
+    this.watchSunset();
+  }
+
+  watchSunset() {
+    const st = this.stage, S = st.S;
+    // 有空的（已經站在視窗上、正在往上跳的也算）；正在忙的（被拎著、招式、對打、吃東西、睡覺）不算
+    const busy = ['held', 'fall', 'evolving', 'move', 'duel', 'eat', 'sleep', 'depart', 'tripReturn', 'appear'];
+    const pets = [...st.pets.values()].filter(p => !p.leaving && !p.inBattle && !p.reserved && !busy.includes(p.state)).sort((a, b) => a.x - b.x);
+    if (!pets.length) return [];
+    const top = st.windows[0];
+    const ledge = top && st.ledges.filter(l => l.hwnd === top.hwnd && l.x1 - l.x0 >= pets.length * 30 * S && l.y > 60 * S).sort((a, b) => (b.x1 - b.x0) - (a.x1 - a.x0))[0];
+    const x0 = ledge ? ledge.x0 : 0, x1 = ledge ? ledge.x1 : st.W;
+    const gap = Math.min(40 * S, (x1 - x0) / (pets.length + 1));
+    const mid = (x0 + x1) / 2;
+    this.sunsetSeats = pets.map((p, i) => {
+      const x = mid + (i - (pets.length - 1) / 2) * gap;
+      p.sunsetSit = true;
+      p.endPlay?.(); p.group = null;
+      if (ledge && p.perch?.hwnd === ledge.hwnd) { // 已經站在這個視窗上：沿著頂邊走過去
+        p.target = { x, y: ledge.y }; p.walkLimit = 30; p.set('walk'); p.onArrive = () => this.sitForSunset(p);
+        return { uid: p.uid, x, y: ledge.y, onWindow: true };
+      }
+      if (ledge) { p.perch = null; p.perchJump = null; p.z = 0; startPerch(p, ledge, x); return { uid: p.uid, x, y: ledge.y, onWindow: true }; }
+      const b = p.bounds();
+      p.perch = null; p.perchJump = null;
+      p.target = { x: Math.max(b.x0, Math.min(b.x1, x)), y: b.y1 };
+      p.walkLimit = 30;
+      p.set('walk');
+      p.onArrive = () => this.sitForSunset(p);
+      return { uid: p.uid, x, y: b.y1, onWindow: false };
+    });
+    return this.sunsetSeats;
+  }
+
+  // 面向西邊（畫面的左邊）坐好，看一陣子
+  sitForSunset(p) {
+    if (!p.sunsetSit) return;
+    p.sunsetSit = false;
+    p.facing = -1;
+    p.set('sit', 90);
+    p.gazeWestUntil = p.t + 90; // 坐著的時候不轉頭看游標
+    p.showEmote('…', 2);
   }
 
   noteClicked(uid) {
@@ -1102,7 +1264,7 @@ export class Director {
       this.refreshOutings();
     });
     st.on('duelResult', (w, l) => this.game.duelResult(w.uid, l.uid));
-    st.on('perched', () => { this.game.state.stats.perches++; });
+    st.on('perched', pet => { this.game.state.stats.perches++; if (pet?.sunsetSit) this.sitForSunset(pet); });
     // 超級進化、牽絆變身（只是演出，不會存檔）
     st.on('formChange', (pet, form) => {
       if (pet.duel && !pet.inBattle) { if (form) pet.stage.fx.hearts(pet.x, pet.head().y, pet.S, 2); return; } // 夥伴自己切磋時變身：不跳通知
