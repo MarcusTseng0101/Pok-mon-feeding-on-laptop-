@@ -20,6 +20,7 @@ import * as R from './routine.js';
 import * as T from './together.js';
 import * as Mood from './mood.js';
 import * as Sym from './symbiosis.js';
+import * as Life from './life.js';
 import * as Out from './outing.js';
 import * as World from './world.js';
 import { holidaysOn, HOLIDAYS } from './calendar.js';
@@ -427,6 +428,13 @@ export class Game {
     if (evs.length) this.emit('symbiosis', { events: evs });
     return evs;
   }
+  // ---- 牠們自己的生活（core/life.js）----
+  // 這隻在 t 這個時間在做什麼（喝水、看書…）：時間的純函式，手機和桌面一樣
+  lifeAt(uid, t = this.now()) {
+    const m = this.mon(uid);
+    return m ? Life.activityAt(m, t, Life.lifeCtx(this.state.routine, t)) : null;
+  }
+
   symbiosisView() {
     const s = this.state.symbiosis, now = this.now();
     return { fruit: s.fruit, bloom: Sym.bloomToday(s, now), flowers: Sym.pastFlowers(s, now), tired: Sym.isTired(s, now), fruitsToday: Sym.fruitsToday(s, now) };

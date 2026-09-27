@@ -20,7 +20,8 @@ const NAME_CAT = {
   bubbles: 'play', fade: 'play', teleport: 'play', shine: 'play', twirl: 'play',
   trip: 'trip', depart: 'trip',
   goBed: 'base', goBase: 'base', homeNight: 'base',
-  forage: 'need', sniff: 'need', hungry: 'need', beg: 'need',
+  forage: 'need', sniff: 'need', hungry: 'need', beg: 'need', munch: 'need',
+  sip: 'rest', read: 'rest', // 自己喝水、看書（scene/lifeacts.js）
   train: 'train',
   play: 'social',
 };
