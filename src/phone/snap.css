@@ -1,0 +1,26 @@
+/* 拍照，一起做（snap.js）。顏色沿用 phone.css 的變數 */
+section.snap { text-align: center; }
+.snap .shoot { position: relative; display: block; padding: 14px; background: var(--pink); color: #fff; font-size: 18px; cursor: pointer; box-shadow: 0 0 0 2px var(--ink), inset 0 -3px 0 0 rgba(0,0,0,.2); }
+.snap .shoot input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.snap .guess { margin-top: 10px; }
+.snap .guess[hidden], .snap [hidden] { display: none; }
+.snap canvas.photo { width: 100%; max-width: 384px; height: auto; box-shadow: 0 0 0 2px var(--ink); }
+.snap .q { margin: 6px 0; font-size: 17px; min-height: 1.6em; }
+/* 選項一樣大、一樣好按（F31）：預選只是換顏色 */
+.snap .opts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.snap button { font: inherit; color: var(--ink); background: var(--panel-2); border: 0; padding: 10px 4px; box-shadow: 0 0 0 2px var(--ink); cursor: pointer; }
+.snap .opt.pick { background: var(--pink-2); box-shadow: 0 0 0 3px var(--pink); }
+.snap button.go { margin-top: 10px; width: 100%; background: var(--pink); color: #fff; }
+.snap button.go:disabled { background: var(--line); color: var(--muted); cursor: default; }
+.snap .reply { margin: 8px 0 0; min-height: 1.6em; }
+.snap button.done { width: 60%; }
+.snap .album-title, .snap .album { display: none; }
+.snap.has-album .album-title, .snap.has-album .album { display: block; }
+.snap .album-title { text-align: left; }
+.snap .note { color: var(--muted); font-size: 12px; display: block; margin: 8px 0 0; }
+.snap .memory { margin: 8px 0; }
+.snap .memory img { width: 100%; max-width: 384px; box-shadow: 0 0 0 2px var(--ink); }
+.snap .memory .save { display: inline-block; margin-top: 4px; color: var(--pink); }
+/* 跟你一起做的那隻 */
+.pet.with .act, .trip.with .act { color: var(--pink); }
+.trip .act { display: block; font-size: 13px; }

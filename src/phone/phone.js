@@ -1,6 +1,7 @@
 // 手機頁面：每分鐘讀一次 data.json（電腦上的 app 畫好的摘要），畫出來。
 // 在家的夥伴有自己的生活（core/life.js）：摘要裡帶著往後 24 小時每 10 分鐘在做什麼，這裡照現在的時間查表。
 // 連不到電腦的時候也每分鐘重新查一次，牠們照樣過日子。
+// 你拍照確認了一件事（snap.js），跟你一起做的那隻馬上換成一樣的事（snapNow），不用等電腦。
 // 內容一律用 textContent（夥伴的暱稱是你自己打的字，不能當成 HTML）。
 const $ = s => document.querySelector(s);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -23,14 +24,24 @@ function fill(section, items) {
   s.classList.toggle('empty', items.length === 0);
 }
 
-// 現在在做什麼：{ code, zh }（查不到——例如超過 24 小時沒連上——就是 null）
+// 現在在做什麼：{ code, zh, with }（查不到——例如超過 24 小時沒連上——就是 null）；with＝正在跟你一起做
 const LIFE_ANIM = { s: 'sleep', n: 'sleep', d: 'munch', e: 'munch', r: 'nod', p: 'hop', w: 'sway' };
-function lifeNow(life) {
+const LIFE_ZH = { s: '在睡覺', n: '在打盹', d: '在喝水', e: '在吃東西', r: '在看書', p: '在玩', w: '在散步' };
+function lifeNow(life, name) {
+  const w = typeof snapNow === 'function' ? snapNow(name) : null;
+  if (w) return { code: w.code, zh: `跟你一起${LIFE_ZH[w.code].slice(1)}`, with: true };
   if (!life || typeof life.acts !== 'string' || !(life.slot > 0)) return null;
   const i = Math.floor((Date.now() - life.from) / life.slot);
   const code = i >= 0 && i < life.acts.length ? life.acts[i] : null;
   const zh = code && life.zh?.[code];
   return zh ? { code, zh } : null;
+}
+function showLife(e, img, t, now) {
+  if (!now) return;
+  img?.classList.add(`do-${LIFE_ANIM[now.code] ?? 'sway'}`);
+  e.dataset.act = now.code;
+  e.classList.toggle('with', Boolean(now.with));
+  t.append(el('span', 'act', now.zh));
 }
 
 let last = null;
@@ -50,17 +61,17 @@ function render(d) {
     const t = el('div');
     const h = Math.floor(o.minutes / 60), m = o.minutes % 60;
     t.append(el('b', '', o.name), el('small', '', `出門 ${h ? `${h} 小時 ` : ''}${m} 分鐘`), el('span', 'line', o.line));
+    showLife(e, img, t, lifeNow(null, o.name));
     e.append(t);
     return e;
   }) : []);
   fill('pets', (d.pets ?? []).map(p => {
     const e = el('div', 'pet');
-    const now = lifeNow(p.life);
     const img = pic(d, p.pic);
-    if (img) { if (now) img.classList.add(`do-${LIFE_ANIM[now.code] ?? 'sway'}`); e.append(img); }
+    if (img) e.append(img);
     const t = el('div');
     t.append(el('b', '', p.name), el('span', 'hearts', ` ${'♥'.repeat(p.hearts ?? 0)}`), el('small', '', p.species));
-    if (now) { e.dataset.act = now.code; t.append(el('span', 'act', now.zh)); }
+    showLife(e, img, t, lifeNow(p.life, p.name));
     e.append(t);
     return e;
   }));
@@ -111,3 +122,6 @@ async function load() {
 
 load();
 setInterval(load, 60_000);
+
+// 拍照，一起做（snap.js）：這頁的東西都準備好了才載入（它會用到 render、last）
+document.head.append(Object.assign(document.createElement('script'), { src: 'snap.js' }));

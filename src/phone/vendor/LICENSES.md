@@ -18,9 +18,23 @@
 
 原始碼：https://github.com/tensorflow/tfjs（tfjs-core、tfjs-converter、tfjs-backend-cpu、tfjs-backend-webgl）、
 https://github.com/tensorflow/tfjs-models/tree/master/coco-ssd 。每個 `.min.js` 開頭保留原本的版權聲明。
-沒有修改任何檔案。
+## 修改（Apache-2.0 第 4 條：註明改了什麼）
 
-## SHA-256
+只改了兩個檔案，各刪掉一段，其他檔案原封不動：
+
+- `tf-core.min.js`、`tf-converter.min.js`：刪掉內建的 long.js 的一段
+  `try{X=new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array([...])),{}).exports}catch(e){}`。
+  - 原因：手機頁面的 CSP 不允許 WebAssembly（`script-src 'self'`，沒有 `wasm-unsafe-eval`），
+    這段每次載入都會被擋下、觸發一次 `securitypolicyviolation`，然後 long.js 本來就會退回純 JS。
+  - 刪掉以後的行為跟「被 CSP 擋下」完全一樣（`X` 一直是 `null`，用純 JS 算 64 位元整數），只是不再觸發違規事件。
+  - 改的方法（可以重做）：在下載的原檔裡用正規表示式
+    `try\{([A-Za-z$]+)=new WebAssembly\.Instance\(new WebAssembly\.Module\(new Uint8Array\(\[[0-9,]*\]\)\),\{\}\)\.exports\}catch\([a-z]+\)\{\}`
+    找到唯一的一處、換成空字串。
+  - 原檔的 SHA-256：
+    - `tf-core.min.js`：`0924438788ff7da57b14d0f7c45a05d81611a5a4b52653da6d065e86d348757c`
+    - `tf-converter.min.js`：`0cf35a2982b637997e8cae097c991c0123b7d5393b3d45730aa732b907c6cd1b`
+
+## SHA-256（放在這裡的檔案，修改後）
 
 ```
 8875b8c1bb57723990c9d6506226e0e51cd21b8b6943eb53201086096de52df5  coco-ssd.min.js
@@ -32,8 +46,8 @@ d856dc534c780068bbf6c666ce1516df2c8433d87578aa31fcdf197de7058cc2  group1-shard4o
 3770b2528339b1e3340cb74360e1e40401816b009779aeb8d0cce3a4353ea3a9  model.json
 4f232e90455e04cc5f69a691295d07a881a4ad93d7f229598459b9b533259d83  tf-backend-cpu.min.js
 b41fcbb4aee7721af0cc77ecfede60b44ad4ed6d5782a8392b84f774f4359a45  tf-backend-webgl.min.js
-0cf35a2982b637997e8cae097c991c0123b7d5393b3d45730aa732b907c6cd1b  tf-converter.min.js
-0924438788ff7da57b14d0f7c45a05d81611a5a4b52653da6d065e86d348757c  tf-core.min.js
+b40980d95ad0e8ebf97d280044a01d4b6f51aacd42f94167d57d4269186cfb48  tf-converter.min.js
+6b35921da1bbe1eb8fccf005830e5aadd0eb243b408f809291de401117f496ff  tf-core.min.js
 ```
 
 ## Apache License 2.0 全文
