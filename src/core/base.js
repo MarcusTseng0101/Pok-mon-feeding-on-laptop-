@@ -1,6 +1,7 @@
 // 秘密基地：螢幕左下或右下角的一小塊地方。後面是住的地方（帳篷 → 小屋 → 樹屋），前面是院子，
 // 院子是格子，可以擺家具。材料（木頭、布、石頭、閃亮石）是旅行帶回來的，放在背包的 materials（同步走 ledger）。
-// 寶可夢累了會去床上睡、想休息會去基地坐著、晚上大家回基地擠在一起睡。
+// 寶可夢累了會鑽進住的地方睡（住得下幾隻看 sleeps，其他的去床上睡）、想休息會去基地坐著、晚上大家回基地擠在一起睡。
+// 院子的地板可以換（FLOORS，不用材料）。
 // 這裡不用內建亂數，也不碰畫面。
 
 export const MATERIALS = { wood: '木頭', cloth: '布', stone: '石頭', shiny: '閃亮石' };
@@ -8,11 +9,19 @@ export const GRID_W = 8; // 院子幾格寬
 export const GRID_H = 3; // 幾格深
 
 // 住的地方：升級要花材料；每一階可以擺的家具數量不同（數字是猜的，可以調）
+// sleeps：可以鑽進去睡幾隻（猜的，可調整）；door：門口在圖上的 x（美術像素，renderer/gfx/basegfx.js 的圖）
 export const STAGES = [
-  { id: 'tent', zh: '帳篷', cost: null, maxItems: 3 },
-  { id: 'hut', zh: '小屋', cost: { wood: 6, cloth: 4 }, maxItems: 6 },
-  { id: 'treehouse', zh: '樹屋', cost: { wood: 12, stone: 6, shiny: 2 }, maxItems: 10 },
+  { id: 'tent', zh: '帳篷', cost: null, maxItems: 3, sleeps: 2, door: 22 },
+  { id: 'hut', zh: '小屋', cost: { wood: 6, cloth: 4 }, maxItems: 6, sleeps: 3, door: 24 },
+  { id: 'treehouse', zh: '樹屋', cost: { wood: 12, stone: 6, shiny: 2 }, maxItems: 10, sleeps: 4, door: 34 },
 ];
+
+// 院子的地板（不用材料，隨時可以換）：圖在 renderer/gfx/basegfx.js 的 yard()
+export const FLOORS = [
+  { id: 'sand', zh: '沙地' },
+  { id: 'park', zh: '遊樂園' },
+];
+export const floorOf = base => (FLOORS.some(f => f.id === base?.floor) ? base.floor : 'sand');
 
 // 家具：佔幾格（w×h）、要多少材料。獎盃不用材料，但有幾個獎章才能擺幾個
 export const FURNITURE = {
@@ -26,7 +35,7 @@ export const FURNITURE = {
 
 // 一開始就有：帳篷＋一張小床（不然累了沒地方睡）
 export function defaultBase(now = 0) {
-  return { side: 'left', stage: 0, items: [{ id: 'bed0', kind: 'bed', x: 0, y: 1, updatedAt: now }], updatedAt: now };
+  return { side: 'left', stage: 0, floor: 'sand', items: [{ id: 'bed0', kind: 'bed', x: 0, y: 1, updatedAt: now }], updatedAt: now };
 }
 
 export function normalizeBase(raw, now = 0) {
@@ -34,6 +43,7 @@ export function normalizeBase(raw, now = 0) {
   const b = {
     side: raw.side === 'right' ? 'right' : 'left',
     stage: Number.isInteger(raw.stage) ? Math.max(0, Math.min(STAGES.length - 1, raw.stage)) : 0,
+    floor: floorOf(raw), // 舊存檔沒有：沙地
     items: [],
     updatedAt: Number.isFinite(raw.updatedAt) ? raw.updatedAt : now,
   };
@@ -110,6 +120,14 @@ export function remove(state, id, now) {
   if (i < 0) return false;
   refund(state.bag.materials, FURNITURE[state.base.items[i].kind].cost);
   state.base.items.splice(i, 1);
+  state.base.updatedAt = now;
+  return true;
+}
+
+// 換地板（不用材料）
+export function setFloor(state, id, now) {
+  if (!FLOORS.some(f => f.id === id) || state.base.floor === id) return false;
+  state.base.floor = id;
   state.base.updatedAt = now;
   return true;
 }

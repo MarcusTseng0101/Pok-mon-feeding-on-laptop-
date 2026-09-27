@@ -76,13 +76,25 @@ export const FURNITURE_ART = {
 };
 
 // 院子的地面（W 格 × H 格），邊緣用棋盤格淡出，看起來不像一個方塊
-export function yard(gw, gh, stage) {
+// floor：sand（沙地，住的地方越好顏色越深）／park（遊樂園：粉紅、淺藍、奶黃的格子磚，零星的彩色小星星）
+export function yard(gw, gh, stage, floor = 'sand') {
   const w = gw * CELL + 8, h = gh * CELL + 6;
   const tint = ['#d8c49a', '#cdb88a', '#c4ae80'][stage] ?? '#d8c49a';
+  const hash = (x, y) => ((x * 73856093) ^ (y * 19349663)) >>> 0;
+  const PARK = ['#ffc8de', '#bfe4ff', '#fff0a8']; // 磚的顏色
+  const STAR = ['#ff6fa5', '#5ab8ff', '#ffb347', '#7ed67e'];
+  const color = (x, y) => {
+    if (floor !== 'park') return hash(x, y) % 17 === 0 ? '#b8a070' : tint; // 零散的小石子（不要排成斜線）
+    const tx = Math.floor((x - 4) / 8), ty = Math.floor((y - 3) / 8), lx = (x - 4) & 7, ly = (y - 3) & 7;
+    if (lx === 7 || ly === 7) return '#f4e6f0'; // 磚縫
+    const star = hash(tx, ty);
+    if (star % 5 === 0 && ((lx === 3 && ly >= 2 && ly <= 4) || (ly === 3 && lx >= 2 && lx <= 4))) return STAR[star % 4]; // 小星星（十字）
+    return PARK[(((tx + ty) % 3) + 3) % 3];
+  };
   return paint(w, h, set => {
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const edge = Math.min(x, y, w - 1 - x, h - 1 - y);
-      if (edge >= 3 || (edge >= 1 && (x + y) % 2 === 0) || (edge === 0 && (x + y) % 4 === 0)) set(x, y, (((x * 73856093) ^ (y * 19349663)) >>> 0) % 17 === 0 ? '#b8a070' : tint); // 零散的小石子（不要排成斜線）
+      if (edge >= 3 || (edge >= 1 && (x + y) % 2 === 0) || (edge === 0 && (x + y) % 4 === 0)) set(x, y, color(x, y));
     }
   });
 }

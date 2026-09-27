@@ -19,7 +19,7 @@ import { THOUGHT_HOVER } from '../scene/stage.js';
 import { NEEDS, NEED_ZH, MOOD_ZH } from '../../core/mind.js';
 import { PLACES, PLACE_IDS, placeZh } from '../../core/trips.js';
 import { durationZh, minutesOut } from '../../core/outing.js';
-import { STAGES, FURNITURE, MATERIALS, enough, trophiesAllowed } from '../../core/base.js';
+import { STAGES, FURNITURE, MATERIALS, FLOORS, floorOf, enough, trophiesAllowed } from '../../core/base.js';
 import * as baseGfx from '../gfx/basegfx.js';
 import * as mail from '../gfx/letters.js';
 import { KINDS as LETTER_KINDS } from '../../core/letters.js';
@@ -525,9 +525,10 @@ export class UI {
       <div class="top"><div class="home"></div><div>
         <b>${esc(cur.zh)}</b>・家具 ${b.items.length}／${cur.maxItems}
         <div class="mats">${Object.entries(MATERIALS).map(([k, zh]) => `<span>${esc(zh)} ${mats[k]}</span>`).join('')}</div>
-        <p class="hint">材料是夥伴旅行帶回來的。累了會回床上睡、想休息會回來坐坐，晚上大家會回來擠在一起睡。</p>
+        <p class="hint">材料是夥伴旅行帶回來的。累了會鑽進${esc(cur.zh)}睡（最多 ${cur.sleeps} 隻，其他的睡床上）、想休息會回來坐坐，晚上大家會回來擠在一起睡。</p>
         ${next ? `<button data-act="baseupgrade" ${enough(mats, next.cost) ? '' : 'disabled'}>升級成${esc(next.zh)}（${esc(costText(next.cost))}）</button>` : '<p class="hint">已經是最好的樹屋了！</p>'}
         <div class="side">位置：<button data-baseside="left" class="${b.side === 'left' ? 'sel' : ''}">左下角</button><button data-baseside="right" class="${b.side === 'right' ? 'sel' : ''}">右下角</button></div>
+        <div class="side floor">地板：${FLOORS.map(f => `<button data-basefloor="${f.id}" class="${floorOf(b) === f.id ? 'sel' : ''}">${esc(f.zh)}</button>`).join('')}</div>
       </div></div>
       <h3>擺家具</h3><div class="furn"></div>
       <h3>已經擺的</h3><div class="placed"></div></div>`);
@@ -833,6 +834,7 @@ export class UI {
     if (t.dataset.basemove) { this.closePanel(); this.stage.fire('furnitureClick', this.game.state.base.items.find(i => i.id === t.dataset.basemove)); return; }
     if (t.dataset.baseremove) { this.game.baseRemove(t.dataset.baseremove); this.audio.sfx('close'); this.renderPanel(); return; }
     if (t.dataset.baseside) { this.game.baseSide(t.dataset.baseside); this.audio.sfx('click'); this.renderPanel(); return; }
+    if (t.dataset.basefloor) { this.game.baseFloor(t.dataset.basefloor); this.audio.sfx('click'); this.renderPanel(); return; }
     if (t.dataset.postcard) { const pc = this.game.state.postcards.find(x => x.id === t.dataset.postcard); if (pc) { this.audio.sfx('click'); this.showPostcard({ postcard: pc }); } return; }
     if (t.dataset.play) { this.minigames.open(t.dataset.play, this.playPartner()?.uid); return; }
     if (t.dataset.dexform) { this.dexForm = t.dataset.dexform; this.audio.sfx('click'); this.renderPanel(); return; }

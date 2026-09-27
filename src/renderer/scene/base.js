@@ -4,7 +4,7 @@
 // 所以平常基地那一塊不會擋住你點底下的視窗。擺放模式（stage.mode.type === 'base'）才會攔截整個畫面。
 import { blit } from '../gfx/pixel.js';
 import * as gfx from '../gfx/basegfx.js';
-import { GRID_W, GRID_H, FURNITURE, canPlace } from '../../core/base.js';
+import { GRID_W, GRID_H, FURNITURE, STAGES, canPlace, floorOf } from '../../core/base.js';
 
 const CELL = gfx.CELL;
 
@@ -60,6 +60,17 @@ export class BaseView {
     for (let y = 0; y < GRID_H; y++) for (let x = 0; x < GRID_W; x++) if (canPlace(this.base, 'lamp', x, y)) { const r = this.cellRect(x, y); out.push({ x: r.x + r.w / 2, y: r.y + r.h - 2 * this.stage.S }); }
     return out;
   }
+  // 住的地方的左邊（裝置像素）
+  homeX() {
+    const L = this.layout(), S = L.S, home = gfx.STRUCTURES[this.base.stage];
+    return this.base.side === 'right' ? L.x + L.w - home.width * S - 2 * S : L.x + 2 * S;
+  }
+  // 門口（寶可夢鑽進去、走出來的地方；腳下的位置）
+  door() {
+    const L = this.layout(), st = STAGES[this.base.stage];
+    return { x: this.homeX() + st.door * L.S, y: L.y + 5 * L.S };
+  }
+
   // 基地的範圍（寶可夢判斷自己在不在家）
   contains(px, py, pad = 0) {
     const L = this.layout();
@@ -68,12 +79,11 @@ export class BaseView {
 
   draw(ctx) {
     const st = this.stage, S = st.S, b = this.base, L = this.layout();
-    const key = `${b.stage}`;
-    if (this.yardKey !== key) { this.yardCache = gfx.yard(GRID_W, GRID_H, b.stage); this.yardKey = key; }
+    const key = `${b.stage}:${floorOf(b)}`;
+    if (this.yardKey !== key) { this.yardCache = gfx.yard(GRID_W, GRID_H, b.stage, floorOf(b)); this.yardKey = key; }
     blit(ctx, this.yardCache, L.x - 4 * S, L.y - 3 * S, S);
     // 住的地方：在院子後面（左邊的基地放左後方，右邊的放右後方）
-    const home = gfx.STRUCTURES[b.stage];
-    const hx = b.side === 'right' ? L.x + L.w - home.width * S - 2 * S : L.x + 2 * S;
+    const home = gfx.STRUCTURES[b.stage], hx = this.homeX();
     blit(ctx, home, hx, L.y - home.height * S + 6 * S, S);
     for (const it of [...b.items].sort((a, c) => a.y - c.y)) {
       if (st.mode?.type === 'base' && st.mode.moveId === it.id) continue; // 正在搬的那個畫在游標上
