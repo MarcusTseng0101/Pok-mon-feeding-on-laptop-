@@ -17,6 +17,7 @@ const baseline = process.env.BASELINE === '1';
 // 在網頁的程式執行之前：Math.random 換成固定種子；可以暫停 requestAnimationFrame
 function seedPage(seed) {
   let a = seed >>> 0;
+  window.__reseed = s => { a = s >>> 0; };
   Math.random = () => {
     a = (a + 0x6d2b79f5) >>> 0;
     let t = a;
@@ -32,28 +33,47 @@ async function runSeed(seed) {
   const ctx = await open({ init: seedPage, initArg: seed });
   const { page } = ctx;
   try {
-    const r = await page.evaluate(async ({ SIM_SECONDS, DT, baseline }) => {
+    const r = await page.evaluate(async ({ SIM_SECONDS, DT, baseline, seed }) => {
       const { game, director, stage } = window.__kalos;
+      // 同一個種子每次都要一樣（以前偶爾失敗的原因：同一個種子每次跑出來不一樣）：
+      //  - 畫面迴圈一開始就停（等圖載好的時間不一定，牠們會先走不一樣遠）
+      //  - 時鐘固定在某一天的 14:00、跟著快轉走（牠們的生活 core/life.js 看時間；uid 也含有時間，生活表用 uid 當種子）
+      //  - 亂數在建立夥伴前、開始快轉前各重新設定一次（載入時用掉幾個亂數要看載入的速度）；
+      //    遊戲自己的亂數（game.rng，uid 和心智用它）一開啟 app 就用當下的時間當種子，也要換成固定的
+      //  - 快轉中間不讓出（不然 app 每 10 秒的 tick 之類的計時器會在不一定的時間插進來用掉亂數）
+      window.__holdRaf = true; // 停掉真的畫面迴圈，只用下面的快轉
+      await new Promise(r => setTimeout(r, 100));
+      const t0Sim = new Date(2026, 8, 22, 14, 0).getTime();
+      let simT = 0;
+      Date.now = () => t0Sim + Math.round(simT * 1000);
+      window.__reseed(seed);
+      const { createRng } = await import('/src/core/rng.js');
+      game.rng = director.rng = createRng(seed);
       game.chooseStarter(650);
       for (const id of [653, 656]) { const m = game.createMon(id); m.out = true; game.state.mons.push(m); }
       director.syncPets();
-      const t0 = Date.now();
-      while (stage.pets.size < 3 && Date.now() - t0 < 15000) await new Promise(r => setTimeout(r, 50));
-      window.__holdRaf = true; // 停掉真的畫面迴圈，只用下面的快轉
-      await new Promise(r => setTimeout(r, 100));
+      const t0 = performance.now();
+      while (stage.pets.size < 3 && performance.now() - t0 < 15000) await new Promise(r => setTimeout(r, 50));
       director.nextSpawnAt = Infinity;
       director.updateEnv = () => {};
       Object.assign(stage.env, { sleepy: false, userActive: false, hour: 14, focus: null }); // 白天、使用者不在
       stage.mindOff = baseline;
       stage.decisionLog = [];
+      // 開始的位置和狀態也固定（照建立的順序排）
+      const order = game.state.mons.map(m => m.uid);
+      [...stage.pets.values()].sort((a, b) => order.indexOf(a.uid) - order.indexOf(b.uid)).forEach((p, i) => {
+        p.x = stage.W * (0.3 + i * 0.2); p.gy = stage.H * 0.7; p.z = 0; p.facing = i % 2 ? 1 : -1; p.set('idle', 0.5 + i * 0.3);
+      });
+      window.__reseed(seed * 7919);
+      game.rng = director.rng = createRng(seed * 7919);
       const wall = performance.now();
       const steps = Math.round(SIM_SECONDS / DT);
       for (let i = 0; i < steps; i++) {
+        simT += DT;
         stage.update(DT);
-        if (i % 600 === 0) await new Promise(r => setTimeout(r, 0));
       }
       return { log: stage.decisionLog, wallMs: Math.round(performance.now() - wall), pets: stage.pets.size };
-    }, { SIM_SECONDS, DT, baseline });
+    }, { SIM_SECONDS, DT, baseline, seed });
     return { ...r, errors: ctx.errors };
   } finally {
     await ctx.close();

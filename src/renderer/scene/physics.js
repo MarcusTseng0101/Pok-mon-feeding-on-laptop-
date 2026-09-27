@@ -120,7 +120,7 @@ const collides = (a, b) => sameLayer(a, b) && !together(a, b) && heightOverlap(a
 // 每一幀：把重疊的推開；跑太快撞在一起會彈開、被丟出去的會把別隻撞飛
 export function resolveCollisions(stage, dt) {
   const pets = [...stage.pets.values()].filter(p => !ghostly(p));
-  const now = performance.now();
+  const now = (stage.clock ?? 0) * 1000; // 舞台時間（毫秒）：快轉時碰撞的冷卻也照舞台的時間，不看真的時鐘
   const S = stage.S;
   for (let i = 0; i < pets.length; i++) {
     for (let j = i + 1; j < pets.length; j++) {
