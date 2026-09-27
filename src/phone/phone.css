@@ -27,3 +27,17 @@ details.letter p { white-space: pre-wrap; background: var(--panel-2); padding: 8
 .card small, .mile small { color: var(--muted); }
 .mile { display: inline-block; margin: 2px 6px 2px 0; padding: 1px 8px; background: var(--pink-2); font-size: 13px; }
 footer { color: var(--muted); font-size: 12px; padding-bottom: 24px; }
+/* 在家的夥伴現在在做什麼（core/life.js）：小圖做一樣的動作 */
+.pet .act { display: block; font-size: 13px; color: var(--ink); }
+.pet[data-act="s"] .act::after, .pet[data-act="n"] .act::after { content: ' z'; color: var(--muted); }
+.do-munch { animation: munch 0.35s steps(2) infinite; animation-delay: 1s; }
+.do-sleep { animation: doze 3s steps(4) infinite; opacity: 0.85; }
+.do-nod { animation: nod 1.2s steps(2) infinite; }
+.do-hop { animation: hop 0.8s steps(3) infinite; }
+.do-sway { animation: sway 2s steps(4) infinite; }
+@keyframes munch { 50% { transform: translateY(2px) scaleY(0.94); } }
+@keyframes doze { 50% { transform: translateY(1px) scaleY(0.96); } }
+@keyframes nod { 50% { transform: rotate(5deg); } }
+@keyframes hop { 50% { transform: translateY(-6px); } }
+@keyframes sway { 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+@media (prefers-reduced-motion: reduce) { .do-munch, .do-sleep, .do-nod, .do-hop, .do-sway { animation: none; } }
