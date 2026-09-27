@@ -40,7 +40,7 @@ run('phone', async ({ page, shot }, check) => {
   // 真的小網站
   const { createPhoneServer } = await import(path.join(ROOT, 'src/main/phone.js'));
   const dir = path.join(ROOT, 'src/phone');
-  const server = createPhoneServer({ getSnapshot: () => d, files: { '': path.join(dir, 'index.html'), 'phone.js': path.join(dir, 'phone.js'), 'phone.css': path.join(dir, 'phone.css'), 'font.woff2': path.join(ROOT, 'src/renderer/fonts/Cubic_11.woff2') } });
+  const server = createPhoneServer({ getSnapshot: () => d, files: { '': path.join(dir, 'index.html'), 'phone.js': path.join(dir, 'phone.js'), 'phone.css': path.join(dir, 'phone.css'), 'snap.js': path.join(dir, 'snap.js'), 'snap.css': path.join(dir, 'snap.css'), 'font.woff2': path.join(ROOT, 'src/renderer/fonts/Cubic_11.woff2') } });
   const [u] = await server.start([{ address: '127.0.0.1', tailscale: false }], 39000 + Math.floor(Math.random() * 500));
   const phone = await page.context().browser().newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
   const alerts = [], errors = [];
