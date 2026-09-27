@@ -1,7 +1,7 @@
 // renderer 只能透過這個窄窄的介面跟 main process 溝通
 const { contextBridge, ipcRenderer } = require('electron');
 
-const CHANNELS = ['cursor', 'signals', 'command', 'flush', 'display', 'windows', 'screen'];
+const CHANNELS = ['cursor', 'signals', 'command', 'flush', 'display', 'windows', 'screen', 'phoneAction'];
 
 contextBridge.exposeInMainWorld('kalos', {
   platform: process.platform,
@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('kalos', {
   setPhone: on => ipcRenderer.invoke('phone:set', Boolean(on)),
   regenPhone: () => ipcRenderer.invoke('phone:regen'),
   phoneSnapshot: data => ipcRenderer.send('phone:snapshot', data),
+  // 手機打卡：收到 'phoneAction'（{ rid, action }）→ 遊戲算完用這個回話
+  phoneReply: (rid, reply) => ipcRenderer.send('phone:reply', rid, reply),
   on(channel, fn) {
     if (!CHANNELS.includes(channel)) throw new Error(`unknown channel ${channel}`);
     const handler = (_e, payload) => fn(payload);

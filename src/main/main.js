@@ -228,9 +228,21 @@ app.whenReady().then(async () => {
   if (!/^[0-9a-f]{32}$/.test(phoneToken ?? '')) { phoneToken = newToken(); await writeFile(phoneFile, JSON.stringify({ token: phoneToken })); }
   let phoneSnapshot = null;
   const phoneDir = path.join(here, '../phone');
+  // 手機打卡：交給畫面（遊戲的存檔在那裡），等它回話（core/checkin.js 決定算不算；這裡只傳話）
+  let phoneRid = 0;
+  const phoneWaiting = new Map();
+  ipcMain.on('phone:reply', (_e, rid, reply) => { phoneWaiting.get(rid)?.(reply ?? null); phoneWaiting.delete(rid); });
+  const phoneAction = action => new Promise(resolve => {
+    if (!win) { resolve(null); return; }
+    const rid = ++phoneRid;
+    phoneWaiting.set(rid, resolve);
+    setTimeout(() => { if (phoneWaiting.delete(rid)) resolve(null); }, 4000);
+    win.webContents.send('phoneAction', { rid, action });
+  });
   phone = createPhoneServer({
     token: phoneToken,
     getSnapshot: () => phoneSnapshot,
+    onAction: phoneAction,
     files: { '': path.join(phoneDir, 'index.html'), 'phone.js': path.join(phoneDir, 'phone.js'), 'phone.css': path.join(phoneDir, 'phone.css'), 'font.woff2': path.join(here, '../renderer/fonts/Cubic_11.woff2') },
   });
   ipcMain.handle('phone:set', async (_e, on) => {

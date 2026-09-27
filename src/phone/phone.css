@@ -27,3 +27,19 @@ details.letter p { white-space: pre-wrap; background: var(--panel-2); padding: 8
 .card small, .mile small { color: var(--muted); }
 .mile { display: inline-block; margin: 2px 6px 2px 0; padding: 1px 8px; background: var(--pink-2); font-size: 13px; }
 footer { color: var(--muted); font-size: 12px; padding-bottom: 24px; }
+/* 打卡：按鈕是像素風的小方塊；牠的回應在下面（小圖做一樣的動作） */
+section.checkin .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+section.checkin button { font: inherit; font-size: 14px; color: var(--ink); background: var(--pink-2); border: 0; padding: 6px 10px; box-shadow: 0 0 0 2px var(--ink), inset 0 -2px 0 0 var(--pink); cursor: pointer; }
+section.checkin button:active { transform: translateY(1px); box-shadow: 0 0 0 2px var(--ink); }
+section.checkin button:disabled { opacity: 0.6; }
+section.checkin .reply { display: flex; align-items: center; gap: 6px; min-height: 52px; margin-top: 8px; }
+section.checkin .reply .line { color: var(--ink); }
+.do-munch { animation: munch 0.35s steps(2) 6; }
+.do-hop { animation: hop 0.5s steps(3) 4; }
+.do-doze { animation: doze 1.6s steps(4) 2; }
+.do-nod { animation: nod 0.6s steps(2) 5; }
+@keyframes munch { 50% { transform: translateY(2px) scaleY(0.94); } }
+@keyframes hop { 50% { transform: translateY(-8px); } }
+@keyframes doze { 50% { transform: rotate(-8deg) translateY(2px); opacity: 0.8; } }
+@keyframes nod { 50% { transform: rotate(6deg); } }
+@media (prefers-reduced-motion: reduce) { .do-munch, .do-hop, .do-doze, .do-nod { animation: none; } }

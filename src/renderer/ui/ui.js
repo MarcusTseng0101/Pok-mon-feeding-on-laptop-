@@ -159,6 +159,13 @@ export class UI {
       if (think && th.firstChild.textContent !== think) th.firstChild.textContent = think;
       this.label.classList.remove('hidden');
       this.placeLabel(pet);
+    } else if (st.hoverTarget?.hoverText && !st.mode && !st.drag?.held) {
+      // 桌面上的小東西有一句話（手機打卡的痕跡）：用同一個標籤，文字一律當成文字（暱稱是你打的字）
+      const text = st.hoverTarget.hoverText;
+      if (this.labelTag !== `text:${text}`) { this.label.querySelector('.tag').textContent = text; this.labelTag = `text:${text}`; }
+      this.label.querySelector('.thought').classList.add('hidden');
+      this.label.classList.remove('hidden');
+      this.placeLabel(st.hoverTarget);
     } else {
       this.label.classList.add('hidden');
     }
@@ -935,7 +942,7 @@ export class UI {
     const on = this.game.state.settings.phone, urls = this.phoneUrls ?? [];
     const list = urls.map((u, i) => `<button class="purl ${i === (this.phoneQr ?? 0) ? 'sel' : ''}" data-phoneqr="${i}">${u.tailscale ? 'Tailscale：' : '同一個 Wi-Fi：'}<code>${esc(u.url)}</code></button>`).join('');
     return `<fieldset class="phone"><legend>在手機上看</legend>
-      <label><input type="checkbox" data-phone ${on ? 'checked' : ''}> 在手機上看信箱、明信片、旅行中的夥伴（只有看，不能操作）</label>
+      <label><input type="checkbox" data-phone ${on ? 'checked' : ''}> 在手機上看信箱、明信片、旅行中的夥伴，還可以打卡（我吃飯了、我喝水了…）：牠會跟著做，回來時桌面上看得到</label>
       ${!on ? '<p class="hint">打開以後，手機連同一個 Wi-Fi，掃 QR code 就能看。想出門也看，可以在電腦和手機都裝 Tailscale（說明在 README）。</p>'
         : urls.length ? `<div class="qrbox"><canvas data-qr></canvas><div class="urls">${list}
           <p class="hint">網址裡有一串只有你知道的密碼，不要給別人。第一次打開時 Windows 可能會問要不要讓 Kalos Amie 使用網路：選「私人網路」。</p>

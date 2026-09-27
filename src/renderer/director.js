@@ -22,6 +22,7 @@ import { startDepart, startReturn } from './scene/travel.js';
 import { BaseView } from './scene/base.js';
 import { FURNITURE, STAGES } from '../core/base.js';
 import * as cards from './gfx/postcards.js';
+import { traceImg } from './gfx/traces.js';
 import * as mail from './gfx/letters.js';
 import { StoryBattle } from './scene/battle.js';
 import * as A from '../core/attention.js';
@@ -39,6 +40,7 @@ const TYPING_WATCH_AFTER = 30; // 連續打字幾秒後過來看（秒）
 const TYPING_COOLDOWN = 3 * 60 * 1000; // 猜的，可調整：不要一直跑過來
 
 const LURE_MINUTES = 10;
+const TRACE_SEEN = 10 * 60; // 你在電腦前幾秒，痕跡就算看過了（猜的，可調整）
 const EDGE = 24; // 拖到離螢幕左右邊緣幾 px 以內放開，就是帶牠出門（猜的，可調整）
 
 const BASE_PROBLEM = { full: '這一階的基地擺不下更多家具了，升級看看', 'no-medal': '獎盃的數量不能超過獎章', materials: '材料不夠', blocked: '這裡放不下' };
@@ -55,6 +57,8 @@ export class Director {
     this.nextSpawnAt = Date.now() + (dev ? 5000 : 60_000); // 開啟後一分鐘內先來一隻
     this.bindStage();
     this.bindGame();
+    // 手機打卡（src/main/phone.js → main.js → 這裡）：交給遊戲算（core/checkin.js），把回應送回手機
+    this.api.on?.('phoneAction', ({ rid, action }) => this.api.phoneReply?.(rid, this.phoneAction(action)));
     this.stage.garden = new Garden(this.stage, () => this.lifeView);
   }
 
@@ -208,10 +212,11 @@ export class Director {
 
   // ---------- 手機頁面（src/main/phone.js）----------
   // 打開的時候每 30 秒把摘要送過去：只有要顯示的欄位（core/phonedata.js），圖片畫成 data URL
+  picKey(m) { return `${spriteKey(m.species, m.form)}${m.shiny ? ':s' : ''}`; }
   pushPhone() {
     const g = this.game;
     if (!g.state.settings.phone || !this.api.phoneSnapshot) return null;
-    const keyOf = m => `${spriteKey(m.species, m.form)}${m.shiny ? ':s' : ''}`;
+    const keyOf = m => this.picKey(m);
     const data = phoneSnapshot(g.state, { now: Date.now(), nameOf: m => g.displayName(m), speciesName: id => this.dex.name(id), spriteKeyOf: keyOf, weather: this.homeWeather() });
     for (const k of new Set([...data.pets, ...data.trips, ...(data.outing ? [data.outing] : [])].map(p => p.pic))) {
       const [key, s] = k.split(':');
@@ -224,6 +229,66 @@ export class Director {
     }
     this.api.phoneSnapshot(data);
     return data;
+  }
+
+  // 手機打卡：數值由 Game.checkin() 加（core/checkin.js 決定），這裡只把回應（哪一隻、做了什麼、牠的圖）交回去
+  phoneAction(action) {
+    const r = this.game.checkin(action);
+    if (!r) return { ok: false };
+    const mon = r.uid ? this.game.mon(r.uid) : null;
+    const reply = { ok: r.ok, line: r.line, anim: r.anim, pic: mon ? this.picKey(mon) : null };
+    this.phoneT = 30; // 手機上的心和夥伴馬上更新
+    return reply;
+  }
+
+  // ---------- 手機打卡留下的痕跡（core/checkin.js）----------
+  // 最近的打卡（最多 3 個）在那隻夥伴旁邊留一個小東西；滑鼠移上去寫「幾點、你做了什麼、牠也做了什麼」。
+  // 看過（滑鼠移上去）或你在電腦前待滿 10 分鐘就慢慢淡掉。痕跡不存檔：重開 app 從打卡紀錄重新算（淡掉過的這次不再出現）
+  refreshTraces() {
+    const st = this.stage;
+    this.traces ??= new Map();
+    this.tracesDone ??= new Set();
+    if (!this.game.state.starterChosen) return;
+    const want = this.game.checkinTraces().filter(t => !this.tracesDone.has(t.id));
+    const ids = new Set(want.map(t => t.id));
+    for (const [id, prop] of this.traces) {
+      const hovered = st.hoverTarget === prop;
+      if (hovered) prop.readAt = Date.now();
+      if (this.signals.idleSeconds < 60) prop.seenFor = (prop.seenFor ?? 0) + 1;
+      const read = prop.readAt && !hovered && Date.now() - prop.readAt > 1500;
+      if (!ids.has(id) || read || prop.seenFor >= TRACE_SEEN) {
+        prop.life = Math.min(prop.life, prop.t);
+        this.traces.delete(id);
+        this.tracesDone.add(id);
+      }
+    }
+    if (this.game.state.settings.quiet) return;
+    for (const t of want) {
+      if (this.traces.has(t.id)) continue;
+      const spot = this.traceSpot(t);
+      const prop = new Prop(st, { kind: 'npc', x: spot.x, y: spot.y, scale: 2, onClick: () => { prop.readAt = Date.now(); } });
+      prop.img = traceImg(t.trace);
+      prop.hoverText = t.line;
+      prop.trace = t.id; // 測試用
+      prop.traceKind = t.kind;
+      prop.traceUid = t.uid;
+      st.props.push(prop);
+      this.traces.set(t.id, prop);
+    }
+  }
+  // 放在那隻夥伴旁邊（左右輪流、不跟別的痕跡疊在一起）；牠不在桌面上（跟你出門）就放在紙條旁邊
+  traceSpot(t) {
+    const st = this.stage, S = st.S;
+    const pet = t.uid ? st.pets.get(t.uid) : null, note = t.uid ? this.outNotes?.get(t.uid) : null, mon = t.uid ? this.game.mon(t.uid) : null;
+    const base = pet ? { x: pet.x, y: pet.gy } : note ? { x: note.x, y: note.y } : mon?.pos ? { x: mon.pos.x * st.W, y: mon.pos.y * st.H } : { x: st.W / 2, y: st.H - 4 * S };
+    const taken = [...this.traces.values()];
+    const m = 60 * S;
+    for (let i = 0; i < 8; i++) {
+      const side = i % 2 ? -1 : 1, step = 1 + Math.floor(i / 2);
+      const x = Math.max(m, Math.min(st.W - m, base.x + side * step * 22 * S)), y = Math.max(m, Math.min(st.H - 4 * S, base.y));
+      if (taken.every(p => Math.abs(p.x - x) > 26 * S || Math.abs(p.y - y) > 20 * S)) return { x, y };
+    }
+    return { x: Math.max(m, Math.min(st.W - m, base.x)), y: Math.max(m, Math.min(st.H - 4 * S, base.y - 24 * S)) };
   }
 
   // 比平常晚睡：大家打哈欠（只是動作，不算打擾）；最喜歡你的那隻靠到游標旁邊坐下（要經過額度）
@@ -259,6 +324,9 @@ export class Director {
     const pets = [...st.pets.values()].filter(p => !p.leaving && !p.inBattle && !p.reserved && !['held', 'evolving', 'depart', 'tripReturn', 'eat'].includes(p.state));
     if (!pets.length) return;
     const order = W.noticeOrder(pets.map(p => ({ uid: p.uid, affection: p.mon.affection })), this.rng);
+    // 你在外面打開手機頁面看過牠：牠第一個發現你回來了（core/checkin.js 的 missed）
+    const missed = this.game.takeMissed(), first = order.find(o => o.uid === missed);
+    if (first) first.delay = Math.min(W.NOTICE_MIN, ...order.map(o => o.delay)) - 0.01;
     this.greetOrder = order; // 測試用
     for (const o of order) {
       setTimeout(() => {
@@ -328,7 +396,7 @@ export class Director {
     }
     if (this.evolution) this.updateEvolution(dt);
     this.tripT = (this.tripT ?? 0) + dt;
-    if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); this.refreshOutings(); this.drainAttention(); this.refreshLife(); this.refreshWorld(); }
+    if (this.tripT >= 1) { this.tripT = 0; this.refreshTrips(); this.refreshOutings(); this.drainAttention(); this.refreshLife(); this.refreshWorld(); this.refreshTraces(); }
     this.edgeHint();
     this.lifeAmbient(dt);
     if (!this.dayChecked) { this.dayChecked = true; this.refreshDay(); }
@@ -1601,6 +1669,7 @@ export class Director {
       });
     });
     g.on('symbiosis', ({ events }) => this.onLife(events));
+    g.on('checkin', () => { this.tripT = 1; }); // 打卡了：痕跡下一幀就放上去
     g.on('mood', ({ mood }) => { if (mood) this.moodChosen(mood); else this.refreshDay(); });
     g.on('achievement', ({ id }) => {
       const a = ACHIEVEMENTS.find(x => x.id === id);
