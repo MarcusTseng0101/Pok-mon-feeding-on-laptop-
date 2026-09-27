@@ -3,7 +3,9 @@
 // 安全：
 // - 預設關閉，要在設定裡打開
 // - 網址帶 128-bit 的隨機 token（/t/<token>/），沒有 token 或 token 不對一律 404；token 可以一鍵重新產生
-// - 只提供 GET（唯讀），絕不提供存檔原始 JSON，只有畫面組好的摘要（core/phonedata.js）
+// - 讀：只提供 GET，絕不提供存檔原始 JSON，只有畫面組好的摘要（core/phonedata.js）
+// - 寫：只有一條 POST /t/<token>/act（手機打卡，core/checkin.js）。只收 JSON、同一個網址來的、1 KB 以內、每分鐘 20 個以內，
+//   而且只能是 { kind, id, at } 三個欄位；收到的東西原樣交給 onAction，這裡不碰任何數值
 // - 只監聽區網位址（10.x、172.16–31.x、192.168.x）和 Tailscale 的位址（100.64–127.x），不監聽 0.0.0.0
 // - 頁面不准執行內嵌程式（Content-Security-Policy），文字一律用 textContent 放進畫面（見 src/phone/phone.js）
 // 這個檔案不碰 Electron（main.js 負責接起來），所以 node --test 可以直接測。
@@ -11,6 +13,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
+import { validAction } from '../core/checkin.js';
 
 export const DEFAULT_PORT = 37851;
 export const newToken = () => randomBytes(16).toString('hex');
@@ -37,13 +40,20 @@ const HEADERS = {
   'Referrer-Policy': 'no-referrer',
   'Cache-Control': 'no-store',
 };
+const ACT_LIMIT = 1024; // POST body 最多幾個 byte
+const ACT_RATE = 20; // 每分鐘最多幾個 POST（猜的，可調整）
+const ACT_TIMEOUT = 5000; // 等 onAction 回應最多幾毫秒
+// 回給手機的欄位：只有畫面用得到的
+const REPLY_FIELDS = ['ok', 'line', 'pic', 'anim'];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2' };
 
 // files：{ 網址上的檔名: 硬碟上的路徑 }（'' 是首頁）；getSnapshot()：現在的摘要（物件）
-export function createPhoneServer({ files, getSnapshot, token }) {
+// onAction({ kind, id, at })：手機打卡（可以是 async），回傳 { ok, line, pic, anim }；沒有給就一律回 { ok: false }
+export function createPhoneServer({ files, getSnapshot, token, onAction = null }) {
   let current = token ?? newToken();
   let servers = [];
   let urls = [];
+  let recentPosts = []; // 最近一分鐘的 POST（時間）
 
   const sameToken = t => {
     const a = Buffer.from(String(t)), b = Buffer.from(current);
@@ -55,8 +65,10 @@ export function createPhoneServer({ files, getSnapshot, token }) {
       res.writeHead(code, { ...HEADERS, 'Content-Type': type });
       res.end(req.method === 'HEAD' ? undefined : body);
     };
-    if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { ...HEADERS, Allow: 'GET, HEAD' }); res.end(); return; }
     const m = /^\/t\/([0-9a-f]{32})\/([a-z0-9.-]*)$/.exec(new URL(req.url, 'http://x').pathname);
+    if (req.method === 'POST' && (!m || !sameToken(m[1]))) { send(404, 'not found'); return; }
+    if (req.method === 'POST' && m[2] === 'act') { await act(req, res, send); return; }
+    if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { ...HEADERS, Allow: 'GET, HEAD' }); res.end(); return; }
     if (!m || !sameToken(m[1])) { send(404, 'not found'); return; }
     const name = m[2];
     if (name === 'data.json') { send(200, JSON.stringify(getSnapshot() ?? {}), 'application/json; charset=utf-8'); return; }
@@ -65,6 +77,52 @@ export function createPhoneServer({ files, getSnapshot, token }) {
       const file = files[name];
       send(200, await readFile(file), TYPES[path.extname(file)] ?? 'application/octet-stream');
     } catch { send(404, 'not found'); }
+  }
+
+  // POST act（F15）：一條一條檢查，有一條不對就不交給 onAction
+  async function act(req, res, send) {
+    const json = (code, obj) => send(code, JSON.stringify(obj), 'application/json; charset=utf-8');
+    const type = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+    if (type !== 'application/json') { send(415, 'json only'); return; }
+    // 有 Origin 就一定要是這個網址本身（http 或 https 都算，Tailscale serve 是 https）
+    const origin = req.headers.origin;
+    if (origin !== undefined && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) { send(403, 'forbidden'); return; }
+    const t = Date.now();
+    recentPosts = recentPosts.filter(x => t - x < 60_000);
+    if (recentPosts.length >= ACT_RATE) { send(429, 'slow down'); return; }
+    recentPosts.push(t);
+    if (Number(req.headers['content-length']) > ACT_LIMIT) { tooBig(req, res); return; }
+    // 邊讀邊算大小，超過就斷線（不先讀完再檢查）
+    const body = await new Promise(resolve => {
+      const chunks = [];
+      let size = 0, done = false;
+      req.on('data', c => {
+        if (done) return;
+        size += c.length;
+        if (size > ACT_LIMIT) { done = true; resolve(null); tooBig(req, res); return; }
+        chunks.push(c);
+      });
+      req.on('end', () => { if (!done) { done = true; resolve(Buffer.concat(chunks).toString('utf8')); } });
+      req.on('error', () => { if (!done) { done = true; resolve(null); } });
+    });
+    if (body === null) return;
+    let action = null;
+    try { action = validAction(JSON.parse(body)); } catch { action = null; }
+    if (!action) { send(400, 'bad request'); return; }
+    if (!onAction) { json(200, { ok: false }); return; }
+    let reply = null;
+    try {
+      reply = await Promise.race([Promise.resolve(onAction(action)), new Promise(r => setTimeout(() => r(undefined), ACT_TIMEOUT))]);
+    } catch { reply = null; }
+    if (reply === undefined) { send(503, 'busy'); return; }
+    const out = { ok: false };
+    if (reply && typeof reply === 'object') for (const k of REPLY_FIELDS) if (reply[k] !== undefined) out[k] = reply[k];
+    json(200, out);
+  }
+  function tooBig(req, res) {
+    if (res.headersSent) { req.destroy(); return; }
+    res.writeHead(413, { ...HEADERS, 'Content-Type': 'text/plain; charset=utf-8', Connection: 'close' });
+    res.end('too large', () => req.destroy());
   }
 
   function listen(address, port) {
