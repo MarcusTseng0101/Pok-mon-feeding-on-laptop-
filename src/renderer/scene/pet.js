@@ -20,6 +20,7 @@ import { homeOptions, homeNight, exhausted } from './home.js';
 import { TRAVEL_ACTIONS, startDepart, drawCarried } from './travel.js';
 import { traitsOf } from '../../core/mind.js';
 import { CURSOR_ACTIONS, cursorOptions, wantsToPounce, startPounce, besideCursor } from './cursor.js';
+import { LIFE_ACTIONS, lifeOptions, boostLife } from './lifeacts.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
@@ -94,7 +95,7 @@ export class Pet {
   }
   get S() { return this.stage.S; }
   get types() { return this.stage.dex.get(this.mon.species).types; }
-  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state] ?? PERCH_ACTIONS[this.state] ?? CURSOR_ACTIONS[this.state] ?? TRAVEL_ACTIONS[this.state]; }
+  get act() { return ACTIONS[this.state] ?? HABIT_ACTIONS[this.state] ?? MOVE_ACTIONS[this.state] ?? SOCIAL_ACTIONS[this.state] ?? PERCH_ACTIONS[this.state] ?? CURSOR_ACTIONS[this.state] ?? TRAVEL_ACTIONS[this.state] ?? LIFE_ACTIONS[this.state]; }
   // 圖的腳底在螢幕上的 y（含飄浮與離地高度，不含走路的上下晃動）
   get y() { return this.gy - (this.alt + this.z) * this.S; }
   restY() { return this.gy - this.alt * this.S; }
@@ -620,12 +621,15 @@ export class Pet {
       tag(perchOption(this), 'explore'), // 跳到其他視窗的標題列上
       tag(cursorOptions(this), 'cursor'), // 追游標、坐在游標旁邊
       tag(homeOptions(this), 'base'), // 回秘密基地睡覺、坐坐
+      tag(lifeOptions(this), 'rest'), // 自己喝水、看書、吃東西（scene/lifeacts.js）
       // 出門旅行（一次只有一隻、桌面上至少留一隻；很少發生）
       tag([['trip', !this.perch && !st.minigame?.active && !this.evolveView && st.game?.canDepart(this.uid) ? 1 : 0, () => {
         if (st.game.depart(this.uid, { curious: traitsOf(this.mon.nature).curious })) startDepart(this);
       }]], 'trip'),
     );
-    this.choose(choices);
+    // 牠們自己的生活（core/life.js）：這一格在喝水，喝水的選項就比較容易被選到
+    const life = st.game?.lifeAt?.(this.uid);
+    this.choose(life ? boostLife(choices, life) : choices);
   }
 
   draw(ctx) {
