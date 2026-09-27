@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('kalos', {
   // 手機頁面：打開／關掉（回傳網址）、重新產生網址、送最新的摘要過去
   setPhone: on => ipcRenderer.invoke('phone:set', Boolean(on)),
   regenPhone: () => ipcRenderer.invoke('phone:regen'),
+  // 在外面也能用（Tailscale HTTPS）：記下網址並試一次連線（null＝關掉）
+  servePhone: base => ipcRenderer.invoke('phone:serve', base == null ? null : String(base)),
   phoneSnapshot: data => ipcRenderer.send('phone:snapshot', data),
   // 拍照確認後一起做：收到 'phoneAction'（{ rid, action }）→ 遊戲算完用這個回話
   phoneReply: (rid, reply) => ipcRenderer.send('phone:reply', rid, reply),

@@ -99,6 +99,9 @@ export class UI {
     this.win.addEventListener('change', e => this.onPanelChange(e));
     this.win.addEventListener('input', e => this.onPanelInput(e));
     this.win.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches?.('[data-city]')) this.searchCity(); });
+    // 在外面也能用的網址：打到一半的字要留著（設定畫面重畫時不要被清掉）；按 Enter 就測試連線
+    this.win.addEventListener('input', e => { if (e.target.matches?.('[data-serve]')) this.serveDraft = e.target.value; });
+    this.win.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches?.('[data-serve]')) this.servePhone(e.target.value); });
     this.bubble = h('<div class="bubble hit pix hidden"></div>');
     this.bubble.onclick = e => this.onBubbleClick(e);
     this.encBar = h('<div class="encounter hit pix hidden"></div>');
@@ -254,7 +257,9 @@ export class UI {
   }
 
   refresh() {
-    if (this.panel) this.renderPanel();
+    // 你正在面板的文字框裡打字（城市、Tailscale 網址）：先不重畫，不然打到一半字和游標都會不見
+    const typing = this.win.contains(document.activeElement) && document.activeElement.matches('input:not([type]), input[type="text"]');
+    if (this.panel && !typing) this.renderPanel();
     if (this.director.enc && !this.director.enc.throwing && !this.encBar.classList.contains('hidden')) this.showEncounter(this.director.enc);
     if (this.bubblePet) this.renderBubble();
     this.applySettings();
@@ -885,6 +890,8 @@ export class UI {
         if (r) this.phoneUrls = r.urls;
         this.renderPanel();
       }); return;
+      case 'servetest': this.servePhone(this.win.querySelector('[data-serve]')?.value ?? ''); return;
+      case 'servestop': this.servePhone(null); return;
       case 'syncnow': this.sync?.run(true); return;
       case 'syncstop': this.confirm('停止同步？這台電腦的存檔會留著，只是之後不會再和其他電腦合併。', () => { this.sync?.stop(); this.renderPanel(); }); return;
       case 'trim': this.trimOpen = !this.trimOpen; this.audio.sfx('click'); this.renderPanel(); return;
@@ -940,7 +947,7 @@ export class UI {
   // ---------- 手機頁面（src/main/phone.js）----------
   phoneSettingsHtml() {
     const on = this.game.state.settings.phone, urls = this.phoneUrls ?? [];
-    const list = urls.map((u, i) => `<button class="purl ${i === (this.phoneQr ?? 0) ? 'sel' : ''}" data-phoneqr="${i}">${u.tailscale ? 'Tailscale：' : '同一個 Wi-Fi：'}<code>${esc(u.url)}</code></button>`).join('');
+    const list = urls.map((u, i) => `<button class="purl ${i === (this.phoneQr ?? 0) ? 'sel' : ''}" data-phoneqr="${i}">${u.https ? '在外面（HTTPS）：' : u.tailscale ? 'Tailscale：' : '同一個 Wi-Fi：'}<code>${esc(u.url)}</code></button>`).join('');
     return `<fieldset class="phone"><legend>在手機上看</legend>
       <label><input type="checkbox" data-phone ${on ? 'checked' : ''}> 在手機上看信箱、明信片、夥伴現在在做什麼，還可以拍下你正在做的事（照片只留在手機上），牠會跟你一起做</label>
       ${!on ? '<p class="hint">打開以後，手機連同一個 Wi-Fi，掃 QR code 就能看。想出門也看，可以在電腦和手機都裝 Tailscale（說明在 README）。</p>'
@@ -948,7 +955,36 @@ export class UI {
           <p class="hint">網址裡有一串只有你知道的密碼，不要給別人。第一次打開時 Windows 可能會問要不要讓 Kalos Amie 使用網路：選「私人網路」。</p>
           <button data-act="phoneregen">重新產生網址（舊的網址會失效）</button></div></div>`
           : `<p class="hint">${esc(this.phoneError ?? '找不到區網或 Tailscale 的網路（先連上 Wi-Fi）')}</p>`}
+      ${on ? this.serveSettingsHtml() : ''}
       </fieldset>`;
+  }
+
+  // 在外面也能用（Tailscale HTTPS）：app 只顯示指令、試連線，不執行 tailscale（src/main/phone.js）
+  serveSettingsHtml() {
+    const st = this.serveStatus;
+    const typed = this.win.querySelector('[data-serve]')?.value; // 重畫前畫面上打的字（還沒按測試連線）
+    if (typed != null && typed !== (this.phoneServe ?? '')) this.serveDraft = typed;
+    return `<div class="serve"><b>在外面也能用（斷網也看得到、拍照也能先存著）</b>
+      <p class="hint">1. 電腦和手機都裝 Tailscale、登入同一個帳號；在 Tailscale 的管理頁打開 MagicDNS 和 HTTPS 憑證。<br>
+      2. 在這台電腦的終端機貼上這一行（app 不會自己執行）：</p>
+      <code class="cmd">${esc(this.phoneCommand ?? '')}</code>
+      <p class="hint">3. 貼上這台電腦的 Tailscale 網址，按「測試連線」。成功以後掃「在外面（HTTPS）」那個 QR code，加到主畫面。</p>
+      <div class="cityrow"><input data-serve maxlength="80" placeholder="https://你的電腦.xxxx.ts.net" value="${esc(this.serveDraft ?? this.phoneServe ?? '')}"><button data-act="servetest">測試連線</button>${this.phoneServe ? '<button data-act="servestop">關掉</button>' : ''}</div>
+      ${st ? `<p class="hint ${st.ok ? 'ok' : 'warn'}" data-serve-status>${st.ok ? '連線成功：在外面也打得開了' : esc(st.error ?? '')}</p>` : ''}
+    </div>`;
+  }
+
+  async servePhone(base) {
+    const r = await this.api.servePhone?.(base);
+    if (!r) return;
+    this.phoneUrls = r.urls ?? [];
+    this.phoneServe = r.serve ?? null;
+    this.phoneCommand = r.command ?? this.phoneCommand;
+    this.serveStatus = base == null ? null : { ok: r.ok === true, error: r.error ?? null };
+    if (r.ok || base == null) this.serveDraft = null;
+    const i = this.phoneUrls.findIndex(u => u.https);
+    if (r.ok && i >= 0) this.phoneQr = i; // 成功：直接顯示 https 網址的 QR code
+    if (this.panel === 'settings') this.renderPanel();
   }
 
   async setPhone(on, { quiet = false } = {}) {
@@ -956,6 +992,8 @@ export class UI {
     const r = await this.api.setPhone?.(on) ?? { urls: [] };
     this.phoneUrls = r.urls;
     this.phoneError = r.error ?? null;
+    this.phoneServe = r.serve ?? null;
+    this.phoneCommand = r.command ?? null;
     this.phoneQr = Math.max(0, r.urls.findIndex(u => !u.tailscale));
     if (on) this.director.pushPhone();
     if (!quiet && this.panel === 'settings') this.renderPanel();

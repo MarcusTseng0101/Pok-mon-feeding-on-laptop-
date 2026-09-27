@@ -12,7 +12,7 @@ import { trayImage } from './tray-icon.js';
 import { createWindowProbe } from './windows.js';
 import { forecastUrl, parseForecast, searchPlaces } from '../core/weather.js';
 import { listSyncFiles, writeSyncFile } from './syncfiles.js';
-import { createPhoneServer, privateAddresses, newToken } from './phone.js';
+import { createPhoneServer, privateAddresses, newToken, serveBase, serveCommand, checkServe, DEFAULT_PORT } from './phone.js';
 import os from 'node:os';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -222,10 +222,12 @@ app.whenReady().then(async () => {
   ipcMain.handle('sync:list', (_e, folder, selfId) => listSyncFiles(folder, selfId).catch(err => ({ error: err.message })));
   ipcMain.handle('sync:write', (_e, folder, deviceId, data) => writeSyncFile(folder, deviceId, data).then(() => true, err => ({ error: err.message })));
   // 手機頁面（src/main/phone.js）：token 存在 userData/phone.json，重開 app 網址不變
+  // 在外面也能用（Tailscale HTTPS）的網址也存在這裡：每台電腦的 Tailscale 名字不一樣，所以不放進會同步的存檔
   const phoneFile = path.join(app.getPath('userData'), 'phone.json');
-  let phoneToken = null;
-  try { phoneToken = JSON.parse(await readFile(phoneFile, 'utf8')).token; } catch { /* 第一次 */ }
-  if (!/^[0-9a-f]{32}$/.test(phoneToken ?? '')) { phoneToken = newToken(); await writeFile(phoneFile, JSON.stringify({ token: phoneToken })); }
+  let phoneToken = null, phoneServe = null;
+  try { const f = JSON.parse(await readFile(phoneFile, 'utf8')); phoneToken = f.token; phoneServe = serveBase(f.serve); } catch { /* 第一次 */ }
+  const savePhone = () => writeFile(phoneFile, JSON.stringify({ token: phone?.token ?? phoneToken, serve: phoneServe }));
+  if (!/^[0-9a-f]{32}$/.test(phoneToken ?? '')) { phoneToken = newToken(); await savePhone(); }
   let phoneSnapshot = null;
   const phoneDir = path.join(here, '../phone');
   // 拍照確認後一起做：交給畫面（遊戲的存檔在那裡），等它回話（core/checkin.js 決定怎麼記；這裡只傳話）
@@ -246,17 +248,31 @@ app.whenReady().then(async () => {
     vendorDir: path.join(phoneDir, 'vendor'), // 手機上辨識照片用（只送檔案，電腦這邊不載入）
     files: {
       '': path.join(phoneDir, 'index.html'), 'phone.js': path.join(phoneDir, 'phone.js'), 'phone.css': path.join(phoneDir, 'phone.css'),
-      'snap.js': path.join(phoneDir, 'snap.js'), 'snap.css': path.join(phoneDir, 'snap.css'), 'font.woff2': path.join(here, '../renderer/fonts/Cubic_11.woff2'),
+      'snap.js': path.join(phoneDir, 'snap.js'), 'snap.css': path.join(phoneDir, 'snap.css'), 'sw.js': path.join(phoneDir, 'sw.js'),
+      'font.woff2': path.join(here, '../renderer/fonts/Cubic_11.woff2'),
     },
   });
+  const phoneInfo = extra => ({ urls: phone.urls, serve: phoneServe, command: serveCommand(phone.port ?? DEFAULT_PORT), ...extra });
+  const startPhone = async () => {
+    try { await phone.start(privateAddresses(os.networkInterfaces()), undefined, { serve: phoneServe }); return phoneInfo(); } catch (err) { return phoneInfo({ urls: [], error: err.message }); }
+  };
   ipcMain.handle('phone:set', async (_e, on) => {
     if (!on) { await phone.stop(); return { urls: [] }; }
-    try { return { urls: await phone.start(privateAddresses(os.networkInterfaces())) }; } catch (err) { return { urls: [], error: err.message }; }
+    return startPhone();
   });
   ipcMain.handle('phone:regen', async () => {
     phone.regenerate();
-    await writeFile(phoneFile, JSON.stringify({ token: phone.token }));
-    return { urls: phone.urls };
+    await savePhone();
+    return phoneInfo();
+  });
+  // 在外面也能用：記下網址（null＝關掉）、重新聽（多聽 127.0.0.1）、從這台電腦試一次連線。app 不執行 tailscale 指令
+  ipcMain.handle('phone:serve', async (_e, base) => {
+    phoneServe = base == null ? null : serveBase(base);
+    if (base != null && !phoneServe) return phoneInfo({ ok: false, error: '網址要像 https://你的電腦.xxxx.ts.net' });
+    await savePhone();
+    const info = await startPhone();
+    if (!phoneServe || info.error) return info;
+    return { ...info, ...(await checkServe(phoneServe, phone.token)) };
   });
   ipcMain.on('phone:snapshot', (_e, data) => { if (data && typeof data === 'object') phoneSnapshot = data; });
   ipcMain.on('mouse:interactive', (_e, on) => win?.setIgnoreMouseEvents(!on, { forward: true }));

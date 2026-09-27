@@ -45,7 +45,8 @@ if (typeof document !== 'undefined') {
   const newId = () => [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('');
 
   // 正在跟你一起做的事：{ name, kind, until }（只在記憶體；電腦收到以後，生活表裡也會有）
-  let together = null;
+  let together = null; // 重新整理也記得（存在這支手機上），斷網時也一樣
+  try { const t = JSON.parse(localStorage.getItem('kalos-snap-now')); if (t && typeof t.name === 'string' && Number.isFinite(t.until) && Date.now() < t.until) together = t; } catch { /* 沒有 */ }
   window.snapNow = name => {
     if (!together || together.name !== name || Date.now() >= together.until) return null;
     return { code: kindOf(together.kind).code, with: true };
@@ -118,12 +119,45 @@ if (typeof document !== 'undefined') {
   });
 
   // 送到電腦：這頁唯一會送 body 的地方，body 只有 { kind, id, at }（F30）
-  async function send(kind) {
+  // 回傳電腦的回話；null＝現在送不到（斷網、電腦沒開、太多了）→ 之後再送
+  async function post(a) {
     try {
-      const res = await fetch('act', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, id: newId(), at: Date.now() }) });
-      return res.ok ? await res.json() : null;
+      const res = await fetch('act', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: a.kind, id: a.id, at: a.at }) });
+      if (res.status === 429 || res.status >= 500) return null;
+      return res.ok ? await res.json() : { ok: false }; // 電腦說格式不對：不再送
     } catch { return null; }
   }
+
+  // 斷網也能用：送不到的事排進佇列（只在這支手機上，最多 QUEUE_MAX 件），連上電腦就照順序送。
+  // 每件都有自己的 id（電腦那邊去重，F18），重送不會多算；時間是你按下去的那一刻（電腦最多相信到 24 小時前，F19）
+  const QUEUE = 'kalos-snap-queue', NOW = 'kalos-snap-now', QUEUE_MAX = 50; // 猜的，可調整
+  const store = {
+    get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+    set(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch { /* 存不了就算了 */ } },
+  };
+  const queued = () => store.get(QUEUE, []).filter(a => a && typeof a.kind === 'string' && /^[0-9a-f]{32}$/.test(a.id) && Number.isFinite(a.at));
+  async function send(kind) {
+    const a = { kind, id: newId(), at: Date.now() };
+    if (queued().length) { store.set(QUEUE, [...queued(), a].slice(-QUEUE_MAX)); flush(); return null; } // 前面還有沒送的：照順序
+    const r = await post(a);
+    if (r === null) store.set(QUEUE, [...queued(), a].slice(-QUEUE_MAX));
+    return r;
+  }
+  let flushing = false;
+  async function flush() {
+    if (flushing) return;
+    flushing = true;
+    try {
+      for (let q = queued(); q.length; q = queued()) {
+        if ((await post(q[0])) === null) break;
+        store.set(QUEUE, queued().filter(x => x.id !== q[0].id));
+      }
+    } finally { flushing = false; }
+    box.dataset.queued = String(queued().length); // 測試用
+  }
+  window.snapFlush = flush; // phone.js 連上電腦的時候叫
+  addEventListener('online', flush);
+  const keepNow = () => store.set(NOW, together);
 
   // 跟你一起做的是哪一隻：跟你出門的那隻；沒出門就是在家、最親近的那隻（跟電腦一樣；電腦回話以後照電腦的）
   function buddy() {
@@ -136,14 +170,17 @@ if (typeof document !== 'undefined') {
     const kind = pick, k = kindOf(kind), who = buddy();
     if (!who) { reply.textContent = '先在電腦上選好夥伴'; return; }
     together = { name: who.name, kind, until: Date.now() + k.minutes * 60_000 };
+    keepNow();
     if (last) render(last);
     reply.textContent = `${who.name}跟你一起${k.zh}`;
     done.hidden = kind !== 'read';
     panel.hidden = true;
     keep(kind, who).catch(() => {});
     const r = await send(kind);
+    if (r === null) reply.textContent = `${who.name}跟你一起${k.zh}（還沒送到家裡的電腦，連上就會送）`;
     if (r?.ok && r.name && together?.kind === kind) {
       together = { name: r.name, kind, until: Number.isFinite(r.until) ? r.until : together.until };
+      keepNow();
       reply.textContent = r.line ?? reply.textContent;
       if (last) render(last);
     }
@@ -153,6 +190,7 @@ if (typeof document !== 'undefined') {
   done.addEventListener('click', async () => {
     const name = together?.name;
     together = null;
+    keepNow();
     done.hidden = true;
     if (last) render(last);
     reply.textContent = name ? `${name}伸了個懶腰` : '';
@@ -213,4 +251,7 @@ if (typeof document !== 'undefined') {
     box.classList.toggle('has-album', mine.length > 0);
   }
   album();
+  if (together?.kind === 'read') done.hidden = false;
+  if (last) render(last);
+  flush();
 }

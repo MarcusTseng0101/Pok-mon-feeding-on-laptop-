@@ -10,6 +10,9 @@
 // - 手機上辨識照片用的 TensorFlow.js 和模型（src/phone/vendor 資料夾）：只有 VENDOR 列出來的檔案，一個一個列，不用萬用字元（F33）；
 //   這些檔案不會變，手機可以快取（其他一律不快取）
 // - 只監聽區網位址（10.x、172.16–31.x、192.168.x）和 Tailscale 的位址（100.64–127.x），不監聽 0.0.0.0
+// - 在外面也能用（Tailscale HTTPS）：你自己在電腦上跑 `tailscale serve`，它把 https://<電腦>.<tailnet>.ts.net 轉到 127.0.0.1，
+//   所以只有這個選項打開時才多聽 127.0.0.1（F23）。app 不執行 tailscale 指令；不相信 Tailscale-User-Login 這類標頭
+//   （從 127.0.0.1 進來的請求，本機任何程式都能偽造），token 仍然是唯一的門
 // - 頁面不准執行內嵌程式（Content-Security-Policy），文字一律用 textContent 放進畫面（見 src/phone/phone.js）
 // 這個檔案不碰 Electron（main.js 負責接起來），所以 node --test 可以直接測。
 import http from 'node:http';
@@ -20,6 +23,29 @@ import { validAction } from '../core/checkin.js';
 
 export const DEFAULT_PORT = 37851;
 export const newToken = () => randomBytes(16).toString('hex');
+export const LOOPBACK = '127.0.0.1';
+
+// 在外面也能用：你貼上的 Tailscale HTTPS 網址 → 'https://<電腦>.<tailnet>.ts.net'（不對就是 null）。
+// 只收 *.ts.net：測試連線時網址裡帶著密碼，不能送到別的網站
+export function serveBase(s) {
+  const m = /^\s*(?:https:\/\/)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.[a-z0-9-]+\.ts\.net)\/?\s*$/i.exec(String(s ?? ''));
+  return m ? `https://${m[1].toLowerCase()}` : null;
+}
+// 要貼到電腦終端機的那一行（app 自己不執行）
+export const serveCommand = port => `tailscale serve --bg --https=443 http://${LOOPBACK}:${port}`;
+// 測試連線：從這台電腦 GET https://<電腦>.ts.net/t/<token>/data.json（走 tailscale serve 回到自己）
+export async function checkServe(base, token, fetchImpl = fetch) {
+  const b = serveBase(base);
+  if (!b) return { ok: false, error: '網址要像 https://你的電腦.xxxx.ts.net' };
+  try {
+    const r = await fetchImpl(`${b}/t/${token}/data.json`, { signal: AbortSignal.timeout(6000), redirect: 'error' });
+    if (!r.ok) return { ok: false, error: `連得到，但回了 ${r.status}（tailscale serve 的目標是不是 ${LOOPBACK} 和這裡的連接埠？）` };
+    await r.json();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: `連不到（${err?.name === 'TimeoutError' ? '逾時' : '網路錯誤'}）：Tailscale 有沒有開、MagicDNS 和 HTTPS 憑證有沒有打開、指令有沒有貼` };
+  }
+}
 
 // 可以監聽的位址：區網和 Tailscale（100.64.0.0/10）的 IPv4
 export function privateAddresses(interfaces) {
@@ -65,6 +91,7 @@ export function createPhoneServer({ files, getSnapshot, token, vendorDir = null,
   let current = token ?? newToken();
   let servers = [];
   let urls = [];
+  let port = null;
   let recentPosts = []; // 最近一分鐘的 POST（時間）
 
   const sameToken = t => {
@@ -152,24 +179,34 @@ export function createPhoneServer({ files, getSnapshot, token, vendorDir = null,
   return {
     get token() { return current; },
     get urls() { return urls; },
+    get port() { return port; },
     // addresses：[{ address, tailscale }]；port 被佔用就往後找（最多 10 個）
-    async start(addresses, port = DEFAULT_PORT) {
+    // serve：在外面也能用的網址（serveBase 的結果）：多聽 127.0.0.1，網址清單多一個 https 的
+    async start(addresses, from = DEFAULT_PORT, { serve = null } = {}) {
       await this.stop();
-      if (!addresses.length) return urls;
-      let first = null, used = port;
-      for (let p = port; p < port + 10 && !first; p++) {
-        try { first = await listen(addresses[0].address, p); used = p; } catch (err) { if (err.code !== 'EADDRINUSE') throw err; }
+      const base = serveBase(serve);
+      // 0.0.0.0 一律不聽；127.0.0.1 只有打開「在外面也能用」時才由這裡加（main.js 給的 privateAddresses 本來就沒有它）
+      const list = addresses.filter(a => a.address !== '0.0.0.0' && !(base && a.address === LOOPBACK));
+      if (base) list.push({ address: LOOPBACK, local: true });
+      if (!list.length) return urls;
+      let first = null, used = from;
+      for (let p = from; p < from + 10 && !first; p++) {
+        try { first = await listen(list[0].address, p); used = p; } catch (err) { if (err.code !== 'EADDRINUSE') throw err; }
       }
       if (!first) throw new Error('找不到可以用的連接埠');
       servers = [first];
-      for (const a of addresses.slice(1)) { try { servers.push(await listen(a.address, used)); } catch { /* 這個位址不能用：跳過 */ } }
-      urls = addresses.slice(0, servers.length).map(a => ({ url: `http://${a.address}:${used}/t/${current}/`, tailscale: a.tailscale }));
+      const ok = [list[0]];
+      for (const a of list.slice(1)) { try { servers.push(await listen(a.address, used)); ok.push(a); } catch { /* 這個位址不能用：跳過 */ } }
+      port = used;
+      urls = ok.filter(a => !a.local).map(a => ({ url: `http://${a.address}:${used}/t/${current}/`, tailscale: a.tailscale }));
+      if (base && ok.some(a => a.local)) urls.push({ url: `${base}/t/${current}/`, tailscale: true, https: true });
       return urls;
     },
     async stop() {
       await Promise.all(servers.map(s => new Promise(r => s.close(() => r()))));
       servers = [];
       urls = [];
+      port = null;
     },
     // 重新產生網址（舊的網址馬上失效）
     regenerate() {
