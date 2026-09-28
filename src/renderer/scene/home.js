@@ -37,12 +37,89 @@ export function goToBed(pet, { night = false } = {}) {
   return true;
 }
 
-// 走到基地的空地坐著（或看看有沒有人在睡，擠過去）
+// 兩個框（{ x, y, w, h }）重疊的面積占比較小那個的多少（0–1）
+export function overlapFrac(ra, rb) {
+  const ix = Math.min(ra.x + ra.w, rb.x + rb.w) - Math.max(ra.x, rb.x);
+  const iy = Math.min(ra.y + ra.h, rb.y + rb.h) - Math.max(ra.y, rb.y);
+  return ix > 0 && iy > 0 ? (ix * iy) / Math.min(ra.w * ra.h, rb.w * rb.h) : 0;
+}
+// 假設牠站在 (x, y)（腳底）時畫出來的框：會飄的畫在腳底上面 alt 美術像素（跟 Pet.rect() 一樣）
+function rectAt(p, x, y) {
+  const S = p.S, w = p.asset.w * S, h = p.asset.h * S;
+  return { x: x - w / 2, y: y - (p.alt ?? 0) * S - h, w, h };
+}
+// 重疊超過這個比例就算擠在一起（一前一後稍微蓋到一點是正常的遠近，蓋掉一大塊就是疊成一團）。
+// 測試（basecrowd.cjs）量的是 30%，這裡 25% 就挪開，才不會卡在剛好 30% 的邊界上（猜的，可調整）
+export const CROWD = 0.25;
+const DAY_INSIDE = 0.5; // 白天回基地休息時鑽進住的地方的機會（猜的，可調整）
+
+// 基地的空地裡，還沒被別隻占走的：別隻坐在那裡、或正要走過去的格子不算（不然好幾隻擠在同一格、疊在一起）
+export function openSpots(pet) {
+  const view = pet.stage.baseView;
+  if (!view) return [];
+  // 別隻要去的那一格、和牠現在真的站的地方（走到空地時停的位置會跟那一格差一點）都要避開
+  const taken = [...pet.stage.pets.values()].filter(o => o !== pet && !o.perch && !INSIDE.includes(o.state))
+    .flatMap(o => [o.homeSpot && { o, at: o.homeSpot }, view.contains(o.x, o.gy) && { o, at: { x: o.x, y: o.gy } }].filter(Boolean));
+  return view.freeSpots().filter(sp => taken.every(({ o, at }) => overlapFrac(rectAt(pet, sp.x, sp.y), rectAt(o, at.x, at.y)) <= CROWD));
+}
+
+// 走到最近一格沒人的空地，到了做 then（沒有空地就回傳 false）
+function goSpot(pet, then) {
+  const spots = openSpots(pet);
+  if (!spots.length) return false;
+  const spot = spots.reduce((a, b) => (Math.hypot(b.x - pet.x, b.y - pet.gy) < Math.hypot(a.x - pet.x, a.y - pet.gy) ? b : a));
+  pet.homeSpot = spot; // 別隻挑位置時知道這格有人要來了（Pet.decide() 清掉）
+  // 走到了就對準那一格站好（走路停下的位置會差幾個像素，差這一點就可能又蓋到旁邊那隻；床也是這樣對準）
+  walkThen(pet, spot, () => { pet.x = spot.x; pet.gy = spot.y; then(); });
+  return true;
+}
+
+// 在基地裡跟牠疊在一起的那一隻（沒有就是 undefined）。only：只看符合條件的（例如正在休息的）
+function crowdedBy(pet, only = () => true) {
+  const view = pet.stage.baseView;
+  if (!view || pet.perch || pet.bedId || !view.contains(pet.x, pet.gy)) return undefined;
+  const r = pet.rect();
+  return [...pet.stage.pets.values()].find(o => o !== pet && only(o) && !o.bedId && !o.perch && !INSIDE.includes(o.state) && view.contains(o.x, o.gy)
+    && overlapFrac(r, o.rect()) > CROWD);
+}
+const crowded = pet => Boolean(crowdedBy(pet));
+
+// 休息中每 ROOM_CHECK 秒看一次：停下來的地方跟別隻疊在一起（追著玩、嚇一跳、東張西望完直接停在原地，
+// 或走到空地時停的位置跟目標差一點），就讓後來停下的那隻挪開；另一隻還在走的話等牠走過去
+const RESTING = new Set(['idle', 'sit', 'look', 'stretch', 'nap']);
+const ROOM_CHECK = 0.5; // 秒（猜的，可調整）
+export function tickRoom(pet, dt) {
+  if (!RESTING.has(pet.state) || pet.reserved || pet.partner) return;
+  pet.roomT = (pet.roomT ?? 0) + dt;
+  if (pet.roomT < ROOM_CHECK) return;
+  pet.roomT = 0;
+  const o = crowdedBy(pet, q => RESTING.has(q.state)); // 還在走的：等牠走過去
+  if (!o) return;
+  const newer = pet.stateT < o.stateT || (pet.stateT === o.stateT && pet.uid > o.uid); // 同時停下的：固定讓其中一隻讓
+  if (newer) makeRoom(pet);
+}
+
+// 動物休息時會保持個體距離：在基地裡跟別隻疊在一起，就挪到最近的空地（基地滿了就走開）。
+// Pet.decide() 每次先問這裡；從帳篷出來、門口住滿的也用這個。then：到了以後做什麼（預設坐下）
+export function makeRoom(pet, then = () => { pet.set('sit', rnd(5, 10)); }) {
+  if (!crowded(pet)) return false;
+  if (!goSpot(pet, then)) { pet.target = pet.randomPoint(60, 160); pet.set('walk'); }
+  return true;
+}
+
+// 走到基地的空地坐著（或看看有沒有人在睡，擠過去）。
+// 白天：住的地方還住得下，一半的機會鑽進去休息（動物大多回窩休息；全部都進去的話桌面上會空空的、也沒辦法找牠玩）；
+// 不然找一格沒人的空地；都沒有就不去
 export function goHomeAndRest(pet, { night = false } = {}) {
   const view = pet.stage.baseView;
-  const spots = view?.freeSpots() ?? [];
+  if (!view) return false;
+  if (!night && roomInside(pet) && (Math.random() < DAY_INSIDE || !openSpots(pet).length)) return goInside(pet);
+  const spots = night ? view.freeSpots() : openSpots(pet); // 晚上本來就是擠在一起睡
   if (!spots.length) return false;
-  walkThen(pet, pick(spots), () => {
+  const spot = pick(spots);
+  pet.homeSpot = spot;
+  walkThen(pet, spot, () => {
+    if (!night) { pet.x = spot.x; pet.gy = spot.y; } // 對準那一格（見 goSpot）
     if (night) {
       const cuddle = socialOptions(pet, []).find(([n]) => n === 'cuddle');
       if (cuddle) { cuddle[2](); return; }
@@ -69,7 +146,7 @@ export function goInside(pet, { night = false } = {}) {
   if (!roomInside(pet)) return false;
   const door = pet.stage.baseView.door();
   walkThen(pet, door, () => {
-    if (!roomInside(pet)) { pet.set('sit', rnd(3, 6)); return; } // 走到門口才發現住滿了
+    if (!roomInside(pet)) { if (!goSpot(pet, () => pet.set('sit', rnd(5, 10)))) pet.set('sit', rnd(3, 6)); return; } // 走到門口才發現住滿了：找一格空地坐（門口會有別隻出來）
     pet.x = door.x; pet.gy = door.y;
     pet.insideFor = night ? rnd(30, 60) : rnd(15, 30); // 跟睡床一樣久
     pet.insideNight = night; // 晚上鑽進去的：跟睡床一樣睡到早上才出來
@@ -98,7 +175,11 @@ export const TENT_ACTIONS = {
     lift: () => 0,
   },
   goOut: {
-    update(pet, dt, done) { if (done) { pet.set('stretch', 1.2); pet.showEmote('…', 1); } },
+    update(pet, dt, done) {
+      if (!done) return;
+      const stretch = () => { pet.set('stretch', 1.2); pet.showEmote('…', 1); };
+      if (!makeRoom(pet, stretch)) stretch(); // 門口有別隻：先走開一點再伸懶腰
+    },
     alpha: pet => Math.min(1, pet.stateT / 0.6),
     lift: () => 0,
   },
@@ -119,7 +200,8 @@ export function homeOptions(pet) {
     ['goBed', !beds ? 0 : tired, () => goToBed(pet) || pet.set('nap', rnd(8, 14))],
     // 回基地坐坐：舒適度越低越想回去；就算不累，偶爾也會回家看看
     // （權重是猜的，可以調）
-    ['goBase', atHome(pet) ? 0.5 : comfort < 70 ? 5 : 2.5, () => goHomeAndRest(pet) || pet.set('sit', rnd(3, 6))],
+    // 住的地方住滿、空地也都有人：不去（去了只會擠成一團）
+    ['goBase', !room && !openSpots(pet).length ? 0 : atHome(pet) ? 0.5 : comfort < 70 ? 5 : 2.5, () => goHomeAndRest(pet) || pet.set('sit', rnd(3, 6))],
   ];
 }
 

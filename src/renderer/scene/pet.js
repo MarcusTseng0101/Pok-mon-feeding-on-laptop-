@@ -16,7 +16,7 @@ import { integrateKnock } from './physics.js';
 import { updateForm, drawForm } from './battleforms.js';
 import { PERCH_ACTIONS, perchBounds, perchedChoices, perchOption } from './perching.js';
 import { tag, weigh, afterChoice, tickMind, mindWeights } from './mindlink.js';
-import { homeOptions, homeNight, exhausted, TENT_ACTIONS } from './home.js';
+import { homeOptions, homeNight, exhausted, makeRoom, tickRoom, TENT_ACTIONS } from './home.js';
 import { TRAVEL_ACTIONS, startDepart, drawCarried } from './travel.js';
 import { traitsOf } from '../../core/mind.js';
 import { CURSOR_ACTIONS, cursorOptions, wantsToPounce, startPounce, besideCursor } from './cursor.js';
@@ -327,6 +327,7 @@ export class Pet {
     updateForm(this, dt); // 超級進化、牽絆變身
     // guest：故事對戰的對手（不是你的夥伴）：沒有心情、不會自己決定要做什麼
     if (!this.guest) tickMind(this, dt); // 需求隨時間變化（每秒一次）
+    if (!this.guest) tickRoom(this, dt); // 在基地休息時跟別隻疊在一起：後來的挪開（scene/home.js）
     if (!this.guest && wantsToPounce(this, dt)) { startPounce(this); afterChoice(this, ['pounce', 1, null, 'cursor']); } // 游標在附近晃：撲過去
     if (this.emote && this.t > this.emote.until) this.emote = null;
     const p = st.pointer;
@@ -562,6 +563,7 @@ export class Pet {
     const st = this.stage;
     this.onArrive = null;
     this.bedId = null; // 睡醒了：床空出來
+    this.homeSpot = null; // 基地空地上占的那一格也空出來（scene/home.js）
     this.walkLimit = null;
     if (st.game?.tripStatus(this.uid) === 'away') { startDepart(this); return; } // 已經出發了（例如走到一半被拎起來）：繼續走
 
@@ -590,6 +592,7 @@ export class Pet {
     }
     const tired = exhausted(this); // 累壞了：直接回床上睡
     if (tired) { this.choose(tag([tired], 'base')); return; }
+    if (makeRoom(this)) { afterChoice(this, ['makeRoom', 1, null, 'base']); return; } // 在基地跟別隻疊在一起：挪開（保持個體距離）
     const rp = (a, b) => a + Math.random() * (b - a);
     // 這幾個基本動作怎麼做（多常做、做多久由 core/ethogram.js 的物種生活表決定；d＝nextBout 給的長度）
     const ctx = { ...boutCtx(this), others: others.length };
