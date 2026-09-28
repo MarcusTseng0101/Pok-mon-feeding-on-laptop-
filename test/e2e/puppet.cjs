@@ -12,9 +12,11 @@ const { run, ROOT } = require('./lib.cjs');
 const PER_SHEET = 18;
 
 run('puppet', async ({ page }, check) => {
+  // 選御三家的視窗要等 3 張圖載好才跳出來（app.js）：先等它出來、真的點一隻，不然它可能晚一點才出來、蓋住後面要按的地方
+  await page.waitForSelector('.modal .starter [data-id="650"]', { timeout: 20000 });
+  await page.click('.modal .starter [data-id="650"]');
   const r = await page.evaluate(async (PER_SHEET) => {
-    const { game, stage, ui } = window.__kalos;
-    ui.modal.classList.add('hidden');
+    const { stage } = window.__kalos;
     const ids = stage.dex.ids;
     await Promise.all(ids.map(id => stage.sprites.get(id)));
     const { buildRig, SETS } = await import('/src/renderer/gfx/rig.js');
@@ -80,8 +82,7 @@ run('puppet', async ({ page }, check) => {
   }, PER_SHEET);
   // 真的用滑鼠：按住寶可夢拖起來 → 播「被拎著」；放開掉下來、站好 → 回到待機
   const p0 = await page.evaluate(async () => {
-    const { game, director, stage } = window.__kalos;
-    game.chooseStarter(650);
+    const { game, director, stage, ui } = window.__kalos;
     director.syncPets();
     const t0 = Date.now();
     while (stage.pets.size < 1 && Date.now() - t0 < 15000) await new Promise(res => setTimeout(res, 50));
@@ -89,8 +90,9 @@ run('puppet', async ({ page }, check) => {
     const p = [...stage.pets.values()][0];
     p.x = 500 * stage.dpr; p.gy = 450 * stage.dpr; p.set('idle', 999);
     const rc = p.rect();
-    return { x: (rc.x + rc.w / 2) / stage.dpr, y: (rc.y + rc.h * 0.6) / stage.dpr };
+    return { x: (rc.x + rc.w / 2) / stage.dpr, y: (rc.y + rc.h * 0.6) / stage.dpr, modal: !ui.modal.classList.contains('hidden') };
   });
+  check(!p0.modal, '要拎的時候畫面上還有視窗蓋著');
   await page.mouse.move(p0.x, p0.y);
   await page.mouse.down();
   for (let i = 1; i <= 8; i++) { await page.mouse.move(p0.x + i * 4, p0.y - i * 12); await page.waitForTimeout(30); }
