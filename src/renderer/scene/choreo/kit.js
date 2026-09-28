@@ -102,3 +102,22 @@ export function ripple(stage, x, y, col, r0, r1, { flat = 1, life = 0.5, delay =
     },
   });
 }
+
+// 把目標舉起來再放下：由一個特效負責，時間到一定放回地上（招式被打斷也一樣）
+// up：升上去的秒數、hold：停在上面、down：放下來（slam＝一下砸下來）、height：美術像素
+export function lift(stage, who, { up = 0.3, hold = 0.2, down = 0.2, height = 24, slam = false } = {}) {
+  if (!who || ['held', 'fall'].includes(who.state) || who.floats) return false;
+  const L = up + hold + down;
+  part(stage, {
+    x: 0, y: 0, life: L,
+    tick: (p, dt) => {
+      const t = p.t + dt;
+      if (t >= L - 1e-6) { who.z = 0; return; }
+      if (t < up) who.z = Math.sin((t / up) * Math.PI / 2) * height;
+      else if (t < up + hold) who.z = height;
+      else { const u = (t - up - hold) / down; who.z = height * (slam ? 1 - u * u : 1 - u); }
+    },
+    draw: () => {},
+  });
+  return true;
+}
