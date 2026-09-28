@@ -24,5 +24,8 @@ import { ROCK_MOVES } from './rock.js';
 import { GHOST } from './ghost.js';
 import { STEEL_MOVES } from './steel.js';
 import { DRAGON_MOVES } from './dragon.js';
+import { NORMAL } from './normal.js';
+import { DARK_MOVES } from './dark.js';
+import { FAIRY } from './fairy.js';
 
-export const CHOREO = { ...WATER, ...FIRE, ...GRASS, ...ELECTRIC, ...ICE_MOVES, ...FIGHTING, ...POISON, ...GROUND, ...FLYING, ...PSYCHIC, ...BUG, ...ROCK_MOVES, ...GHOST, ...STEEL_MOVES, ...DRAGON_MOVES };
+export const CHOREO = { ...WATER, ...FIRE, ...GRASS, ...ELECTRIC, ...ICE_MOVES, ...FIGHTING, ...POISON, ...GROUND, ...FLYING, ...PSYCHIC, ...BUG, ...ROCK_MOVES, ...GHOST, ...STEEL_MOVES, ...DRAGON_MOVES, ...NORMAL, ...DARK_MOVES, ...FAIRY };
