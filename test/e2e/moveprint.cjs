@@ -163,7 +163,7 @@ const test = async ({ page }, check) => {
   check(missing.length === 0, `這個 PR 的屬性還有招沒有自己的演出：${missing}`);
   check(close.length === 0, `有招跟別招太像（要 ≥ 尺 × ${RATIO}）：${[...new Set(close.map(fmt))].join(' ')}`);
 
-  const done = Object.entries(GROUPS).filter(([, types]) => ids.filter(id => types.includes(r.types[id])).every(id => r.choreo.includes(id))).map(([g]) => g);
+  const done = Object.entries(GROUPS).filter(([, types]) => ids.filter(id => types.includes(r.types[id])).every(id => r.choreo.includes(id) || OWN.includes(id))).map(([g]) => g);
   const dir = process.env.MOVEPRINT_SHEETS;
   for (const [g, url] of Object.entries(r.sheets)) {
     const file = dir ? path.join(dir, `moves-${g}.png`) : done.includes(g) ? path.join(ROOT, 'docs/screens', `moves-${g}.png`) : null;
