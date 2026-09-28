@@ -93,8 +93,16 @@ export class SpriteBank {
     let anim = RIGS.get(still);
     if (!anim) {
       const rig = buildRig(still.canvas, { floats: this.dex.floats?.(speciesOfKey(id)) ?? false });
-      const wrap = set => ({ ...set, frames: set.frames.map(c => makeAsset(c)) });
-      anim = { sets: { idle: wrap(rig.sets.idle), walk: wrap(rig.sets.walk) }, w: rig.w, h: rig.h, info: rig.info };
+      // 每一組動作第一次用到才做（睡覺、出招那些很多隻一輩子都用不到幾次）
+      const sets = {};
+      for (const name of Object.keys(rig.sets)) {
+        let wrapped = null;
+        Object.defineProperty(sets, name, {
+          enumerable: true,
+          get: () => (wrapped ??= (s => ({ ...s, frames: s.frames.map(c => makeAsset(c)) }))(rig.sets[name])),
+        });
+      }
+      anim = { sets, w: rig.w, h: rig.h, info: rig.info };
       RIGS.set(still, anim);
     }
     return anim;
@@ -117,7 +125,7 @@ export class AnimView {
     this.fallback = false;
     this.animated = true;
   }
-  // t：這隻自己的動畫時間（秒）；set：'idle' 待機、'walk' 走路
+  // t：這隻自己的動畫時間（秒）；set：'idle' 待機、'walk' 走路…（全部見 gfx/rig.js 的 SETS）
   at(t, set = 'idle') {
     const s = (this.set = this.anim.sets[set] ?? this.anim.sets.idle);
     const { durs, total } = s;

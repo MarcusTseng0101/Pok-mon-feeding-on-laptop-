@@ -1,6 +1,6 @@
-// 會動的像素圖（gfx/rig.js）：維持原本的 2 倍像素圖，切成頭／身體／左右腳，只移動整數個像素。
+// 會動的像素圖（gfx/rig.js）：維持原本的 2 倍像素圖，切成頭／身體／左右腳／手尾巴耳朵，移動整數個像素、部位用 RotSprite 轉。
 // 待機會呼吸、走路左右腳輪流抬；每一格的顏色都是原圖裡有的（沒有糊掉、沒有新顏色）；
-// 高度跟原本一樣（上面多留 1 格）；兩隻同一種的不會同步；點得到
+// 大小＝原圖＋左右各 pad、上面 pad（腳底還在最下面）；兩隻同一種的不會同步；點得到
 const { run } = require('./lib.cjs');
 
 run('anim', async ({ page, shot }, check) => {
@@ -17,13 +17,13 @@ run('anim', async ({ page, shot }, check) => {
     Object.assign(stage.env, { sleepy: false, userActive: false, hour: 14, focus: null });
     const [a, b, c, d] = [...stage.pets.values()];
     const out = {};
-    // 每一格的顏色都是原圖有的顏色；大小＝原圖＋左右各 1、上面 1
+    // 每一格的顏色都是原圖有的顏色；大小＝原圖＋左右各 pad、上面 pad
     const colors = cv => { const s = new Set(); const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; for (let i = 0; i < px.length; i += 4) if (px[i + 3] > 0) s.add(`${px[i]},${px[i + 1]},${px[i + 2]},${px[i + 3]}`); return s; };
     out.pixel = [650, 697].map(id => {
       const still = stage.sprites.peek(id, false), anim = stage.sprites.peekAnim(id, false), base = colors(still.canvas);
       const all = [...anim.sets.idle.frames, ...anim.sets.walk.frames];
       const bad = all.reduce((n, f) => n + [...colors(f.canvas)].filter(k => !base.has(k)).length, 0);
-      return { id, still: [still.w, still.h], anim: [anim.w, anim.h], newColors: bad, legs: anim.info.hasLegs };
+      return { id, still: [still.w, still.h], anim: [anim.w, anim.h], pad: anim.info.pad, newColors: bad, legs: anim.info.hasLegs };
     });
     const sig = p => { const cv = p.asset.canvas; const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let h = 0; for (let i = 0; i < px.length; i += 3) h = (h * 31 + px[i]) >>> 0; return h; };
     // 待機：2 秒內至少換 2 種畫面（呼吸）
@@ -59,7 +59,8 @@ run('anim', async ({ page, shot }, check) => {
   });
   console.log(JSON.stringify(r));
   check(r.pixel.every(p => p.newColors === 0), `動起來的圖出現原圖沒有的顏色（糊掉了）：${JSON.stringify(r.pixel)}`);
-  check(r.pixel.every(p => p.anim[0] === p.still[0] + 2 && p.anim[1] === p.still[1] + 1), `大小不對：${JSON.stringify(r.pixel)}`);
+  // 四周留的格數（左右各 pad、上面 pad；像素木偶手舉起來才不會被切掉，見 gfx/rig.js 的 PAD）
+  check(r.pixel.every(p => p.pad >= 1 && p.anim[0] === p.still[0] + 2 * p.pad && p.anim[1] === p.still[1] + p.pad), `大小不對：${JSON.stringify(r.pixel)}`);
   check(r.pixel.every(p => p.legs), `應該找得到腳：${JSON.stringify(r.pixel)}`);
   check(r.idleSet && r.idleFrames >= 2, `待機沒有在呼吸：${r.idleFrames}`);
   check(r.walkSet >= 20 && r.walkFrames >= 3, `走路沒有用走路的動作：${r.walkSet} 幀、${r.walkFrames} 種畫面`);

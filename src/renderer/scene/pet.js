@@ -47,6 +47,16 @@ function pickWeighted(list) {
 
 // 動畫播放速度（原作的待機動畫；走路、跑步時播快一點，看起來像在邁步）
 const TINY = 0.55; // 全螢幕時縮小到幾倍（猜的，可調整）
+// 狀態 → 播哪一組動作（沒列的看有沒有在移動）
+const ANIM_SET = {
+  held: 'dangle', fall: 'dangle',
+  sleep: 'sleep', nap: 'sleep', gemnap: 'sleep',
+  eat: 'eat', munch: 'eat', sip: 'eat', graze: 'eat', sweettooth: 'eat',
+  trip: 'hurt', dizzy: 'hurt', startle: 'hurt', stuck: 'hurt',
+  move: 'attack', ram: 'attack', roar: 'attack', spar: 'attack', tantrum: 'attack', stomp: 'attack', chomp: 'attack', bite: 'attack',
+  happy: 'happy', hop: 'happy', greet: 'happy', dance: 'happy', cheer: 'happy', twirl: 'happy', bounce: 'happy', hug: 'happy', hugging: 'happy', flashypose: 'happy', keyfound: 'happy',
+};
+const RUNS = new Set(['run', 'chase', 'flee', 'chaseCursor', 'pounce', 'oni', 'tag']);
 const ANIM_SPEED = { walk: 1.5, approach: 1.5, walkTogether: 1.5, run: 2, chase: 2, flee: 2, chaseCursor: 2, pounce: 1.6, dance: 1.6, held: 1.4, sit: 0.7, sleep: 0.3, dizzy: 0.5, shiver: 2.5 };
 
 export class Pet {
@@ -88,10 +98,17 @@ export class Pet {
   // 圖片依形態而不同（藍花的花蓓蓓、超級蒂安希…）；battleForm 是對戰中暫時的形態，不存檔
   get spriteKey() { return spriteKey(this.mon.species, this.battleForm ?? this.mon.form); }
   // 會動的圖載好了就用它（每一隻有自己的播放位置），還沒就先用不會動的圖
-  // 這一幀有在移動就播走路的動作（左右腳輪流抬），不然播待機（呼吸）
+  // 播哪一組動作（gfx/rig.js）：被打到、被拎著、睡覺、吃、出招、開心各有自己的；
+  // 其他的這一幀有在移動就播走路（跑的狀態播跑），不然播待機（呼吸）
   get asset() {
+    return liveAsset(this, this.stage.sprites, this.spriteKey, this.mon.shiny, this.animT, this.animSet());
+  }
+  animSet() {
+    if (this.flinchT > 0) return 'hurt';
+    const s = ANIM_SET[this.state];
+    if (s) return s;
     const lp = this.lastPos, moving = lp && Math.hypot(this.x - lp.x, this.gy - lp.y) > 0.25 * this.S;
-    return liveAsset(this, this.stage.sprites, this.spriteKey, this.mon.shiny, this.animT, moving ? 'walk' : 'idle');
+    return moving ? (RUNS.has(this.state) ? 'run' : 'walk') : 'idle';
   }
   get S() { return this.stage.S; }
   get types() { return this.stage.dex.get(this.mon.species).types; }
