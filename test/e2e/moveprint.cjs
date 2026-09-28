@@ -14,7 +14,7 @@ const { run, ROOT } = require('./lib.cjs');
 const RATIO = 2; // 猜的，可調整（但只能在第一次量舊動畫之前決定，之後不改）
 const SEEDS = [11, 29];
 const OLD_RULER = 1.213; // 舊的 62 招量到的尺（蒸汽爆炸）；新的尺超過它 1.5 倍＝有招的形狀大部分靠亂數，停下來看
-const DONE_TYPES = ['water']; // 這個 PR 要做完的屬性
+const DONE_TYPES = ['water', 'fire', 'grass']; // 這個 PR 要做完的屬性
 const GROUPS = {
   'water-fire-grass': ['water', 'fire', 'grass'],
   'electric-ice-fighting-poison-ground-flying': ['electric', 'ice', 'fighting', 'poison', 'ground', 'flying'],

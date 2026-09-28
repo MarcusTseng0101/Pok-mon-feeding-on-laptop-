@@ -94,7 +94,8 @@ const watershuriken = {
 const BUBBLES = [
   [0.10, 5, 1.05, 0.0, false], [0.18, 3, 0.95, 1.3, true], [0.26, 7, 1.10, 2.1, false], [0.34, 4, 0.90, 3.4, false],
   [0.42, 6, 1.00, 4.2, false], [0.50, 3, 0.85, 5.0, true], [0.58, 5, 0.95, 0.7, false],
-]; // 猜的，可調整
+];
+const BUBBLE_SCALE = 1.6; // 猜的，可調整
 
 function drawBubble(ctx, x, y, r) {
   ctx.save();
@@ -124,7 +125,7 @@ const bubble = {
     const s = (m.s ??= { n: 0 });
     while (s.n < BUBBLES.length && t >= BUBBLES[s.n][0]) {
       const [, rr, L, ph, midPop] = BUBBLES[s.n++];
-      const from = pet.mouth(), to = K.targetPoint(m.target), r = rr * S;
+      const from = pet.mouth(), to = K.targetPoint(m.target), r = rr * BUBBLE_SCALE * S;
       const end = midPop ? 0.55 : 1; // 半路自己破的只飛一半
       const path = k => {
         const u = k * end;

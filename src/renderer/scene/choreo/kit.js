@@ -26,11 +26,13 @@ export function groundOf(m, K, S) {
 }
 
 // 從 from 到 to 的一個東西，照時間 k（0→1）走；path(k) 回傳位置
-export function mover(stage, { life, path, drawAt, onArrive, delay = 0, ...rest }) {
+// onStep(q, k)：每幀（不要在 drawAt 裡做會留下東西的事：畫幾次不一定）
+export function mover(stage, { life, path, drawAt, onArrive, onStep, delay = 0, ...rest }) {
   part(stage, {
     life, t: -delay, ...rest,
     tick: (p, dt) => {
-      const q = path(Math.min(1, (p.t + dt) / p.life));
+      const k = Math.min(1, (p.t + dt) / p.life), q = path(k);
+      onStep?.(q, k);
       (p.hist ??= []).push(q);
       if (p.hist.length > 9) p.hist.shift();
       if (p.t + dt >= p.life && !p.arrived) { p.arrived = true; onArrive?.(q); }

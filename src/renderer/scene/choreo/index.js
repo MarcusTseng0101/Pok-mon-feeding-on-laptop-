@@ -8,5 +8,7 @@
 // K（moves.js 傳進來）：hit、center、targetPoint、isPet、dash（衝過去）、rnd、pick
 // 只有畫面：要動對手只用現有的欄位（z、squashT、flipT、flinchT），不直接改位置
 import { WATER } from './water.js';
+import { FIRE } from './fire.js';
+import { GRASS } from './grass.js';
 
-export const CHOREO = { ...WATER };
+export const CHOREO = { ...WATER, ...FIRE, ...GRASS };
