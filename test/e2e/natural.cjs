@@ -29,6 +29,26 @@ const test = async ({ page }, check) => {
   await page.waitForSelector('.modal .starter [data-id="650"]', { timeout: 20000 });
   await page.click('.modal .starter [data-id="650"]');
   await page.waitForFunction(() => window.__kalos.game.state.starterChosen, null, { timeout: 10000 });
+  // 物種生活表寫的身體 vs 像素木偶真的切出來的：寫「兩腳」「四腳」「人形」「只有腳」的要切得出腳。
+  // 不相符只列出來（PR 描述問使用者），不自己改其中一邊（規格 §9 PR-N1）
+  const legs = await page.evaluate(async () => {
+    const { stage } = window.__kalos;
+    const { SPECIES } = await import('/src/core/ethogram.js');
+    const { buildRig } = await import('/src/renderer/gfx/rig.js');
+    await Promise.all(stage.dex.ids.map(id => stage.sprites.get(id)));
+    const LEGGED = new Set(['upright', 'quadruped', 'humanoid', 'legs']);
+    const out = { missing: [], extra: [] };
+    for (const id of stage.dex.ids) {
+      const still = stage.sprites.peek(id, false);
+      if (still.fallback || !SPECIES[id]) continue;
+      const rig = buildRig(still.canvas, { floats: stage.dex.floats(id) });
+      const want = LEGGED.has(SPECIES[id].body);
+      // missing：表說有腳、木偶切不出腳（規格要列出來問）；extra：表的體型沒寫腳、木偶切出兩塊當腳（鳥本來就有腳；葉子、觸手被當成腳是已知限制）
+      if (want && !rig.info.hasLegs) out.missing.push(`${id} ${SPECIES[id].name}（${SPECIES[id].body}）`);
+      if (!want && rig.info.hasLegs) out.extra.push(`${id} ${SPECIES[id].name}（${SPECIES[id].body}）`);
+    }
+    return out;
+  });
   const t0 = Date.now();
   const r = await page.evaluate(async ({ SPECIES, SEEDS, MIN, CLASS_OF }) => {
     const { game, director, stage } = window.__kalos;
@@ -201,7 +221,9 @@ const test = async ({ page }, check) => {
   });
   const out = path.join(ROOT, '.cache/natural');
   fs.mkdirSync(out, { recursive: true });
-  fs.writeFileSync(path.join(out, `natural-${TAG}.json`), JSON.stringify({ minutes: MIN, seconds: secs, summary, seeds: r }, null, 1));
+  fs.writeFileSync(path.join(out, `natural-${TAG}.json`), JSON.stringify({ minutes: MIN, seconds: secs, legs, summary, seeds: r }, null, 1));
+  console.log(`表寫有腳、木偶切不出腳（${legs.missing.length} 隻）：${legs.missing.join('、') || '無'}`);
+  console.log(`表的體型沒寫腳、木偶切出腳（${legs.extra.length} 隻，參考）：${legs.extra.join('、') || '無'}`);
   console.log(JSON.stringify(summary));
   for (const s of r) console.log(`種子 ${s.seed}：` + Object.entries(s.per).map(([sp, v]) => `${sp} 動${v.moving}% 換${v.M8_changesPerMin}/分 [${Object.entries(v.M5_share).map(([k, x]) => k + x).join(' ')}]`).join(' | '));
   console.log(`模擬 ${MIN} 分鐘 × ${SEEDS.length} 個種子，花了 ${secs.toFixed(0)} 秒`);

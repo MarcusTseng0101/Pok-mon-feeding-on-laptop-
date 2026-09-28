@@ -598,7 +598,7 @@ export class Pet {
       idle: d => this.set('idle', d),
       look: d => { this.set('look', d); if (Math.random() < 0.5) this.showEmote('?', 1.2); },
       sit: d => this.set('sit', d),
-      stretch: () => { this.set('stretch', 1.2); if (Math.random() < 0.5) this.showEmote('…', 1); },
+      stretch: d => { this.set('stretch', d); if (Math.random() < 0.5) this.showEmote('…', 1); },
       // 肚子餓：跟你討泡芙，或自己去附近找找有沒有樹果
       beg: () => { this.showEmote(art.puff('sweet-basic'), 2); this.set('idle', 2); },
       hungry: () => {

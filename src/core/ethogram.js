@@ -191,9 +191,9 @@ export const ACTS = {
   twirl: { cls: 'play', w: c => (has(c, 'fairy') ? 4 : 0), dur: 1.2 },
   // 社交
   play: { cls: 'social', w: c => ((c.others ?? 0) > 0 && (c.hearts ?? 0) >= 1 ? 6 : 0), dur: [4, 5, 6] }, // 找一隻追著玩
-  // 理毛、整理身體：伸懶腰、抖一抖
-  stretch: { cls: 'groom', w: 4, dur: 1.2 },
-  shiver: { cls: 'groom', w: 2, dur: 0.6 },
+  // 理毛、整理身體：伸懶腰（動物伸懶腰會停在最伸展的姿勢一下）、抖一抖（快，所以少一點，不然一分鐘抖好幾次）
+  stretch: { cls: 'groom', w: 4, dur: [1.2, 2.5, 4] },
+  shiver: { cls: 'groom', w: 1, dur: 0.6 },
 };
 // 其他地方來的選項（social.js、habits.js、moves.js…）沒有列在 ACTS：用心智類別決定屬於哪一類、用這裡的長度估計
 const CAT_CLASS = { rest: 'rest', base: 'rest', explore: 'explore', need: 'forage', play: 'play', cursor: 'play', train: 'play', social: 'social', habit: 'habit', trip: 'explore' };
