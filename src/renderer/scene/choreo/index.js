@@ -18,5 +18,8 @@ import { FIGHTING } from './fighting.js';
 import { POISON } from './poison.js';
 import { GROUND } from './ground.js';
 import { FLYING } from './flying.js';
+import { PSYCHIC } from './psychic.js';
+import { BUG } from './bug.js';
+import { ROCK_MOVES } from './rock.js';
 
-export const CHOREO = { ...WATER, ...FIRE, ...GRASS, ...ELECTRIC, ...ICE_MOVES, ...FIGHTING, ...POISON, ...GROUND, ...FLYING };
+export const CHOREO = { ...WATER, ...FIRE, ...GRASS, ...ELECTRIC, ...ICE_MOVES, ...FIGHTING, ...POISON, ...GROUND, ...FLYING, ...PSYCHIC, ...BUG, ...ROCK_MOVES };
