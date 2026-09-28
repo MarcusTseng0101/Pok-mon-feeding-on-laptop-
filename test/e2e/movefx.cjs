@@ -42,7 +42,7 @@ run('movefx', async ({ page, shot }, check) => {
     const all = ids.map(play);
     // 減少閃光和畫面震動
     game.setSetting('calmFx', true);
-    const calm = ['flamethrower', 'headsmash', 'boomburst', 'moonblast', 'dracometeor', 'psychic', 'flashcannon'].map(play); // 精神強念（粉紅閃光）、加農光炮（白閃）：減少閃光時要比較淡
+    const calm = ['flamethrower', 'headsmash', 'boomburst', 'moonblast', 'dracometeor', 'psychic', 'flashcannon', 'nightslash'].map(play); // 精神強念（粉紅閃光）、加農光炮（白閃）、暗襲要害（全暗）：減少閃光時要比較淡
     game.setSetting('calmFx', false);
     // 流星群：6 顆都落地
     const meteors = {};
@@ -88,7 +88,7 @@ run('movefx', async ({ page, shot }, check) => {
   check(r.calm.every(x => x.done && !x.shook), `減少震動打開了還是在震：${JSON.stringify(r.calm)}`);
   const calmMeteor = r.calm.find(x => x.id === 'dracometeor'), fullMeteor = r.all.find(x => x.id === 'dracometeor');
   check(calmMeteor.dimMax < fullMeteor.dimMax, `減少閃光打開了變暗沒有比較淡：${calmMeteor.dimMax} vs ${fullMeteor.dimMax}`);
-  for (const id of ['psychic', 'flashcannon']) {
+  for (const id of ['psychic', 'flashcannon', 'nightslash']) {
     const c = r.calm.find(x => x.id === id), f = r.all.find(x => x.id === id);
     check(c.dimMax < f.dimMax, `減少閃光打開了${id}變暗沒有比較淡：${c.dimMax} vs ${f.dimMax}`);
   }
