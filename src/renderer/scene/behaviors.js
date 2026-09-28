@@ -7,10 +7,12 @@
 //   sink(pet)              鑽進地面的比例 0–1（挖洞）
 //   intangible(pet)        這時候點不到牠
 //   drawOver(pet, ctx)     額外畫的東西（丟球遊戲的球）
-// soloOptions() / socialOptions() 列出「現在可以做什麼」與權重，Pet.decide() 從中抽一個。
+// soloOptions() / socialOptions() 列出「現在可以做什麼」，Pet.decide() 交給 core/ethogram.js 的 nextBout() 挑一個。
+// soloOptions() 的權重和長度來自物種生活表（actWeight、nextBout 給的 dur），這裡不寫數字。
 import * as art from '../gfx/art.js';
 import { blit } from '../gfx/pixel.js';
 import { hearts } from '../../core/amie.js';
+import { actWeight } from '../../core/ethogram.js';
 import { knockFrom } from './physics.js';
 
 export const WALK_SPEED = 26; // 美術像素／秒
@@ -425,33 +427,45 @@ const CAST_KINDS = ['water', 'electric', 'fairy', 'psychic', 'fire', 'grass', 'i
 
 // ---------- 可以做什麼（一隻） ----------
 // 回傳 [名稱, 權重, 開始的函式]
+// 物種生活表要知道的「現在的情況」（core/ethogram.js 的 actWeight、nextBout 用）
+export function boutCtx(pet) {
+  const st = pet.stage, env = st.env, s = st.game?.state.settings;
+  return {
+    id: pet.mon.species, types: pet.types, hour: env.hour ?? 12, weather: env.weather, plugged: env.plugged, lure: env.lure,
+    floats: pet.floats, digger: DIGGERS.has(pet.mon.species),
+    fullness: pet.mon.fullness, enjoyment: pet.mon.enjoyment, hearts: hearts(pet.mon.affection),
+    pointer: Boolean(st.pointer?.known), userActive: Boolean(env.userActive), music: Boolean(s && !s.muted && s.musicVolume > 0.05),
+  };
+}
+
+// 自己一隻做的生態動作。每個動作的 start(dur)：dur 是 nextBout 決定的長度
 export function soloOptions(pet) {
   const env = pet.stage.env, S = pet.S;
-  const night = isNight(env), day = isDay(env), noct = isNocturnal(pet);
+  const ctx = boutCtx(pet);
   const list = [];
-  const add = (name, w, start) => { if (w > 0) list.push([name, w, start]); };
-  const plain = (name, d) => () => pet.set(name, d);
+  const add = (name, start) => { const w = actWeight(name, ctx); if (w > 0) list.push([name, w, start]); };
+  const plain = name => d => pet.set(name, d);
 
-  add('sunbathe', has(pet, 'grass', 'fire') && day ? 6 : 0, plain('sunbathe', rnd(5, 8)));
-  add('splash', has(pet, 'water') ? 4 : 0, plain('splash', 1.2));
-  add('ember', has(pet, 'fire') ? 3 : 0, plain('ember', 1.3));
-  add('spark', has(pet, 'electric') ? (env.plugged ? 12 : 4) : 0, plain('spark', 1.4));
-  add('chill', has(pet, 'ice') ? 4 : 0, plain('chill', 2.5));
-  add('bubbles', has(pet, 'poison') ? 4 : 0, plain('bubbles', 2.5));
-  add('fade', has(pet, 'ghost') ? (night ? 7 : 3) : 0, plain('fade', 3));
-  add('teleport', has(pet, 'psychic') ? 3 : 0, plain('teleport', 0.9));
-  add('dig', !pet.floats && (has(pet, 'ground') || DIGGERS.has(pet.mon.species)) ? 4 : 0, () => { pet.target = pet.randomPoint(100, 300); pet.set('dig', 3); });
-  add('shine', has(pet, 'steel', 'rock') ? 3 : 0, plain('shine', 1.6));
-  add('forage', !pet.floats && has(pet, 'bug', 'normal', 'ground', 'grass') ? 4 : 0, () => { pet.target = pet.randomPoint(15, 40); pet.set('forage', rnd(2.5, 4)); });
-  add('train', has(pet, 'fighting') ? 6 : 0, plain('train', 2.1));
-  add('twirl', has(pet, 'fairy') ? 4 : 0, plain('twirl', 1.2));
-  add('slime', has(pet, 'dragon') && !pet.floats ? 4 : 0, () => { pet.target = pet.randomPoint(60, 180); pet.set('slime', 8); });
-  add('soar', pet.floats ? (noct && night ? 6 : 3) : 0, () => { pet.target = pet.randomPoint(200, 500); pet.set('soar', rnd(2.8, 4)); });
-  // 作息：白天活動的晚上容易打瞌睡，夜行性的白天容易打瞌睡
-  add('nap', (night && !noct) || (day && noct) ? 8 : 1, plain('nap', rnd(8, 16)));
+  add('sunbathe', plain('sunbathe'));
+  add('splash', plain('splash'));
+  add('ember', plain('ember'));
+  add('spark', plain('spark'));
+  add('chill', plain('chill'));
+  add('bubbles', plain('bubbles'));
+  add('fade', plain('fade'));
+  add('teleport', plain('teleport'));
+  add('dig', d => { pet.target = pet.randomPoint(100, 300); pet.set('dig', d); });
+  add('shine', plain('shine'));
+  add('forage', d => { pet.target = pet.randomPoint(15, 40); pet.set('forage', d); });
+  add('train', plain('train'));
+  add('twirl', plain('twirl'));
+  add('slime', d => { pet.target = pet.randomPoint(60, 180); pet.set('slime', d); });
+  add('soar', d => { pet.target = pet.randomPoint(200, 500); pet.set('soar', d); });
+  // 作息：不是牠的時段容易打瞌睡（權重在物種生活表）
+  add('nap', plain('nap'));
   // 桌面上有誘餌泡芙：跑過去聞一聞（肚子餓的更想去）
   if (env.lure) {
-    add('sniff', pet.mon.fullness < 80 ? 12 : 4, () => {
+    add('sniff', () => {
       pet.target = { x: env.lure.x + (pet.x < env.lure.x ? -1 : 1) * (pet.asset.w / 2 + 6) * S, y: env.lure.y };
       pet.set('walk');
       pet.onArrive = () => { pet.facing = env.lure && env.lure.x > pet.x ? 1 : -1; pet.set('sniff', 2.4); };
