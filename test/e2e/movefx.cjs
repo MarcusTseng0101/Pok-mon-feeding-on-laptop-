@@ -23,8 +23,8 @@ run('movefx', async ({ page, shot }, check) => {
     };
     const play = id => {
       place();
-      let hitAt = null, shook = false, stopped = false, maxParts = 0, drawMs = 0, frames = 0, dimMax = 0;
-      M.useMove(a, id, b, { onHit: () => { hitAt = frames; } });
+      let hitAt = null, hits = 0, shook = false, stopped = false, maxParts = 0, drawMs = 0, frames = 0, dimMax = 0;
+      M.useMove(a, id, b, { onHit: () => { hitAt ??= frames; hits++; } });
       for (let i = 0; i < 200 && a.moveCtx; i++) {
         stage.update(1 / 30);
         if (stage.shakeT > 0) shook = true;
@@ -34,8 +34,9 @@ run('movefx', async ({ page, shot }, check) => {
         const t = performance.now(); stage.draw(); drawMs += performance.now() - t;
         frames++;
       }
-      for (let i = 0; i < 30; i++) stage.update(1 / 30); // 招式結束以後：變暗要恢復
-      return { id, done: !a.moveCtx, hit: hitAt !== null, shook, stopped, maxParts, drawMs: drawMs / Math.max(1, frames), dimMax: +dimMax.toFixed(2), dimLeft: Boolean(stage.dimFx), kind: M.MOVES[id].kind };
+      for (let i = 0; i < 30; i++) stage.update(1 / 30); // 招式結束以後：變暗要恢復、兩隻的姿勢要回來
+      const pose = [a, b].map(p => ({ z: +p.z.toFixed(2), flip: +(p.flipT ?? 0).toFixed(2), alpha: p.moveAlpha ?? 1 }));
+      return { id, done: !a.moveCtx, hit: hitAt !== null, hits, pose, shook, stopped, maxParts, drawMs: drawMs / Math.max(1, frames), dimMax: +dimMax.toFixed(2), dimLeft: Boolean(stage.dimFx), kind: M.MOVES[id].kind };
     };
     const ids = Object.keys(M.MOVES);
     const all = ids.map(play);
@@ -65,6 +66,8 @@ run('movefx', async ({ page, shot }, check) => {
   });
   const bad = r.all.filter(x => !x.done);
   const noHit = r.all.filter(x => !x.hit && !['sweetscent', 'cottonspore', 'spikyshield', 'reflect', 'quiverdance', 'kingsshield', 'fairylock', 'geomancy'].includes(x.id));
+  const twice = r.all.filter(x => x.hits > 1);
+  const bent = r.all.filter(x => x.pose.some(p => p.z !== 0 || p.flip !== 0 || p.alpha !== 1));
   const heavy = r.all.filter(x => x.maxParts > 400);
   const slow = r.all.filter(x => x.drawMs > 6);
   const quiet = r.all.filter(x => x.hit && !x.shook);
@@ -76,6 +79,8 @@ run('movefx', async ({ page, shot }, check) => {
   check(r.meteors.landed === 6, `流星群落地的流星不是 6 顆：${r.meteors.landed}`);
   check(r.draco.goodraFriend && !r.draco.goodraNew && !r.draco.noFriendArg && !r.draco.fennekinFriend && r.draco.size <= 4, `流星群給錯了：${JSON.stringify(r.draco)}`);
   check(noHit.length === 0, `有招式沒有打中：${noHit.map(x => x.id)}`);
+  check(twice.length === 0, `打中算了不只一次（對戰會扣兩次血）：${twice.map(x => `${x.id}:${x.hits}`)}`);
+  check(bent.length === 0, `招式結束以後姿勢沒有回來：${bent.map(x => `${x.id}:${JSON.stringify(x.pose)}`)}`);
   check(heavy.length === 0, `粒子太多：${heavy.map(x => `${x.id}:${x.maxParts}`)}`);
   check(slow.length === 0, `畫一幀太久：${slow.map(x => `${x.id}:${x.drawMs.toFixed(1)}ms`)}`);
   check(quiet.length === 0, `打中了卻沒有震動：${quiet.map(x => x.id)}`);

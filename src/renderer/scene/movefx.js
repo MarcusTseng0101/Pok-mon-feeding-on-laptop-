@@ -549,6 +549,13 @@ export function impactFx(stage, def, x, y, eff = 1, { contact = false } = {}) {
   stage.shake(eff > 1 ? 6 : big ? 5 : contact ? 3 : 2, eff > 1 ? 0.35 : 0.25);
 }
 
+// 打中的手感（頓一下、震一下），跟 impactFx 的數字一樣：有自己演出的招（choreo）打中的樣子自己畫，手感用這個
+export function hitFeel(stage, def, eff = 1, { contact = false } = {}) {
+  const big = def.big || def.heavy || eff > 1;
+  stage.hitStop(eff > 1 ? 0.12 : big || contact ? 0.07 : 0.05);
+  stage.shake(eff > 1 ? 6 : big ? 5 : contact ? 3 : 2, eff > 1 ? 0.35 : 0.25);
+}
+
 // ---------- 各種招式：放招時要不要變暗、暗多少 ----------
 export function dimFor(def) {
   switch (def.kind) {
