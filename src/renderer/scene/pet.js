@@ -8,34 +8,27 @@ import { liveAsset } from '../gfx/sprites.js';
 import * as art from '../gfx/art.js';
 import { hearts } from '../../core/amie.js';
 import { spriteKey } from '../../core/forms.js';
-import { ACTIONS, soloOptions, socialOptions, WALK_SPEED, RUN_SPEED } from './behaviors.js';
+import { ACTIONS, soloOptions, socialOptions, boutCtx, WALK_SPEED, RUN_SPEED } from './behaviors.js';
 import { HABIT_ACTIONS, habitOptions } from './habits.js';
 import { MOVE_ACTIONS, moveOptions } from './moves.js';
 import { SOCIAL_ACTIONS, groupOptions, maybeComfort } from './social.js';
 import { integrateKnock } from './physics.js';
 import { updateForm, drawForm } from './battleforms.js';
 import { PERCH_ACTIONS, perchBounds, perchedChoices, perchOption } from './perching.js';
-import { tag, weigh, afterChoice, tickMind } from './mindlink.js';
+import { tag, weigh, afterChoice, tickMind, mindWeights } from './mindlink.js';
 import { homeOptions, homeNight, exhausted, TENT_ACTIONS } from './home.js';
 import { TRAVEL_ACTIONS, startDepart, drawCarried } from './travel.js';
 import { traitsOf } from '../../core/mind.js';
 import { CURSOR_ACTIONS, cursorOptions, wantsToPounce, startPounce, besideCursor } from './cursor.js';
 import { LIFE_ACTIONS, lifeOptions, boostLife } from './lifeacts.js';
+import { actWeight, nextBout, focusBout } from '../../core/ethogram.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
 
 
-// 專注番茄鐘進行中：只做安靜的動作，不跑來跑去、不找別隻玩
-function focusChoices(pet) {
-  const rp = (a, b) => a + Math.random() * (b - a);
-  return [
-    ['idle', 10, () => pet.set('idle', rp(4, 10))],
-    ['sit', 14, () => pet.set('sit', rp(8, 20))],
-    ['nap', 10, () => pet.set('sleep', rp(10, 30))],
-    ['look', 3, () => pet.set('look', rp(2, 3))],
-  ];
-}
+// 專注番茄鐘進行中：只做安靜的動作，不跑來跑去、不找別隻玩（做哪個、多久由 core/ethogram.js 的 focusBout 決定）
+const FOCUS_STATE = { idle: 'idle', sit: 'sit', nap: 'sleep', look: 'look' };
 
 // [名稱, 權重, 動作] 裡依權重挑一個
 function pickWeighted(list) {
@@ -334,7 +327,7 @@ export class Pet {
     updateForm(this, dt); // 超級進化、牽絆變身
     // guest：故事對戰的對手（不是你的夥伴）：沒有心情、不會自己決定要做什麼
     if (!this.guest) tickMind(this, dt); // 需求隨時間變化（每秒一次）
-    if (!this.guest && wantsToPounce(this, dt)) this.choose(tag([['pounce', 1, () => startPounce(this)]], 'cursor')); // 游標在附近晃：撲過去
+    if (!this.guest && wantsToPounce(this, dt)) { startPounce(this); afterChoice(this, ['pounce', 1, null, 'cursor']); } // 游標在附近晃：撲過去
     if (this.emote && this.t > this.emote.until) this.emote = null;
     const p = st.pointer;
     const near = p.known && Math.abs(p.x - this.x) < 260 * (S / 2) && Math.abs(p.y - this.y) < 300 * (S / 2);
@@ -573,7 +566,12 @@ export class Pet {
     if (st.game?.tripStatus(this.uid) === 'away') { startDepart(this); return; } // 已經出發了（例如走到一半被拎起來）：繼續走
 
     if (this.perch) { this.choose(tag(perchedChoices(this), 'explore')); return; } // 站在視窗上：只做安靜的事或跳下來
-    if (st.env.focus) { this.choose(tag(focusChoices(this), 'rest')); return; } // 專注中：安靜地陪你
+    if (st.env.focus) { // 專注中：安靜地陪你
+      const b = focusBout(Math.random);
+      this.set(FOCUS_STATE[b.name], b.dur);
+      afterChoice(this, [b.name, 1, null, 'rest']);
+      return;
+    }
     // 站在視窗上、正在往上跳的不算（不會被拉去玩）
     const others = [...st.pets.values()].filter(o => o !== this && o.free && !o.partner && !o.perch && o.state !== 'perchUp');
     if (st.env.sleepy) {
@@ -592,20 +590,18 @@ export class Pet {
     }
     const tired = exhausted(this); // 累壞了：直接回床上睡
     if (tired) { this.choose(tag([tired], 'base')); return; }
-    const h = hearts(this.mon.affection);
-    const settings = st.game?.state.settings;
-    const musicOn = settings && !settings.muted && settings.musicVolume > 0.05;
-
     const rp = (a, b) => a + Math.random() * (b - a);
-    const choices = tag([
-      ['walk', 30, () => { this.target = this.randomPoint(50, 320); this.set('walk'); }],
-      ['idle', 14, () => this.set('idle', rp(2, 6))],
-      ['look', 7, () => { this.set('look', rp(1.6, 2.6)); if (Math.random() < 0.5) this.showEmote('?', 1.2); }],
-      ['sit', 7, () => this.set('sit', rp(3, 8))],
-      ['stretch', 4, () => { this.set('stretch', 1.2); if (Math.random() < 0.5) this.showEmote('…', 1); }],
+    // 這幾個基本動作怎麼做（多常做、做多久由 core/ethogram.js 的物種生活表決定；d＝nextBout 給的長度）
+    const ctx = { ...boutCtx(this), others: others.length };
+    const acts = {
+      walk: () => { this.target = this.randomPoint(50, 320); this.set('walk'); },
+      idle: d => this.set('idle', d),
+      look: d => { this.set('look', d); if (Math.random() < 0.5) this.showEmote('?', 1.2); },
+      sit: d => this.set('sit', d),
+      stretch: d => { this.set('stretch', d); if (Math.random() < 0.5) this.showEmote('…', 1); },
       // 肚子餓：跟你討泡芙，或自己去附近找找有沒有樹果
-      ['beg', this.mon.fullness < 30 ? 4 : 0, () => { this.showEmote(art.puff('sweet-basic'), 2); this.set('idle', 2); }],
-      ['hungry', this.mon.fullness < 100 ? 5 : 0, () => {
+      beg: () => { this.showEmote(art.puff('sweet-basic'), 2); this.set('idle', 2); },
+      hungry: () => {
         this.target = this.randomPoint(40, 160);
         this.set('walk');
         this.onArrive = () => {
@@ -613,14 +609,14 @@ export class Pet {
           this.target = this.randomPoint(10, 30);
           this.set('forage', rp(2.5, 3.5));
         };
-      }],
-      ['shiver', 2, () => this.set('shiver', 0.6)],
-      ['follow', h >= 3 && st.pointer.known && st.env.userActive ? 9 : 0, () => this.set('follow', rp(3, 7))],
-      ['run', this.mon.enjoyment > 120 || h >= 2 ? 4 : 1, () => { this.target = this.randomPoint(80, 260); this.set('run', rp(2.5, 4.5)); }],
-      ['spin', h >= 2 ? 3 : 0, () => this.set('spin', 0.9)],
-      ['dance', musicOn && h >= 1 ? 4 : 0, () => this.set('dance', rp(3, 6))],
-      ['roll', !this.floats && h >= 1 ? 3 : 0, () => { this.rollDir = this.facing; this.set('roll', 1); }],
-      ['play', others.length && h >= 1 ? 6 : 0, () => {
+      },
+      shiver: () => this.set('shiver', 0.6),
+      follow: d => this.set('follow', d),
+      run: d => { this.target = this.randomPoint(80, 260); this.set('run', d); },
+      spin: () => this.set('spin', 0.9),
+      dance: d => this.set('dance', d),
+      roll: () => { this.rollDir = this.facing; this.set('roll', 1); },
+      play: () => {
         const o = others[Math.floor(Math.random() * others.length)];
         this.partner = o; o.partner = this;
         this.set('chase', rp(4, 6));
@@ -628,8 +624,9 @@ export class Pet {
         this.showEmote('!', 0.8);
         o.showEmote('♪', 0.8);
         st.fire('bond', this, o, 2);
-      }],
-    ], 'rest').concat(
+      },
+    };
+    const choices = tag(Object.entries(acts).map(([name, start]) => [name, actWeight(name, ctx), start]), 'rest').concat(
       tag(soloOptions(this), 'play'),
       tag(socialOptions(this, others), 'social'),
       tag(habitOptions(this, others), 'habit'), // 這一種寶可夢專屬的習性
@@ -646,7 +643,14 @@ export class Pet {
     );
     // 牠們自己的生活（core/life.js）：這一格在喝水，喝水的選項就比較容易被選到
     const life = st.game?.lifeAt?.(this.uid);
-    this.choose(life ? boostLife(choices, life) : choices);
+    const offers = life ? boostLife(choices, life) : choices;
+    // 下一段做什麼、做多久：物種生活表（時間分配 × 心智的需求 × 屬性對環境的反應）
+    const bout = nextBout(this.mon.species, { ...ctx, mind: mindWeights(this), offers: offers.map(([name, w, , cat]) => ({ name, w, cat })) }, Math.random);
+    const c = bout && offers.find(o => o[0] === bout.name && o[1] > 0);
+    if (!c) { this.set('idle', rp(2, 4)); return; }
+    this.bout = bout; // 測試、之後的移動（PR-N2）用：這一段屬於哪一類
+    c[2](bout.dur);
+    afterChoice(this, c);
   }
 
   draw(ctx) {

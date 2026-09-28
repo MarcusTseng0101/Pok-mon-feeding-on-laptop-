@@ -1,8 +1,8 @@
 // 把心智（core/mind.js）接到舞台上的寶可夢：
 //   - 每秒更新一次需求（不是每一幀，不然想法會一直閃）
-//   - Pet.decide() 的每個選項歸到一個類別，權重乘上心智給的倍率
+//   - Pet.decide() 的每個選項歸到一個類別，心智給的倍率交給 core/ethogram.js 的 nextBout() 乘上去
 //   - 抽出來、開始做以後，才用「實際被選中的類別」問理由（理由才不會說謊）
-// 心智不自己選行為；選行為的只有 Pet.decide()。
+// 心智不自己選行為；下一件事由 core/ethogram.js 的 nextBout() 決定，Pet.decide() 照著做。
 import * as M from '../../core/mind.js';
 import { recall, summary } from '../../core/memory.js';
 import { freeBeds } from './home.js';
@@ -67,10 +67,16 @@ export function levelsOf(pet) {
 }
 
 // 權重乘上心智的倍率（stage.mindOff 時全部當 1，用來量基準線）
+// 心智給每個類別的倍率（缺越多越想做）；關掉心智時是空的（全部 1）
+export function mindWeights(pet) {
+  if (pet.stage.mindOff) return {};
+  const mind = ensureMind(pet);
+  return M.weights(mind, M.levels(mind, pet.mon), M.traitsOf(pet.mon.nature), { rival: Boolean(topRival(pet)), userActive: Boolean(pet.stage.env.userActive), canTrip: Boolean(pet.stage.game?.canDepart(pet.uid)) && !pet.perch, bedFree: freeBeds(pet).length > 0 });
+}
+
 export function weigh(pet, choices) {
   if (pet.stage.mindOff) return choices;
-  const mind = ensureMind(pet);
-  const w = M.weights(mind, M.levels(mind, pet.mon), M.traitsOf(pet.mon.nature), { rival: Boolean(topRival(pet)), userActive: Boolean(pet.stage.env.userActive), canTrip: Boolean(pet.stage.game?.canDepart(pet.uid)) && !pet.perch, bedFree: freeBeds(pet).length > 0 });
+  const w = mindWeights(pet);
   return choices.map(([n, wt, f, cat]) => [n, wt * (w[cat] ?? 1), f, cat]);
 }
 
