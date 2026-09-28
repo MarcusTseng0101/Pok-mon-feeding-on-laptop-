@@ -5,6 +5,8 @@
 //   projectile 發射物飛過去     beam 光束／水柱       contact 衝過去撞一下再回來
 //   line 藤鞭、吐絲伸過去       area 以自己為中心擴散  rain 從天上落到目標
 //   self 替自己加上保護或能量   portal 在目標那裡打開圓環
+// 有自己演出的招（CHOREO，放在 choreo/<屬性>.js）不走上面的 kind，每一招有自己的時間表和畫法；
+// kind 欄位還是留著（打中的擊退力道、放招時要不要變暗、movefx.cjs 的檢查都看它）
 import * as art from '../gfx/art.js';
 import { blit } from '../gfx/pixel.js';
 import { meet } from './behaviors.js';
@@ -14,6 +16,7 @@ import { transform, endDuelForms } from './battleforms.js';
 import * as FX from './movefx.js';
 import { hearts } from '../../core/amie.js';
 import { effectiveness } from '../../core/types.js';
+import { CHOREO } from './choreo/index.js';
 
 const T = art.TYPE_COLORS;
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -144,6 +147,7 @@ export function battleMovesFor(dex, speciesId, mon = null) {
 }
 
 export { effectiveness }; // 屬性相剋表在 core/types.js（故事裡的對戰也用）
+export { CHOREO };
 
 // ---------- 使出招式 ----------
 const center = pet => { const r = pet.rect(); return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; };
@@ -151,8 +155,9 @@ const isPet = t => t && typeof t.rect === 'function';
 const targetPoint = t => (isPet(t) ? center(t) : t);
 
 // 招式的時間軸（秒）：hit = 打中的時間點
-function timeline(def, pet, target) {
+function timeline(def, pet, target, ch = null) {
   const S = pet.S, a = pet.mouth(), b = targetPoint(target);
+  if (ch) return ch.time(pet, a, b);
   const travel = Math.max(0.35, Math.min(1.3, Math.hypot(b.x - a.x, b.y - a.y) / (200 * S)));
   switch (def.kind) {
     case 'projectile': return { dur: 0.35 + travel + 0.45, hit: 0.35 + travel, travel };
@@ -172,8 +177,9 @@ function timeline(def, pet, target) {
 export function useMove(pet, moveId, target, { onHit, onEnd, announce = true } = {}) {
   const def = MOVES[moveId];
   if (!def) return false;
-  const tl = timeline(def, pet, target);
-  pet.moveCtx = { id: moveId, def, target, tl, onHit, onEnd, hitDone: false, from: { x: pet.x, gy: pet.gy }, emitted: 0 };
+  const ch = CHOREO[moveId] ?? null;
+  const tl = timeline(def, pet, target, ch);
+  pet.moveCtx = { id: moveId, def, ch, target, tl, onHit, onEnd, hitDone: false, from: { x: pet.x, gy: pet.gy }, emitted: 0 };
   const p = targetPoint(target);
   if (Math.abs(p.x - pet.x) > pet.S) pet.facing = p.x > pet.x ? 1 : -1;
   pet.set('move', tl.dur);
@@ -224,7 +230,12 @@ function hit(pet) {
   m.hitDone = true;
   const at = targetPoint(m.target);
   const eff = isPet(m.target) ? effectiveness(m.def.type, m.target.types) : 1;
-  impact(pet, m.def, at, eff);
+  if (m.ch?.impact) {
+    // 有自己演出的招：打中的樣子自己畫，頓一下、震一下、音效跟大家一樣
+    m.ch.impact(pet, m, at, eff, KIT);
+    FX.hitFeel(pet.stage, m.def, eff, { contact: m.def.kind === 'contact' });
+    pet.stage.audio.sfx(m.def.kind === 'contact' ? 'land' : 'hit');
+  } else impact(pet, m.def, at, eff);
   if (isPet(m.target)) m.target.flinchT = 0.4;
   // 擊退：衝撞最大力，擴散的會把旁邊的也一起推開；效果絕佳更遠、沒有效果不會動
   const power = { contact: 320, projectile: 220, beam: 200, line: 160, rain: 150, portal: 180, area: 260, meteor: 240 }[m.def.kind] ?? 0;
@@ -242,6 +253,23 @@ function hit(pet) {
   }
   m.onHit?.(eff);
 }
+
+// 衝過去再回來（跟 contact 一樣只加位移的變化量）：k 從 0（原地）到 1（貼著目標）
+function dash(pet, m, k) {
+  const back = m.from, to = targetPoint(m.target), S = pet.S;
+  const reach = isPet(m.target) ? ((m.target.asset.w + pet.asset.w) / 2) * S * 0.8 : 0;
+  const dir = to.x > back.x ? 1 : -1;
+  const tx = to.x - dir * reach, tgy = isPet(m.target) ? m.target.gy : back.gy;
+  const ox = (tx - back.x) * k, oy = (tgy - back.gy) * k;
+  const off = (m.off ??= { x: 0, y: 0 });
+  pet.x += ox - off.x;
+  pet.gy += oy - off.y;
+  off.x = ox;
+  off.y = oy;
+}
+
+// 給 choreo/*.js 用的工具（用參數傳過去，choreo 不 import moves.js，避免互相 import）
+const KIT = { hit, center, targetPoint, isPet, dash, rnd, pick };
 
 // 這一招用的顏色：招式自己有配色就用（極光束是彩虹色），不然用屬性色
 function colorsOf(def) {
@@ -294,13 +322,17 @@ export const MOVE_ACTIONS = {
       const from = pet.mouth(), to = targetPoint(m.target);
       if (isPet(m.target) && m.target.leaving) m.target = to;
       if (!m.started) { m.started = true; startDim(pet, m); }
+      if (m.ch) {
+        m.ch.update(pet, m, t, dt, KIT);
+        if (m.tl.hit != null && t > m.tl.hit) hit(pet); // 保險：演出沒呼叫到也要算打中（hit 只會算一次）
+      }
       // 蓄力：光團從四周螺旋吸進嘴巴（擴散、替自己加能量的吸到身體中間），中間越來越亮
-      if (!['contact', 'meteor'].includes(def.kind) && t < 0.3) {
+      if (!m.ch && !['contact', 'meteor'].includes(def.kind) && t < 0.3) {
         const at = ['area', 'self'].includes(def.kind) ? center(pet) : from;
         FX.charge(st, at, cols, t, dt, { big: def.big });
         if (!m.charged) { m.charged = true; FX.chargeCore(st, at, cols[0], { big: def.big }); }
       }
-      switch (def.kind) {
+      switch (m.ch ? null : def.kind) {
         case 'projectile': {
           // 發光的核心＋外暈，一路留下光團；多發的錯開 0.08 秒出發、一起到
           const n = def.many ? 3 : 1;
@@ -458,7 +490,7 @@ export const MOVE_ACTIONS = {
       if (done) {
         pet.z = 0;
         pet.moveAlpha = 1;
-        if (def.kind === 'contact' && m.off) { pet.x -= m.off.x; pet.gy -= m.off.y; } // 收回還沒走完的衝刺位移
+        if (m.off) { pet.x -= m.off.x; pet.gy -= m.off.y; } // 收回還沒走完的衝刺位移（只有衝刺的招會有 off）
         pet.clamp();
         const end = m.onEnd;
         pet.moveCtx = null;
@@ -469,6 +501,7 @@ export const MOVE_ACTIONS = {
       const m = pet.moveCtx;
       if (!m) return;
       const t = pet.stateT;
+      if (m.ch) { m.ch.pose?.(pet, p, m, t); return; }
       if (m.def.kind === 'meteor') { if (t < 0.62) { p.sx = 1.04; p.sy = 1.04; } else if (t < 0.9) p.rot = -pet.facing * 0.15; return; }
       if (t < 0.3) { p.sx = 1.06; p.sy = 0.94; } // 蓄力
       else if (m.def.kind === 'self') { p.sy = 1.06; }
@@ -481,6 +514,7 @@ export const MOVE_ACTIONS = {
       const m = pet.moveCtx;
       if (!m) return;
       const S = pet.S, t = pet.stateT, def = m.def;
+      if (m.ch) { m.ch.draw?.(ctx, pet, m, t, KIT); return; }
       if (def.kind === 'beam') {
         // 伸出去（0.3–0.42 秒）、維持、最後變細消失
         const from = pet.mouth(), to = targetPoint(m.target);
