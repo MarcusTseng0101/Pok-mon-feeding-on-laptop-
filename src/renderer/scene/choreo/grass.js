@@ -110,8 +110,12 @@ const razorleaf = {
     const s = (m.s ??= { n: 0 });
     while (s.n < LEAVES.length && t >= LEAVES[s.n][0]) {
       const i = s.n++, [, side, big] = LEAVES[i], a = pet.mouth(), b = K.targetPoint(m.target);
-      const c = { x: lerp(a.x, b.x, 0.75), y: lerp(a.y, b.y, 0.5) + side * LEAF_ARC * S * big }; // 大弧線（像迴旋鏢）
-      const path = k => ({ x: (1 - k) ** 2 * a.x + 2 * (1 - k) * k * c.x + k * k * b.x, y: (1 - k) ** 2 * a.y + 2 * (1 - k) * k * c.y + k * k * b.y });
+      // 迴旋鏢：先往上（或往下）甩出大弧線、繞過目標後面，再勾回來打中
+      const dir = b.x > a.x ? 1 : -1;
+      const c1 = { x: lerp(a.x, b.x, 0.3), y: a.y + side * LEAF_ARC * S * big };
+      const c2 = { x: b.x + dir * 45 * S, y: b.y + side * LEAF_ARC * 0.7 * S * big };
+      const bez = (p0, p1, p2, p3, k) => (1 - k) ** 3 * p0 + 3 * (1 - k) ** 2 * k * p1 + 3 * (1 - k) * k * k * p2 + k ** 3 * p3;
+      const path = k => ({ x: bez(a.x, c1.x, c2.x, b.x, k), y: bez(a.y, c1.y, c2.y, b.y, k) });
       mover(st, {
         life: LEAF_FLY, S, path,
         drawAt: (ctx, q, p) => { ribbon(ctx, p.hist, S, PALE, 3, 0.85); leafShape(ctx, q.x, q.y, LEAF_LEN * S, p.t * 18, Math.cos(p.t * 26)); }, // 邊飛邊翻、留一道綠線
