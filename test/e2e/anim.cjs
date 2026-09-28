@@ -37,7 +37,13 @@ run('anim', async ({ page, shot }, check) => {
     a.target = { x: 100 * stage.dpr, y: a.gy }; a.set('walk'); a.walkLimit = 99;
     const walk = new Set();
     let walkSet = 0;
-    for (let i = 0; i < 30; i++) { stage.update(1 / 30); walk.add(sig(a)); if (a.view?.set === a.view?.anim.sets.walk) walkSet++; }
+    // 走路時每幀有很小的機率跌倒（Math.random() < dt × 0.012，30 幀大約 1%）：跌倒就不是走路了，這一格會少算。
+    // 這裡要量的是走路的動作，量的這 1 秒先把亂數固定在 0.5（不會跌倒），量完還原
+    const realRandom = Math.random;
+    Math.random = () => 0.5;
+    try {
+      for (let i = 0; i < 30; i++) { stage.update(1 / 30); walk.add(sig(a)); if (a.view?.set === a.view?.anim.sets.walk) walkSet++; }
+    } finally { Math.random = realRandom; }
     out.walkFrames = walk.size;
     out.walkSet = walkSet;
     // 兩隻同一種的不同步
