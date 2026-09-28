@@ -238,7 +238,7 @@ function hit(pet) {
   } else impact(pet, m.def, at, eff);
   if (isPet(m.target)) m.target.flinchT = 0.4;
   // 擊退：衝撞最大力，擴散的會把旁邊的也一起推開；效果絕佳更遠、沒有效果不會動
-  const power = { contact: 320, projectile: 220, beam: 200, line: 160, rain: 150, portal: 180, area: 260, meteor: 240 }[m.def.kind] ?? 0;
+  const power = ({ contact: 320, projectile: 220, beam: 200, line: 160, rain: 150, portal: 180, area: 260, meteor: 240 }[m.def.kind] ?? 0) * (m.ch?.knock ?? 1); // 有自己演出的招可以設 knock（蹭蹭臉頰＝0，不推開）
   const mult = (m.def.big || m.def.heavy ? 1.3 : 1) * (eff > 1 ? 1.5 : eff < 1 ? (eff === 0 ? 0 : 0.6) : 1);
   if (m.def.kind === 'area') {
     const S = pet.S, r = (m.def.big ? 110 : 75) * S;
@@ -283,7 +283,7 @@ function startDim(pet, m) {
   const def = m.def, level = FX.dimFor(def);
   if (!level) return;
   const S = pet.S, a = center(pet), b = targetPoint(m.target);
-  const self = def.kind === 'self' || def.kind === 'area';
+  const self = (def.kind === 'self' || def.kind === 'area') && m.ch?.dimAt !== 'between'; // 有自己演出的擴散招可以把變暗放在兩隻中間（動作在中間發生）
   const x = self ? a.x : (a.x + b.x) / 2, y = self ? a.y : (a.y + b.y) / 2;
   const half = self ? 0 : Math.hypot(b.x - a.x, b.y - a.y) / 2;
   const rx = Math.max(110 * S, half + 90 * S) * (def.kind === 'meteor' ? 1.2 : 1);
