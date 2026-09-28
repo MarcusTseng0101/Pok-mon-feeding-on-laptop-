@@ -15,12 +15,8 @@ const RATIO = 2; // 猜的，可調整（但只能在第一次量舊動畫之前
 const SEEDS = [11, 29];
 const OLD_RULER = 1.162; // 舊的 62 招量到的尺（蒸汽爆炸；等會動的圖載好以後重新量的，一樣 56 招不過）；新的尺超過它 1.5 倍＝有招的形狀大部分靠亂數，停下來看
 const DONE_TYPES = ['water', 'fire', 'grass', 'electric', 'ice', 'fighting', 'poison', 'ground', 'flying', 'psychic', 'bug', 'rock', 'ghost', 'steel', 'dragon', 'normal', 'dark', 'fairy']; // 全部 18 種 // 這個 PR 要做完的屬性
-// 使用者同意的例外（只在 old 還沒有自己的演出時才算；old 重做以後自動失效，要重新比）：
-//   尖刺防守 vs 5 個舊的「自己用」招（反射壁、蝶舞、王者盾牌、妖精之鎖、大地掌控，1.80–1.83 倍）：這 5 招現在是同一個舊演出，
-//   形狀完全不同（刺藤半圓頂 vs 彩色圈圈），近是因為都在自己身上放、周圍一樣變暗。這 5 招在 PR③、PR④ 重做
 // 本來就有自己演出的招（規格：流星群不動）：不要求放進 CHOREO，但一樣會拿來跟別招比
 const OWN = ['dracometeor'];
-const EXEMPT = ['reflect', 'quiverdance', 'kingsshield', 'fairylock', 'geomancy'].map(old => ['spikyshield', old]);
 const GROUPS = {
   'water-fire-grass': ['water', 'fire', 'grass'],
   'electric-ice-fighting-poison-ground-flying': ['electric', 'ice', 'fighting', 'poison', 'ground', 'flying'],
@@ -145,11 +141,8 @@ const test = async ({ page }, check) => {
   const pairs = [];
   for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) pairs.push({ a: ids[i], b: ids[j], d: pair(ids[i], ids[j]) });
   pairs.sort((p, q) => p.d - q.d);
-  const exempt = p => EXEMPT.some(([n, old]) => !r.choreo.includes(old) && ((p.a === n && p.b === old) || (p.a === old && p.b === n)));
-  const used = pairs.filter(exempt);
-  if (used.length) console.log('例外（舊招還沒重做）：', used.map(p => `${p.a}/${p.b}:${(p.d / ruler).toFixed(2)}`).join(' '));
   if (process.env.MOVEPRINT_NEAR) for (const id of process.env.MOVEPRINT_NEAR.split(',')) console.log(id, pairs.filter(p => p.a === id || p.b === id).slice(0, 8).map(p => `${p.a === id ? p.b : p.a}:${(p.d / ruler).toFixed(2)}`).join(' '));
-  const nearest = id => pairs.filter(p => (p.a === id || p.b === id) && !exempt(p))[0];
+  const nearest = id => pairs.filter(p => p.a === id || p.b === id)[0];
   const need = process.env.MOVEPRINT_ALL ? ids : r.choreo;
   const close = need.map(id => ({ id, ...nearest(id) })).filter(x => x.d < ruler * RATIO);
   const fmt = p => `${p.a}/${p.b}:${(p.d / ruler).toFixed(2)}`;

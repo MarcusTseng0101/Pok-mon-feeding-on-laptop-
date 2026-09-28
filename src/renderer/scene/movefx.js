@@ -1,7 +1,8 @@
 // 招式的演出（照原作 X・Y 的做法重做；參考 Pokémon Showdown 的招式動畫手法，沒有複製它的程式或圖片）：
 //   1. 放招時背景會變：兩隻周圍的桌面局部變暗（流星群還會出現星空）
 //   2. 特效是「柔邊光團」疊出來的：用「變亮」疊加，重疊的地方越疊越亮
-//   3. 同一個東西錯開時間放好幾個（光束上的光團、脈衝環、流星）
+//   3. 同一個東西錯開時間放好幾個（流星群的 6 顆流星）
+// 每一招自己的演出在 choreo/*.js，這裡是大家共用的零件（光團、打中、變暗、火花、刀光…）
 //   4. 打到的瞬間爆開：光團放大 3 倍並淡出，加上打擊火花、衝擊波、頓一下、震一下
 // 只有畫面，沒有規則。設定「減少閃光和畫面震動」打開時：變暗和光都比較淡、不震動。
 // 座標都是裝置像素；S 是一個美術像素的大小。
@@ -274,95 +275,6 @@ function drawStreak(ctx, p, k) {
 export function streaks(pet, color = '#ffffff') {
   const S = pet.S, r = pet.rect();
   for (let i = 0; i < 2; i++) pet.stage.fx.add({ draw: drawStreak, x: pet.x - pet.facing * r.w * 0.3, y: r.y + rnd(0.2, 0.9) * r.h, len: rnd(14, 30) * S, dir: pet.facing, S, color, life: 0.2, fade: false });
-}
-
-// ---------- 蓄力：光團從四周螺旋吸進來，中間越來越亮 ----------
-export function charge(stage, at, cols, t, dt, { big = false } = {}) {
-  const S = stage.S;
-  if (Math.random() < dt * (big ? 70 : 45)) {
-    const a = rnd(0, Math.PI * 2), d = rnd(22, 40) * S, L = 0.26;
-    stage.fx.add({
-      draw: (ctx, p, k) => {
-        const aa = p.a + k * 3, dd = p.d * (1 - easeIn(k));
-        additive(ctx, () => stamp(ctx, glowTex(p.col), p.at.x + Math.cos(aa) * dd, p.at.y + Math.sin(aa) * dd * 0.8, (8 - k * 4) * S, Math.min(1, k * 4) * 0.9));
-      },
-      at, a, d, col: pick(cols), life: L, fade: false,
-    });
-  }
-}
-export function chargeCore(stage, at, col, { big = false, life = 0.34 } = {}) {
-  blob(stage, { x: at.x, y: at.y, s0: 4, s1: big ? 26 : 18, a0: 0.5, a1: 1, life, col, ease: 'in' });
-}
-
-// ---------- 光束（外層屬性色、中心白色，外面兩條旋轉的能量絲） ----------
-export function drawBeam(ctx, from, to, S, cols, k, t, { zigzag = false, width = 5, fade = 1 } = {}) {
-  if (k <= 0 || fade <= 0) return;
-  const ex = lerp(from.x, to.x, k), ey = lerp(from.y, to.y, k);
-  const pulse = 1 + Math.sin(t * 50) * 0.12;
-  if (zigzag) {
-    // 閃電：每 0.05 秒換一次形狀
-    const pts = bolt(from, { x: ex, y: ey }, S, Math.floor(t * 20));
-    additive(ctx, () => {
-      ctx.lineJoin = 'round';
-      for (const [w, col, a] of [[10 * S, cols[0], 0.35], [4 * S, cols[0], 1], [2 * S, cols[1] ?? '#ffffff', 1], [S, '#ffffff', 1]]) {
-        ctx.globalAlpha = a * fade;
-        ctx.strokeStyle = col;
-        ctx.lineWidth = w;
-        ctx.beginPath();
-        pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-        ctx.stroke();
-      }
-    });
-    return;
-  }
-  const w = width * S * pulse * fade;
-  additive(ctx, () => {
-    ctx.lineCap = 'round';
-    for (const [m, col, a] of [[3.2, cols[0], 0.28], [2, cols[0], 0.6], [1.1, cols[1] ?? '#ffffff', 0.9], [0.45, '#ffffff', 1]]) {
-      ctx.globalAlpha = a;
-      ctx.strokeStyle = col;
-      ctx.lineWidth = w * m;
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(ex, ey);
-      ctx.stroke();
-    }
-    // 兩條旋轉的能量絲
-    const len = Math.hypot(ex - from.x, ey - from.y) || 1, nx = -(ey - from.y) / len, ny = (ex - from.x) / len;
-    ctx.lineWidth = Math.max(1, S * fade);
-    for (const [ph, col] of [[0, cols[2] ?? cols[1] ?? '#ffffff'], [Math.PI, cols[1] ?? '#ffffff']]) {
-      ctx.globalAlpha = 0.9;
-      ctx.strokeStyle = col;
-      ctx.beginPath();
-      for (let s = 0; s <= 48; s++) {
-        const u = s / 48, amp = width * 2.2 * S * Math.min(1, u * 4) * fade;
-        const off = Math.sin((u * len) / (17 * S) - t * 30 + ph) * amp;
-        const x = from.x + (ex - from.x) * u + nx * off, y = from.y + (ey - from.y) * u + ny * off;
-        s ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-      }
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-    stamp(ctx, glowTex(cols[0]), from.x, from.y, width * 9 * S * fade * pulse, 0.9);
-    if (k >= 1) stamp(ctx, glowTex(cols[0]), ex, ey, width * 14 * S * fade * pulse, 0.9);
-  });
-}
-
-// 光束上一直往前送的脈衝環（from/to 是函式：兩隻會動）
-function drawPulseRing(ctx, p, k) {
-  const f = p.from(), to = p.to(), u = easeIn(k);
-  const x = lerp(f.x, to.x, u), y = lerp(f.y, to.y, u), a = Math.atan2(to.y - f.y, to.x - f.x);
-  additive(ctx, () => {
-    ctx.globalAlpha = 0.9 * (1 - k * 0.5);
-    ctx.strokeStyle = p.color;
-    ctx.lineWidth = p.S;
-    ctx.beginPath();
-    ctx.ellipse(x, y, 3 * p.S, (12 + u * 5) * p.S, a, 0, Math.PI * 2);
-    ctx.stroke();
-  });
-}
-export function pulseRing(stage, from, to, color, delay = 0) {
-  stage.fx.add({ draw: drawPulseRing, from, to, color, S: stage.S, life: 0.26, t: -delay, fade: false });
 }
 
 function bolt(a, b, S, seed) {
