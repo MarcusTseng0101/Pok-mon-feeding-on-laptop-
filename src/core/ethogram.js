@@ -31,6 +31,10 @@ export const TEMPLATES = {
 };
 const HABIT_SHARE = 8; // 習性占幾 %，從「玩」和「探索」各撥一半（猜的，可調整；規格說 5–10）
 const OFF_PHASE = 0.4; // 不是牠的時段，醒著做事的時間乘上多少（猜的，可調整）
+// 理毛：桌面上還沒有真的理毛動作（要等像素木偶的參數姿勢，PR-N3／N4），只有伸懶腰、抖一抖兩個 1–2 秒的小動作。
+// 拿它們去填 6–15% 的時間，會變成每分鐘伸懶腰好幾次（太忙、太假，規格 F5；soul.cjs 也量到「休息」占了一半的決策）。
+// 所以先把理毛的時間算進休息，伸懶腰、抖一抖當休息裡偶爾做的小動作；有真的理毛動作以後改成 true
+export const GROOM_ACTS = false;
 
 // 這個小時是不是牠的活動時段（晝＝7–18 點、夜＝19–5 點、晨昏＝5–9 點和 16–20 點；猜的，可調整）
 export function activeAt(diel, hour) {
@@ -51,7 +55,7 @@ export const TYPE_ENV = {
   ice: [['afternoon', { rest: 1.3, explore: 0.7, opt: { chill: 1.5 } }], ['snow', { play: 1.5, explore: 1.3 }], ['night', { explore: 1.2 }]], // 午後怕熱；下雪開心
   rock: [[null, { explore: 0.8 }], ['rain', { rest: 1.3 }]], // 喜歡坐著不動；下雨躲
   ground: [[null, { explore: 0.8, opt: { dig: 1.3 } }], ['rain', { rest: 1.3 }]],
-  flying: [['rain', { rest: 1.3, explore: 0.7 }]], // 下雨躲在視窗下
+  flying: [[null, { opt: { perch: 2 } }], ['rain', { rest: 1.3, explore: 0.7, opt: { perch: 0.3 } }]], // 待在高處（視窗頂）；下雨躲在視窗下
   bug: [[null, { forage: 1.3 }], ['rain', { rest: 1.3 }], ['snow', { rest: 1.5, explore: 0.5 }], ['night', { rest: 1.3 }]], // 覓食時間長；雨、冷、晚上不動
   fighting: [['morning', { play: 1.5, opt: { train: 2 } }]], // 早上練習
   psychic: [[null, { rest: 1.1 }]], // 長時間靜止凝視
@@ -141,6 +145,7 @@ export function budgetAt(id, hour, env = {}, types = []) {
     const more = Math.min(b.play, need); b.play -= more; need -= more;
     b.habit = HABIT_SHARE - need;
   }
+  if (!GROOM_ACTS) { b.rest += b.groom; b.groom = 0; }
   // 不是牠的時段：醒著做事的時間變少（晝夜顛倒的模板已經算過了）
   if (!on && t.restOff == null) for (const c of CLASSES) if (c !== 'rest') b[c] *= OFF_PHASE;
   const { cls } = envMults(id, types, { ...env, hour });
@@ -157,11 +162,11 @@ const night = c => { const h = c.hour ?? 12; return h >= 20 || h < 6; };
 const day = c => { const h = c.hour ?? 12; return h >= 7 && h < 17; };
 const has = (c, ...ts) => (c.types ?? []).some(t => ts.includes(t));
 export const ACTS = {
-  // 休息：大宗，而且可以很長
-  idle: { cls: 'rest', w: 14, dur: [2, 5, 40] },
-  sit: { cls: 'rest', w: 10, dur: [3, 9, 60] },
-  nap: { cls: 'rest', w: c => (activeAt(SPECIES[c.id]?.diel, c.hour ?? 12) ? 1 : 8), dur: [8, 18, 90] }, // 不是牠的時段比較會打瞌睡
-  sunbathe: { cls: 'rest', w: c => (has(c, 'grass', 'fire') && day(c) ? 6 : 0), dur: [5, 9, 40] },
+  // 休息：大宗，而且一段可以很長（真實動物一次休息幾分鐘到幾小時；桌面上取短一點，猜的，可調整）
+  idle: { cls: 'rest', w: 14, dur: [4, 12, 90] },
+  sit: { cls: 'rest', w: 10, dur: [6, 20, 120] },
+  nap: { cls: 'rest', w: c => (activeAt(SPECIES[c.id]?.diel, c.hour ?? 12) ? 1 : 8), dur: [10, 30, 180] }, // 不是牠的時段比較會打瞌睡
+  sunbathe: { cls: 'rest', w: c => (has(c, 'grass', 'fire') && day(c) ? 6 : 0), dur: [8, 15, 60] },
   chill: { cls: 'rest', w: c => (has(c, 'ice') ? 4 : 0), dur: 2.5 },
   // 探索
   walk: { cls: 'explore', w: 30, dur: [1.5, 3.5, 8] }, // 走路多長由距離決定，這裡只是估計（算時間分配用）
@@ -169,6 +174,9 @@ export const ACTS = {
   dig: { cls: 'explore', w: c => (!c.floats && (has(c, 'ground') || c.digger) ? 4 : 0), dur: 3 },
   slime: { cls: 'explore', w: c => (has(c, 'dragon') && !c.floats ? 4 : 0), dur: 8 },
   soar: { cls: 'explore', w: c => (c.floats ? (night(c) && SPECIES[c.id]?.diel === 'night' ? 6 : 3) : 0), dur: [2.8, 3.3, 4] },
+  // 跳上視窗的頂邊（有視窗、跳得到的時候，scene/perching.js 才會列出來）：動物有高處就會上去看看；會飄的比較容易上去。
+  // 權重是對著 main 量出來的：物種表讓大家多休息、少走動以後，要讓「自己跳上視窗」跟以前一樣常見（10 分鐘 6 隻約 4 次；猜的，可調整）
+  perch: { cls: 'explore', w: c => (c.floats ? 24 : 16), dur: [2, 3, 5] },
   // 找吃的：肚子不餓也會找（真實動物的時間分配本來就有覓食），餓了更想找
   hungry: { cls: 'forage', w: c => ((c.fullness ?? 100) < 100 ? 5 : 2), dur: [4, 5, 7] },
   forage: { cls: 'forage', w: c => (!c.floats && has(c, 'bug', 'normal', 'ground', 'grass') ? 4 : 0), dur: [2.5, 3, 4] },
@@ -191,11 +199,13 @@ export const ACTS = {
   twirl: { cls: 'play', w: c => (has(c, 'fairy') ? 4 : 0), dur: 1.2 },
   // 社交
   play: { cls: 'social', w: c => ((c.others ?? 0) > 0 && (c.hearts ?? 0) >= 1 ? 6 : 0), dur: [4, 5, 6] }, // 找一隻追著玩
-  // 理毛、整理身體：伸懶腰（動物伸懶腰會停在最伸展的姿勢一下）、抖一抖（快，所以少一點，不然一分鐘抖好幾次）
-  stretch: { cls: 'groom', w: 4, dur: [1.2, 2.5, 4] },
-  shiver: { cls: 'groom', w: 1, dur: 0.6 },
+  // 理毛、整理身體：伸懶腰（動物伸懶腰會停在最伸展的姿勢一下）、抖一抖（見上面 GROOM_ACTS：現在算在休息裡）
+  stretch: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 4, dur: [1.2, 2.5, 4] },
+  shiver: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 1, dur: 0.6 },
 };
 // 其他地方來的選項（social.js、habits.js、moves.js…）沒有列在 ACTS：用心智類別決定屬於哪一類、用這裡的長度估計
+// 休息的地點：動物大多回窩（巢、洞）休息，不是走到哪睡到哪。回秘密基地休息（心智類別 base）在「休息」裡的權重乘上多少（猜的，可調整）
+const DEN = 3;
 const CAT_CLASS = { rest: 'rest', base: 'rest', explore: 'explore', need: 'forage', play: 'play', cursor: 'play', train: 'play', social: 'social', habit: 'habit', trip: 'explore' };
 const CLASS_DUR = { rest: [2, 6, 40], explore: [1.5, 4, 10], forage: [2, 4, 8], play: [1, 2.5, 6], social: [2, 4, 8], groom: [0.6, 1.2, 2], habit: [2, 4, 8] };
 
@@ -238,18 +248,20 @@ export function nextBout(id, ctx, rng) {
   const mind = ctx.mind ?? {};
   const budget = budgetAt(id, ctx.hour ?? 12, ctx, ctx.types);
   const groups = new Map();
+  const favor = SPECIES[id]?.favor ?? {};
   for (const o of offers) {
     const cls = classOf(o.name, o.cat);
     const m = mind[o.cat] ?? 1;
-    if (!groups.has(cls)) groups.set(cls, { list: [], w: 0, wm: 0, wd: 0 });
+    const pick = o.w * m * (favor[o.name] ?? 1) * (o.cat === 'base' ? DEN : 1); // 同一類裡挑哪個：權重 × 心智 × 招牌動作 × 回窩休息
+    if (!groups.has(cls)) groups.set(cls, { list: [], w: 0, wm: 0, pw: 0, pwd: 0 });
     const g = groups.get(cls);
-    g.list.push({ o, wm: o.w * m });
-    g.w += o.w; g.wm += o.w * m; g.wd += o.w * meanDur(durOf(o.name, cls));
+    g.list.push({ o, wm: pick });
+    g.w += o.w; g.wm += o.w * m; g.pw += pick; g.pwd += pick * meanDur(durOf(o.name, cls));
   }
-  // 挑類別：時間分配 × 需求（這一類選項的平均心智倍率）÷ 這一類平均一段多長
+  // 挑類別：時間分配 × 需求（這一類選項的平均心智倍率）÷ 這一類平均一段多長（招牌動作只影響類別裡挑哪個，不影響時間分配）
   const cls = [];
   for (const [c, g] of groups) {
-    const need = g.wm / g.w, mean = g.wd / g.w;
+    const need = g.wm / g.w, mean = g.pwd / g.pw;
     cls.push([c, (budget[c] ?? 0) * need / mean]);
   }
   let total = cls.reduce((s, [, w]) => s + w, 0);
@@ -287,10 +299,12 @@ export function focusBout(rng) {
 export function learn(id, events) { void events; return SPECIES[id]; }
 
 const SRC = name => `https://wiki.52poke.com/zh-hant/${name}`;
+const FAVOR = 2; // 招牌動作：表裡寫「最常」「常常」「一直」「很久」的那個動作，同一類裡的權重乘上多少（猜的，可調整）
 
 // ---------- 72 隻（規格 §5.2；使用者可以逐行改）----------
 // body：PokeAPI 的體型分類；diel：day 晝行／night 夜行／crep 晨昏／any 不定；tpl：時間分配模板；
-// set：這一隻直接指定的百分比；add：加減；habits：scene/habits.js 的習性（HABITS_BY_SPECIES，測試會對）
+// set：這一隻直接指定的百分比；add：加減；habits：scene/habits.js 的習性（HABITS_BY_SPECIES，測試會對）；
+// favor：招牌動作（why.dex 裡寫「最常」「常常」「一直」的那個）
 // 全部的百分比、作息都是猜的，可調整。
 export const SPECIES = {
   650: { name: '哈力栗', body: 'upright', diel: 'day', traits: '好奇、貪吃', tpl: 'R', sleep: '縮成一顆', habits: ['hunker', 'ram'],
@@ -299,27 +313,27 @@ export const SPECIES = {
     why: { look: '兩腳、圓胖 → 慢步、搖晃', type: '草', dex: '互相衝撞鍛鍊下半身；很溫柔，不會主動挑起爭鬥 → 跟同伴輕輕對撞（ram），不打架；被嚇時縮起來用殼擋（hunker）；原地深蹲；百科：原型犰狳、穿山甲；殼很重所以腰腿有力、痛覺遲鈍 → 撞得很大力也不在意；會縮成球' }, src: SRC('胖胖哈力') },
   652: { name: '布里卡隆', body: 'upright', diel: 'day', traits: '保護者', tpl: 'P', sleep: '抱胸坐', habits: ['guard', 'ram'],
     why: { look: '兩腳、大、粗手臂 → 大步、穩', type: '草格鬥：早上練拳', dex: '用身體保護同伴；拳頭護臉的防禦姿勢連炸彈都擋得住 → 站到同伴和游標之間（guard）；有夥伴被招式打到時，舉拳護臉衝過去；用身體撞開擋路的東西（ram）；百科：原型栗子殼＋犰狳＋騎士；平常溫和不愛爭鬥 → 沒事的時候很安靜' }, src: SRC('布里卡隆') },
-  653: { name: '火狐狸', body: 'quadruped', diel: 'crep', traits: '警覺', tpl: 'F', sleep: '捲一圈、尾巴蓋鼻子', habits: ['twig', 'earpuff'],
+  653: { name: '火狐狸', body: 'quadruped', diel: 'crep', traits: '警覺', tpl: 'F', sleep: '捲一圈、尾巴蓋鼻子', habits: ['twig', 'earpuff'], favor: { twig: FAVOR },
     why: { look: '四腳、大耳 → 小跑、停下嗅', type: '火：躲雨、找暖處', dex: '走路時咬著樹枝當零食；耳朵噴熱氣威嚇 → 走路常叼著樹枝（twig）；被靠太近時耳朵噴氣（earpuff）；百科：原型耳廓狐；容易亢奮、體溫太高時用耳朵散熱冷靜下來 → 玩得太興奮就停下來、耳朵噴氣散熱（earpuff 改成散熱）' }, src: SRC('火狐狸') },
   654: { name: '長尾火狐', body: 'upright', diel: 'crep', traits: '驕傲', tpl: 'F', sleep: '坐著抱樹枝', habits: ['signal', 'twig'],
     why: { look: '兩腳、尾巴插樹枝 → 優雅走', type: '火', dex: '從尾巴抽樹枝時摩擦點火，用火焰向同伴打信號 → 看到同伴時揮火枝打招呼（signal）；twig；百科：樹枝插在尾巴上有安心作用；遇到危險時轉著樹枝畫圈 → 被嚇時轉樹枝畫圈' }, src: SRC('長尾火狐') },
-  655: { name: '妖火紅狐', body: 'upright', diel: 'night', traits: '沉靜', tpl: 'F', sleep: '站著閉眼', habits: ['vortex', 'signal'],
+  655: { name: '妖火紅狐', body: 'upright', diel: 'night', traits: '沉靜', tpl: 'F', sleep: '站著閉眼', habits: ['vortex', 'signal'], favor: { vortex: FAVOR },
     why: { look: '兩腳、高、長袖 → 慢、飄逸', type: '火超能：長時間凝視', dex: '凝視樹枝尖端的火焰進入專注狀態，能預見未來 → 常常靜靜站著看火（vortex）；你在專注模式時牠也一起專注；signal；百科：用杖尖的火在地上燒出痕跡，以前的人拿來占卜 → 占卜完在地上留下一小塊很快消失的焦痕' }, src: SRC('妖火紅狐') },
-  656: { name: '呱呱泡蛙', body: 'quadruped', diel: 'crep', traits: '悠哉但警覺', tpl: 'A', sleep: '趴平', habits: ['frubbles'],
+  656: { name: '呱呱泡蛙', body: 'quadruped', diel: 'crep', traits: '悠哉但警覺', tpl: 'A', sleep: '趴平', habits: ['frubbles'], favor: { look: FAVOR },
     why: { look: '四腳蛙、泡泡圍脖 → 跳一下停很久', type: '水：下雨出來玩', dex: '用泡泡包住皮膚保護；看起來無憂無慮，其實一直留意周圍 → 坐著時眼睛一直掃視；不時補泡泡（frubbles）；突然一跳；百科：原型樹蛙、雨蛙，動作參考忍者；悠哉是騙敵人的演技；會從對手頭上丟泡泡戲弄 → 偶爾在夥伴頭上丟泡泡惡作劇' }, src: SRC('呱呱泡蛙') },
-  657: { name: '呱頭蛙', body: 'humanoid', diel: 'night', traits: '敏捷', tpl: 'A', sleep: '蹲在高處', habits: ['leap', 'frubbles'],
+  657: { name: '呱頭蛙', body: 'humanoid', diel: 'night', traits: '敏捷', tpl: 'A', sleep: '蹲在高處', habits: ['leap', 'frubbles'], favor: { leap: FAVOR },
     why: { look: '人形、細長 → 敏捷跳、會爬', type: '水', dex: '一分鐘爬上 600 公尺高塔；能用泡泡包石子精準打中空罐 → 最常爬上視窗頂（leap）；朝遠處丟小石子玩；frubbles；百科：指尖能貼在垂直的牆上 → 會貼著視窗的側邊往上爬' }, src: SRC('呱頭蛙') },
   658: { name: '甲賀忍蛙', body: 'humanoid', diel: 'night', traits: '冷靜、愛戲弄', tpl: 'H', sleep: '蹲在高處', habits: ['ninja', 'shuriken'],
     why: { look: '人形 → 低姿快步、瞬間移位', type: '水惡：晚上活躍', dex: '像忍者神出鬼沒，用快速動作戲弄對手 → 消失再從別處出現（ninja）；繞著游標跑來跑去戲弄；練水手裏劍（shuriken）；百科：用捲在脖子上的舌頭感知空氣流動 → 游標從旁邊掠過時，舌頭圍巾先動一下' }, src: SRC('甲賀忍蛙') },
-  659: { name: '掘掘兔', body: 'upright', diel: 'night', traits: '膽小、勤勞', tpl: 'R', sleep: '趴著、耳朵垂', habits: ['alert'],
+  659: { name: '掘掘兔', body: 'upright', diel: 'night', traits: '膽小、勤勞', tpl: 'R', sleep: '趴著、耳朵垂', habits: ['alert'], favor: { alert: FAVOR },
     why: { look: '直立兔、大耳 → 兔跳', type: '一般', dex: '對危險很敏感，聽到鳥拍翅膀馬上挖洞躲；用耳朵挖洞，一晚挖 10 公尺 → 常站起來警戒（alert）；有鳥型夥伴飛過就鑽地躲；晚上挖洞；百科：原型穴兔' }, src: SRC('掘掘兔') },
-  660: { name: '掘地兔', body: 'upright', diel: 'day', traits: '懶', tpl: 'P', sleep: '仰躺', habits: ['shed', 'alert'],
+  660: { name: '掘地兔', body: 'upright', diel: 'day', traits: '懶', tpl: 'P', sleep: '仰躺', habits: ['shed', 'alert'], favor: { shed: FAVOR },
     why: { look: '直立、胖、大耳 → 慢走', type: '一般地面：不上視窗', dex: '挖得動岩盤；挖完就懶洋洋躺著；肚子的毛很保暖 → 挖一陣（shed）然後攤著很久；冷天小隻的會靠過來取暖；alert；百科：原型穴兔＋建築工人' }, src: SRC('掘地兔') },
   661: { name: '小箭雀', body: 'wings', diel: 'day', traits: '親人但有地盤', tpl: 'B', sleep: '縮成球（冷的地方的人會跟牠一起睡）', habits: ['peck', 'heatup'],
     why: { look: '小鳥 → 蹦跳＋短飛', type: '一般飛：待高處', dex: '很親人；興奮時體溫升到 2 倍；婉轉的叫聲其實是威嚇，會一直啄闖進地盤的 → 常靠近你；叫；啄靠近的野生寶可夢（peck）；被摸太久會發熱（heatup）；百科：原型日本歌鴝；用叫聲和揮動尾羽跟同伴打信號；身體一直很溫暖 → 翹尾巴打招呼；冷天會靠在你旁邊（游標附近）' }, src: SRC('小箭雀') },
   662: { name: '火箭雀', body: 'wings', diel: 'day', traits: '好戰', tpl: 'B', sleep: '單腳站', habits: ['shoo', 'peck'],
     why: { look: '鳥 → 起飛很快', type: '火飛：躲雨', dex: '地盤意識強，同種也會為覓食地打架；向草叢撒火花把蟲驚出來吃 → 趕走其他鳥（shoo）；對地面撒火花、啄（peck）；百科：原型伯勞等；肚子的火袋點火要花時間，起飛後很快 → 起飛前有一段預備' }, src: SRC('火箭雀') },
-  663: { name: '烈箭鷹', body: 'wings', diel: 'day', traits: '孤高', tpl: 'B', add: { rest: 15 }, sleep: '站在高處', habits: ['dive', 'shoo'],
+  663: { name: '烈箭鷹', body: 'wings', diel: 'day', traits: '孤高', tpl: 'B', add: { rest: 15 }, sleep: '站在高處', habits: ['dive', 'shoo'], favor: { look: FAVOR },
     why: { look: '大鳥 → 很少走路，滑翔、直線衝', type: '火飛', dex: '以時速 500 公里直線衝向獵物，再用腳踢 → 站在最高處很久、盯著下面，然後直線俯衝（dive）；shoo；張翅；百科：原型游隼；能抓著 100 公斤的獵物飛' }, src: SRC('烈箭鷹') },
   664: { name: '粉蝶蟲', body: 'armor', diel: 'day', traits: '膽小', tpl: 'S', set: { forage: 45 }, sleep: '縮', habits: ['powder'],
     why: { look: '甲殼型小蟲 → 蠕動', type: '蟲：覓食時間長', dex: '被鳥攻擊時噴會麻痺的黑粉；粉能調節體溫 → 大部分時間在啃；鳥型夥伴靠近時噴粉（powder）；百科：吃的植物隨棲息地而不同' }, src: SRC('粉蝶蟲') },
@@ -335,9 +349,9 @@ export const SPECIES = {
     why: { look: '只有手、抱花、極小 → 隨風飄', type: '妖精：往花去', dex: '找到喜歡的花就一輩子住在上面；乘著風悠哉地飄 → 游標快速掠過時被「風」吹著飄一段；停在花園的花上；撒花粉（pollen）；百科：原型蒲公英種子（乘風移動）；黃昏會去找開著跟自己一樣的花的地方睡 → 黃昏往花園去睡' }, src: SRC('花蓓蓓') },
   670: { name: '花葉蒂', body: 'arms', diel: 'day', traits: '園丁', tpl: 'S', sleep: '抱著花', habits: ['tend', 'pollen'],
     why: { look: '只有手、抱花 → 飄', type: '妖精', dex: '照顧快枯萎的花；花壇開花時跳優雅的舞；絕不原諒破壞花壇的 → 去花園照顧花（tend）；花園新開花時跳舞；pollen；百科：會把枯萎的花帶回自己的地盤照料 → tend 時會先去「撿」一下再回來' }, src: SRC('花葉蒂') },
-  671: { name: '花潔夫人', body: 'arms', diel: 'day', traits: '優雅', tpl: 'S', sleep: '站著', habits: ['garden', 'tend'],
+  671: { name: '花潔夫人', body: 'arms', diel: 'day', traits: '優雅', tpl: 'S', sleep: '站著', habits: ['garden', 'tend'], favor: { garden: FAVOR },
     why: { look: '只有手、沒有腳（莖葉撐著） → 緩緩滑行', type: '妖精', dex: '活好幾百年、一生守護庭園；從花的能量曬太陽得到力量 → 在花園旁站很久（garden）；tend；百科：原型穿晚禮服的貴婦、風信子' }, src: SRC('花潔夫人') },
-  672: { name: '坐騎小羊', body: 'quadruped', diel: 'day', traits: '溫順', tpl: 'G', sleep: '趴', habits: ['graze'],
+  672: { name: '坐騎小羊', body: 'quadruped', diel: 'day', traits: '溫順', tpl: 'G', sleep: '趴', habits: ['graze'], favor: { follow: FAVOR },
     why: { look: '四腳 → 走、低頭', type: '草：晴天曬太陽就不用吃', dex: '背上的葉子能製造能量；性情溫和，最早跟人一起生活的寶可夢之一 → 晴天「找吃的」換成曬背（graze 改演法）；常待在你附近；百科：原型山羊；以前山區居民騎著牠走山路' }, src: SRC('坐騎小羊') },
   673: { name: '坐騎山羊', body: 'quadruped', diel: 'day', traits: '穩重', tpl: 'G', sleep: '趴著反芻', habits: ['ram', 'graze'],
     why: { look: '四腳、大、角 → 穩步', type: '草', dex: '首領由犄角互撞決定；從握角的力道感知訓練家的心情 → 跟同種頂角（ram）；游標停在角上時會靠過來；graze' }, src: SRC('坐騎山羊') },
@@ -347,7 +361,7 @@ export const SPECIES = {
     why: { look: '人形、大 → 大搖大擺', type: '格鬥惡', dex: '從竹葉的擺動察覺敵人；粗暴但很重感情 → 嘴上的葉子一動就轉頭（leafsense）；照顧頑皮熊貓；glare；百科：不容許欺負弱小 → 小隻夥伴被打到時出頭' }, src: SRC('流氓熊貓') },
   676: { name: '多麗米亞', body: 'quadruped', diel: 'day', traits: '忠誠', tpl: 'D', sleep: '捲著', habits: ['groom'],
     why: { look: '四腳犬 → 昂首小跑', type: '一般', dex: '只讓信任的人修剪毛；以前是國王的護衛 → 理毛（groom）；跟著你走；在大家周圍巡一圈；百科：原型貴賓犬＋羊駝' }, src: SRC('多麗米亞') },
-  677: { name: '妙喵', body: 'upright', diel: 'crep', traits: '冷淡', tpl: 'F', sleep: '捲成團', habits: ['psyburst'],
+  677: { name: '妙喵', body: 'upright', diel: 'crep', traits: '冷淡', tpl: 'F', sleep: '捲成團', habits: ['psyburst'], favor: { look: FAVOR },
     why: { look: '直立小貓 → 貓步、安靜', type: '超能', dex: '面無表情是在拼命忍住外洩的精神力量；控制不了 → 常常呆望；偶爾力量外洩，身邊小東西浮起來（psyburst）；洗臉；百科：原型俄羅斯藍貓、折耳貓' }, src: SRC('妙喵') },
   678: { name: '超能妙喵', body: 'upright', diel: 'crep', traits: '護主', tpl: 'F', sleep: '捲成團', habits: ['protect', 'psyburst'],
     why: { look: '直立貓 → 貓步', type: '超能', dex: '防衛本能強，保護夥伴時才全力；平時把耳朵內側的眼紋藏起來 → 夥伴被打到時張開耳朵（protect）；psyburst；洗臉；百科：原型折耳貓，尾巴參考貓又' }, src: SRC('超能妙喵') },
@@ -371,7 +385,7 @@ export const SPECIES = {
     why: { look: '一團 → 慢慢滑', type: '惡超能', dex: '讓身上的花紋發光，把獵物引過來；強力催眠 → 花紋發光，想把游標引過來（hypno）；flash；百科：原型會把身體翻過來的吸血魷' }, src: SRC('烏賊王') },
   688: { name: '龜腳腳', body: 'heads', diel: 'day', traits: '吵', tpl: 'W', sleep: '縮', habits: ['bicker'],
     why: { look: '兩頭 → 身體一伸一縮拖著石頭跳', type: '岩水', dex: '兩隻住在同一塊石頭上；吵架時一隻搬到別塊；漲潮時合作找食物 → 兩個頭吵架（bicker），吵完一個轉開；張手濾食；百科：原型龜足（佛手貝）；本體其實只有「手」' }, src: SRC('龜腳腳') },
-  689: { name: '龜足巨鎧', body: 'heads', diel: 'day', traits: '群', tpl: 'W', sleep: '蹲', habits: ['lookout', 'bicker'],
+  689: { name: '龜足巨鎧', body: 'heads', diel: 'day', traits: '群', tpl: 'W', sleep: '蹲', habits: ['lookout', 'bicker'], favor: { lookout: FAVOR },
     why: { look: '多頭 → 橫著走', type: '岩水', dex: '用手掌上的眼睛觀察四面；手腳各有意志，平常聽頭的 → 手掌轉來轉去張望（lookout）；偶爾一隻手不聽話自己動；bicker；百科：原型鵝頸藤壺' }, src: SRC('龜足巨鎧') },
   690: { name: '垃垃藻', body: 'blob', diel: 'night', traits: '擬態', tpl: 'W', set: { rest: 55 }, sleep: '不動', habits: ['camo'],
     why: { look: '一團（海藻） → 隨波晃，不擅長游', type: '毒水', dex: '裝成腐爛的海藻，混在藻屑裡一動也不動 → 很長時間完全不動（camo）；百科：原型草海龍；被暴風雨捲走就回不了家 → 下大雨時抓住東西不動' }, src: SRC('垃垃藻') },
@@ -411,7 +425,7 @@ export const SPECIES = {
     why: { look: '球 → 飄、叮噹響', type: '鋼妖精', dex: '收集鑰匙成癡，會偷偷溜進別人家偷鑰匙 → 叮噹搖（jingle）；在桌面上到處翻找（keyhunt）★ 把找到的東西帶回基地；百科：被攻擊時搖響鑰匙威嚇' }, src: SRC('鑰圈兒') },
   708: { name: '小木靈', body: 'arms', diel: 'night', traits: '寂寞', tpl: 'N', sleep: '靠著樹', habits: ['callaway'],
     why: { look: '只有手（樹樁） → 飄', type: '鬼草', dex: '用小孩的聲音把大人引到森林深處，因為想要有夥伴 → 寂寞的時候叫你過去（callaway）；百科：住在人不靠近的森林，徘徊著找夥伴' }, src: SRC('小木靈') },
-  709: { name: '朽木妖', body: 'tentacles', diel: 'night', traits: '守林', tpl: 'S', sleep: '站著', habits: ['roots', 'callaway'],
+  709: { name: '朽木妖', body: 'tentacles', diel: 'night', traits: '守林', tpl: 'S', sleep: '站著', habits: ['roots', 'callaway'], favor: { roots: FAVOR },
     why: { look: '觸手（樹） → 很慢', type: '鬼草', dex: '用腳尖的根操縱其他樹；對住在森林裡的寶可夢很溫柔 → 紮根不動很久（roots）；小隻的夥伴靠近時很溫柔；callaway；百科：別的寶可夢把牠頭上的葉子當住處也不在意 ★ 讓小隻夥伴停在頭上' }, src: SRC('朽木妖') },
   710: { name: '南瓜精', body: 'ball', diel: 'crep', traits: '害羞', tpl: 'N', sleep: '坐著', habits: ['lantern', 'hypno'],
     why: { look: '球 → 小跳', type: '鬼草', dex: '太陽下山時變得躁動活潑；南瓜洞裡的光能催眠 → 黃昏開始活躍、提燈（lantern）；hypno；百科：原型南瓜燈；黃昏開始活動' }, src: SRC('南瓜精') },

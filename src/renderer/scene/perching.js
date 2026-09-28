@@ -5,7 +5,8 @@
 // 視窗慢慢移動 → 跟著走；移動得很快、被最小化、被關掉 → 掉下來（沿用 fall 的物理，會撞到地上的夥伴）；
 // 頂邊被新打開的視窗蓋住 → 自己跳下來。
 import { visibleLedges, ledgeUnder, MAX_PER_LEDGE, SHAKE_OFF_SPEED } from '../../core/perch.js';
-import { WALK_SPEED, RUN_SPEED } from './behaviors.js';
+import { WALK_SPEED, RUN_SPEED, boutCtx } from './behaviors.js';
+import { actWeight } from '../../core/ethogram.js';
 
 const JUMP_TIME = 0.55;
 
@@ -66,7 +67,7 @@ export function perchOption(pet) {
   if (pet.perch || pet.stage.env.focus) return [];
   const ls = perchCandidates(pet);
   if (!ls.length) return [];
-  return [['perch', pet.floats ? 5 : 3, () => {
+  return [['perch', actWeight('perch', boutCtx(pet)), () => { // 多常跳上去：物種生活表（core/ethogram.js）
     const l = ls[Math.floor(Math.random() * ls.length)];
     const half = pet.asset.w * pet.S;
     const x = l.x0 + half + Math.random() * Math.max(0, l.x1 - l.x0 - 2 * half);

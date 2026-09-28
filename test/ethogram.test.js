@@ -124,7 +124,7 @@ test('nextBout：同一個種子同樣的結果；沒有選項回傳 null；需�
   // 長度：休息多數短、少數很長
   const rng = createRng(5);
   const d = Array.from({ length: 2000 }, () => E.nextBout(650, { hour: 12, offers: [{ name: 'sit', w: 1, cat: 'rest' }] }, rng).dur).sort((a, b) => a - b);
-  assert.ok(d[1000] < 12 && d[1980] > 30, `坐著的長度中位數 ${d[1000].toFixed(1)}、99% ${d[1980].toFixed(1)}`);
+  assert.ok(d[1000] < 30 && d[1980] > 60, `坐著的長度中位數 ${d[1000].toFixed(1)}、99% ${d[1980].toFixed(1)}`);
 });
 
 test('專注模式的安靜選項也由這裡決定', () => {
