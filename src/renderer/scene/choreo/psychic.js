@@ -1,7 +1,7 @@
 // 超能屬性 4 招，每一招自己的演出
 //   念力       沒有東西飛過去：目標身邊一圈圈粉紅扭曲、頭上轉圈的星星，在原地晃（被弄暈）
 //   精神強念   自己頭上一圈圈粉紅波紋、兩隻中間閃一下粉紅光（桌面是透明的，沒辦法真的把後面的顏色反轉），目標被舉到半空再砸到地上
-//   反射壁     身前六角形玻璃一片一片拼成一面牆，拼好後一道反光掃過去
+//   反射壁     六角形玻璃沿著身前一道弧一片一片拼起來（比自己高、彎彎的護罩），拼好後一道反光掃過去
 //   異次元洞   目標背後打開一個圓環洞，自己的拳頭從洞裡打出來（自己這邊也開一個小洞）
 import * as FX from '../movefx.js';
 import { TAU, lerp, clamp01, rgba, glow, part, groundOf, ripple, lift } from './kit.js';
@@ -119,8 +119,9 @@ const psychic = {
 };
 
 // ---------- 反射壁 ----------
-// 六角形的位置（相對於牆中間，單位＝六角形大小）：一片一片拼上去的順序
-const HEX = [[0, 0], [0, -1], [0, 1], [0.87, -0.5], [0.87, 0.5], [-0.87, -0.5], [-0.87, 0.5], [0, -2], [0, 2]]; // 猜的，可調整
+// 六角形沿著身前的一道弧排（從中間往上下拼）；N_HEX 片、弧的角度範圍；猜的，可調整
+const N_HEX = 11, ARC = 1.3;
+const HEX = Array.from({ length: N_HEX }, (_, i) => { const j = i % 2 ? (i + 1) / 2 : -i / 2; return j / ((N_HEX - 1) / 2); }); // -1…1，拼的順序：中間 → 上下
 function hex(ctx, x, y, r) {
   ctx.beginPath();
   for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; i ? ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r) : ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); }
@@ -130,16 +131,17 @@ const reflect = {
   time: () => ({ dur: 1.5, hit: null }),
   update() {},
   draw(ctx, pet, m, t) {
-    const S = pet.S, r = pet.rect(), f = pet.facing, cx = pet.x + f * (r.w * 0.55 + 10 * S), cy = r.y + r.h * 0.5, R = 12 * S;
+    const S = pet.S, r = pet.rect(), f = pet.facing, cx = pet.x, cy = r.y + r.h * 0.5, R = 10 * S, rad = Math.max(r.w, r.h) * 0.75 + 14 * S;
+    const at = v => { const a = v * ARC; return { x: cx + f * Math.cos(a) * rad, y: cy + Math.sin(a) * rad }; };
     const fade = t > 1.2 ? clamp01(1 - (t - 1.2) / 0.3) : 1;
     ctx.save();
     ctx.globalAlpha = fade;
-    HEX.forEach(([dx, dy], i) => {
-      const at = 0.1 + i * 0.06, k = clamp01((t - at) / 0.1);
+    HEX.forEach((v, i) => {
+      const t0 = 0.1 + i * 0.05, k = clamp01((t - t0) / 0.1);
       if (k <= 0) return;
-      const x = cx + dx * R * 1.7 * 0.55, y = cy + dy * R * 1.7;
+      const { x, y } = at(v);
       hex(ctx, x, y, R * k);
-      ctx.fillStyle = rgba(GLASS, 0.3);
+      ctx.fillStyle = rgba(GLASS, t > 0.7 && t < 0.8 ? 0.6 : 0.35); // 拼好時整面亮一下
       ctx.fill();
       ctx.strokeStyle = WHITE;
       ctx.lineWidth = 1.2 * S;
@@ -150,12 +152,12 @@ const reflect = {
     if (sweep > 0 && sweep < 1) {
       ctx.save();
       ctx.beginPath();
-      HEX.forEach(([dx, dy]) => hex(ctx, cx + dx * R * 1.7 * 0.55, cy + dy * R * 1.7, R));
+      HEX.forEach(v => { const q = at(v); hex(ctx, q.x, q.y, R); });
       ctx.clip();
-      const y = cy - 3.5 * R * 1.7 + sweep * 7 * R * 1.7;
+      const y = cy - rad - 2 * R + sweep * (2 * rad + 4 * R), x0 = cx + f * rad * 0.2, x1 = cx + f * (rad + 2 * R);
       ctx.fillStyle = rgba(WHITE, 0.8);
       ctx.beginPath();
-      ctx.moveTo(cx - 3 * R, y - 2 * R); ctx.lineTo(cx + 3 * R, y - 4 * R); ctx.lineTo(cx + 3 * R, y - 3 * R); ctx.lineTo(cx - 3 * R, y - R);
+      ctx.moveTo(x0, y + 2 * R); ctx.lineTo(x1, y - 2 * R); ctx.lineTo(x1, y); ctx.lineTo(x0, y + 4 * R);
       ctx.fill();
       ctx.restore();
     }

@@ -14,10 +14,12 @@ const { run, ROOT } = require('./lib.cjs');
 const RATIO = 2; // 猜的，可調整（但只能在第一次量舊動畫之前決定，之後不改）
 const SEEDS = [11, 29];
 const OLD_RULER = 1.162; // 舊的 62 招量到的尺（蒸汽爆炸；等會動的圖載好以後重新量的，一樣 56 招不過）；新的尺超過它 1.5 倍＝有招的形狀大部分靠亂數，停下來看
-const DONE_TYPES = ['water', 'fire', 'grass', 'electric', 'ice', 'fighting', 'poison', 'ground', 'flying', 'psychic', 'bug', 'rock']; // 這個 PR 要做完的屬性
+const DONE_TYPES = ['water', 'fire', 'grass', 'electric', 'ice', 'fighting', 'poison', 'ground', 'flying', 'psychic', 'bug', 'rock', 'ghost', 'steel', 'dragon']; // 這個 PR 要做完的屬性
 // 使用者同意的例外（只在 old 還沒有自己的演出時才算；old 重做以後自動失效，要重新比）：
 //   尖刺防守 vs 5 個舊的「自己用」招（反射壁、蝶舞、王者盾牌、妖精之鎖、大地掌控，1.80–1.83 倍）：這 5 招現在是同一個舊演出，
 //   形狀完全不同（刺藤半圓頂 vs 彩色圈圈），近是因為都在自己身上放、周圍一樣變暗。這 5 招在 PR③、PR④ 重做
+// 本來就有自己演出的招（規格：流星群不動）：不要求放進 CHOREO，但一樣會拿來跟別招比
+const OWN = ['dracometeor'];
 const EXEMPT = ['reflect', 'quiverdance', 'kingsshield', 'fairylock', 'geomancy'].map(old => ['spikyshield', old]);
 const GROUPS = {
   'water-fire-grass': ['water', 'fire', 'grass'],
@@ -157,7 +159,7 @@ const test = async ({ page }, check) => {
 
   check(ruler <= OLD_RULER * 1.5, `尺變太大（${ruler.toFixed(3)}，${rulerId}）：這招的形狀大部分靠亂數，主要的形狀要固定`);
   check(r.distinct === r.choreo.length, `有招共用同一個演出：${r.choreo.length} 招只有 ${r.distinct} 個演出`);
-  const missing = ids.filter(id => DONE_TYPES.includes(r.types[id]) && !r.choreo.includes(id));
+  const missing = ids.filter(id => DONE_TYPES.includes(r.types[id]) && !r.choreo.includes(id) && !OWN.includes(id));
   check(missing.length === 0, `這個 PR 的屬性還有招沒有自己的演出：${missing}`);
   check(close.length === 0, `有招跟別招太像（要 ≥ 尺 × ${RATIO}）：${[...new Set(close.map(fmt))].join(' ')}`);
 

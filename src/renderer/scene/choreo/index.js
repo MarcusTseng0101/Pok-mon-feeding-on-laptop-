@@ -21,5 +21,8 @@ import { FLYING } from './flying.js';
 import { PSYCHIC } from './psychic.js';
 import { BUG } from './bug.js';
 import { ROCK_MOVES } from './rock.js';
+import { GHOST } from './ghost.js';
+import { STEEL_MOVES } from './steel.js';
+import { DRAGON_MOVES } from './dragon.js';
 
-export const CHOREO = { ...WATER, ...FIRE, ...GRASS, ...ELECTRIC, ...ICE_MOVES, ...FIGHTING, ...POISON, ...GROUND, ...FLYING, ...PSYCHIC, ...BUG, ...ROCK_MOVES };
+export const CHOREO = { ...WATER, ...FIRE, ...GRASS, ...ELECTRIC, ...ICE_MOVES, ...FIGHTING, ...POISON, ...GROUND, ...FLYING, ...PSYCHIC, ...BUG, ...ROCK_MOVES, ...GHOST, ...STEEL_MOVES, ...DRAGON_MOVES };
