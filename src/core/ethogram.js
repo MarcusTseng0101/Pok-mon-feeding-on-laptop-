@@ -187,7 +187,7 @@ export const ACTS = {
   spin: { cls: 'play', w: c => ((c.hearts ?? 0) >= 2 ? 3 : 0), dur: 0.9 },
   dance: { cls: 'play', w: c => (c.music && (c.hearts ?? 0) >= 1 ? 4 : 0), dur: [3, 4, 6] },
   roll: { cls: 'play', w: c => (!c.floats && (c.hearts ?? 0) >= 1 ? 3 : 0), dur: 1 },
-  follow: { cls: 'play', w: c => ((c.hearts ?? 0) >= 3 && c.pointer && c.userActive ? 9 : 0), dur: [3, 4.5, 7] },
+  follow: { cls: 'social', w: c => ((c.hearts ?? 0) >= 3 && c.pointer && c.userActive ? 9 : 0), dur: [3, 4.5, 7] },
   splash: { cls: 'play', w: c => (has(c, 'water') ? 4 : 0), dur: 1.2 },
   ember: { cls: 'play', w: c => (has(c, 'fire') ? 3 : 0), dur: 1.3 },
   spark: { cls: 'play', w: c => (has(c, 'electric') ? (c.plugged ? 12 : 4) : 0), dur: 1.4 },
@@ -230,7 +230,10 @@ const DEN = 3;
 const CAT_CLASS = { rest: 'rest', base: 'rest', explore: 'explore', need: 'forage', play: 'play', cursor: 'play', train: 'play', social: 'social', habit: 'habit', trip: 'explore' };
 const CLASS_DUR = { rest: [2, 6, 40], explore: [1.5, 4, 10], forage: [2, 4, 8], play: [1, 2.5, 6], social: [2, 4, 8], groom: [0.6, 1.2, 2], habit: [2, 4, 8] };
 
-export function classOf(name, cat) { return ACTS[name]?.cls ?? CAT_CLASS[cat] ?? 'rest'; }
+// 不在 ACTS 裡、但不能照心智類別分的：坐到你的游標旁邊、跟著你走＝想待在你身邊（跟你的社交），不是「玩」
+// （N1 把它們算在「玩」，「玩」很少的物種就幾乎不會來找你，cursor.cjs 量到只剩原本的 1/5）
+const NAME_CLASS = { cursorSit: 'social', follow: 'social' };
+export function classOf(name, cat) { return NAME_CLASS[name] ?? ACTS[name]?.cls ?? CAT_CLASS[cat] ?? 'rest'; }
 
 // 這個選項在這個情況下的權重（renderer 的 decide()、soloOptions() 從這裡拿，不自己寫數字）
 export function actWeight(name, ctx = {}) {
