@@ -7,4 +7,6 @@
 //   impact(pet, m, at, eff, K)      （可以沒有）打中的樣子；沒有就用大家共用的
 // K（moves.js 傳進來）：hit、center、targetPoint、isPet、dash（衝過去）、rnd、pick
 // 只有畫面：要動對手只用現有的欄位（z、squashT、flipT、flinchT），不直接改位置
-export const CHOREO = {};
+import { WATER } from './water.js';
+
+export const CHOREO = { ...WATER };
