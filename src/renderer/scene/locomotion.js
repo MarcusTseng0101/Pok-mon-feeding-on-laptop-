@@ -9,8 +9,10 @@ import { gaitOf } from '../../core/ethogram.js';
 import { footDist, collidesWith } from './physics.js';
 
 const FLIP_HOLD = 0.12; // 秒（猜的，可調整）
-const WALK_HZ = 3; // 走路一秒最多幾輪（一輪＝左右腳各一步；猜的，可調整）
-const RUN_HZ = 4.5; // 跑（猜的，可調整）
+const WALK_HZ = 4; // 走路一秒最多幾輪（一輪＝左右腳各一步；腳短的就是快速的小碎步；猜的，可調整）
+const RUN_HZ = 6; // 跑（猜的，可調整）
+// 跑的時候每一步有騰空，身體往前的距離比腳跨的多（木偶的腳不能畫得跨更開；猜的，可調整）。Pet.settle 播跑步動畫也照這個
+export const RUN_STRIDE = 1.5;
 const RUN_OVER = 1.5; // 呼叫的人給的速度超過走路速度的幾倍算在跑（決定用哪個步頻上限）
 const ARRIVE = 2; // 離目標幾個美術像素以內算到了
 const AVOID = 1.6; // 腳印距離小於這個（1＝剛好碰到）就開始繞
@@ -27,8 +29,8 @@ export function gait(pet) {
 export function topSpeed(pet, speed, walkSpeed) {
   const g = gait(pet), S = pet.S;
   if (!g.stride) return speed * g.speed;
-  const hz = speed > walkSpeed * S * RUN_OVER ? RUN_HZ : WALK_HZ;
-  return Math.min(speed, hz * 2 * g.stride * S); // 一輪走 2 步，一步 stride
+  const run = speed > walkSpeed * S * RUN_OVER;
+  return Math.min(speed, (run ? RUN_HZ * RUN_STRIDE : WALK_HZ) * 2 * g.stride * S); // 一輪走 2 步，一步 stride
 }
 
 // 往 (tx, ty) 走一幀；到了回傳 true。speed：裝置像素／秒
@@ -63,7 +65,7 @@ export function step(pet, tx, ty, speed, dt, walkSpeed) {
     if (w > want) { wx *= want / w; wy *= want / w; }
   }
   // 靠近螢幕邊緣：往邊緣那個方向照煞車距離慢下來，不要一頭撞上去被夾住（避開別隻時可能被推向邊邊）
-  const b = pet.bounds();
+  const b = OFFSCREEN.has(pet.state) ? { x0: -Infinity, x1: Infinity, y0: -Infinity, y1: Infinity } : pet.bounds(); // 出門、旅行回來：本來就要走到螢幕外
   const brake = (w, room) => Math.sign(w) * Math.min(Math.abs(w), Math.sqrt(2 * acc * Math.max(0, room)));
   if (wx < 0) wx = brake(wx, pet.x - b.x0); else if (wx > 0) wx = brake(wx, b.x1 - pet.x);
   if (wy < 0) wy = brake(wy, pet.gy - b.y0); else if (wy > 0) wy = brake(wy, b.y1 - pet.gy);
@@ -95,6 +97,7 @@ export function coast(pet, dt, walkSpeed) {
   pet.x += sx; pet.gy += sy;
   pet.stepDist = (pet.stepDist ?? 0) + Math.hypot(sx, sy) / S;
 }
+const OFFSCREEN = new Set(['depart', 'tripReturn']);
 const FROZEN = new Set(['held', 'fall', 'appear', 'evolving', 'depart', 'tripReturn', 'battle', 'move', 'duel', 'faint']);
 
 // 轉身要多久（秒）

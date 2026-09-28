@@ -246,7 +246,8 @@ const test = async ({ page }, check) => {
   const spotOn = sp => page.evaluate(sp => {
     const { stage } = window.__kalos, p = [...stage.pets.values()].find(q => q.mon.species === sp);
     const r = p.rect();
-    for (let v = 0.5; v < 0.95; v += 0.05) for (let u = 0.3; u <= 0.7; u += 0.05) { const x = r.x + r.w * u, y = r.y + r.h * v; if (p.hit(x, y)) return { x: x / stage.dpr, y: y / stage.dpr }; }
+    // 用舞台自己的判斷（stage.petAt）：這個點點下去選到的一定是牠，不是疊在前面的別隻
+    for (let v = 0.5; v < 0.95; v += 0.05) for (let u = 0.3; u <= 0.7; u += 0.05) { const x = r.x + r.w * u, y = r.y + r.h * v; if (stage.petAt(x, y) === p) return { x: x / stage.dpr, y: y / stage.dpr }; }
     return null;
   }, sp);
   const stateOf = sp => page.evaluate(sp => { const p = [...window.__kalos.stage.pets.values()].find(q => q.mon.species === sp); return { state: p.state, bout: p.bout?.name ?? null }; }, sp);
@@ -280,22 +281,24 @@ const test = async ({ page }, check) => {
   if (m) {
     await page.mouse.click(m.x, m.y);
     const opened = await page.waitForSelector('.bubble:not(.hidden)', { timeout: 3000 }).then(() => true).catch(() => false);
-    interrupts.push(['開選單', opened ? '開了' : '沒開']);
-    await page.mouse.click(20, 20);
+    await page.keyboard.press('Escape'); // 真的按 Esc 關掉（點空白的地方不會關選單）
+    const closed = await page.waitForSelector('.bubble.hidden', { state: 'attached', timeout: 2000 }).then(() => true).catch(() => false);
+    interrupts.push(['開選單', opened && closed ? '開了' : `開了 ${opened}、關了 ${closed}`]);
   } else interrupts.push(['開選單', '點不到']);
-  // 3) 放招式打到旁邊那一隻
-  await page.evaluate(() => { const { stage } = window.__kalos, a = [...stage.pets.values()].find(q => q.mon.species === 655), b = [...stage.pets.values()].find(q => q.mon.species === 656); a.x = stage.W * 0.35; a.gy = stage.H * 0.45; b.x = a.x + 60 * stage.S; b.gy = a.gy; a.lv = b.lv = { x: 0, y: 0 }; a.set('sit', 30); b.set('sit', 30); a.facing = 1; });
+  // 3) 放招式打到旁邊那一隻（放在畫面中間偏右：左上角會跳出故事的全息通訊，選單不能被它蓋住）
+  await page.evaluate(() => { const { stage } = window.__kalos, a = [...stage.pets.values()].find(q => q.mon.species === 655), b = [...stage.pets.values()].find(q => q.mon.species === 656); a.x = stage.W * 0.62; a.gy = stage.H * 0.6; b.x = a.x + ((a.asset.w + b.asset.w) / 2 + 20) * stage.S; /* 圖不能疊在一起，不然點到的是前面那隻 */ b.gy = a.gy; a.lv = b.lv = { x: 0, y: 0 }; a.set('sit', 30); b.set('sit', 30); a.facing = 1; });
   await page.waitForTimeout(300);
   const k = await spotOn(655);
   if (k) {
     await page.mouse.click(k.x, k.y);
     const ok = await page.waitForSelector('.bubble:not(.hidden) [data-act="moves"]', { timeout: 3000 }).then(() => true).catch(() => false);
+    const owner = await page.evaluate(() => window.__kalos.ui.bubblePet?.mon.species ?? null);
     let st = '沒有招式選單';
     if (ok) {
       await page.click('.bubble [data-act="moves"]'); await page.click('.bubble [data-move]');
       for (let i = 0; i < 10 && st !== 'move'; i++) { st = (await stateOf(655)).state; if (st !== 'move') await page.waitForTimeout(100); }
     }
-    interrupts.push(['放招', st]);
+    interrupts.push(['放招', owner === 655 ? st : `選單是 ${owner} 的`]);
   } else interrupts.push(['放招', '點不到']);
   await page.evaluate(() => { for (const q of window.__kalos.stage.pets.values()) q.reserved = false; }); // 準備用的，放開
   await page.waitForTimeout(5000); // 5 秒內要回到正常

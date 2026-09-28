@@ -242,9 +242,10 @@ function frame(src, a, parts, pose) {
 // ---------- 動作（每一組是一串姿勢；秒數都是猜的，可調整）----------
 const TAU = Math.PI * 2;
 const range = (n, f) => Array.from({ length: n }, (_, i) => f(i, (i / n) * TAU));
-// 走路時一隻腳前後各跨幾格：腳越長跨越大，最多 3 格（再大，自動找到的「腳」是葉子、裙擺的會扯開；猜的，可調整）。
+// 走路時一隻腳前後各跨幾格：腳越長跨越大，2–3 格（再大，自動找到的「腳」是葉子、裙擺的會扯開；
+// 只跨 1 格的話，要走得跟以前一樣快，腳得一秒換 8 輪以上，看起來像在抖；猜的，可調整）。
 // 一步身體往前 2 × STEP 格（腳從前面 +STEP 踩到後面 −STEP），info.stride 給 scene/locomotion.js 算速度、照距離播動畫
-export const stepOf = a => (a.hasLegs ? Math.max(1, Math.min(3, Math.round((a.H - a.hipY) / 4))) : 0);
+export const stepOf = a => (a.hasLegs ? Math.max(2, Math.min(3, Math.round((a.H - a.hipY) / 4))) : 0);
 function poseSets(a, floats) {
   const legs = a.hasLegs && !floats;
   const A = Math.max(1, stepOf(a));

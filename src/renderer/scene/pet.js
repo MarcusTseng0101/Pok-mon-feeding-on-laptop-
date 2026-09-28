@@ -22,7 +22,7 @@ import { traitsOf } from '../../core/mind.js';
 import { CURSOR_ACTIONS, cursorOptions, wantsToPounce, startPounce, besideCursor } from './cursor.js';
 import { LIFE_ACTIONS, lifeOptions, boostLife } from './lifeacts.js';
 import { actWeight, nextBout, focusBout } from '../../core/ethogram.js';
-import { step, coast, turnTime, wanderPath, pauseTick } from './locomotion.js';
+import { step, coast, turnTime, wanderPath, pauseTick, RUN_STRIDE } from './locomotion.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
@@ -254,7 +254,8 @@ export class Pet {
 
   // 可以被其他夥伴找去玩／被打斷的狀態
   // reserved：正在過去陪你（晚睡時走到游標旁邊），別隻不能在半路找牠玩
-  get free() { return ['idle', 'walk', 'sit', 'look', 'stretch'].includes(this.state) && !this.leaving && !this.reserved; }
+  // 閒著、可以被找去玩：正要去看日落、正在看日落的不算（director.js 安排的）
+  get free() { return ['idle', 'walk', 'sit', 'look', 'stretch'].includes(this.state) && !this.leaving && !this.reserved && !this.sunsetSit && !(this.state === 'sit' && this.t < (this.gazeWestUntil ?? 0)); }
 
   // ---------- 反應 ----------
   onStroke(result) {
@@ -539,7 +540,7 @@ export class Pet {
     const moved = this.stepDist ?? 0, anim = this.view?.anim, setName = this.animSet(), stride = anim?.info?.stride;
     this.stepDist = 0;
     this.lastStepDist = moved; // 測試用：這一幀是不是自己走的（natural.cjs 的 M2 只算自己走的）
-    if (moved > 0 && stride && !this.floats && (setName === 'walk' || setName === 'run')) this.animT += (moved / (2 * stride)) * anim.sets[setName].total;
+    if (moved > 0 && stride && !this.floats && (setName === 'walk' || setName === 'run')) this.animT += (moved / (2 * stride * (setName === 'run' ? RUN_STRIDE : 1))) * anim.sets[setName].total;
     else this.animT += dt * (ANIM_SPEED[this.state] ?? 1);
   }
 

@@ -91,6 +91,7 @@ const RESTING = new Set(['idle', 'sit', 'look', 'stretch', 'nap']);
 const ROOM_CHECK = 0.5; // 秒（猜的，可調整）
 export function tickRoom(pet, dt) {
   if (!RESTING.has(pet.state) || pet.reserved || pet.partner) return;
+  if (pet.huddling || (pet.state === 'sit' && pet.t < (pet.gazeWestUntil ?? 0))) return; // 導演安排坐的（下雨擠在一起、看日落）：本來就是要坐在那裡
   pet.roomT = (pet.roomT ?? 0) + dt;
   if (pet.roomT < ROOM_CHECK) return;
   pet.roomT = 0;
