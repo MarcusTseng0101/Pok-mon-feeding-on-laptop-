@@ -5,10 +5,15 @@
 //   draw(ctx, pet, m, t, K)         （可以沒有）畫在夥伴上面的東西：水柱、藤蔓、盾…
 //   pose(pet, p, m, t)              （可以沒有）自己的姿勢：p.sx/sy 伸縮、p.rot 旋轉
 //   impact(pet, m, at, eff, K)      （可以沒有）打中的樣子；沒有就用大家共用的
+//   knock                           （可以沒有）擊退的倍數（0＝不推開）
+//   dimAt: 'between'                （可以沒有）擴散類的招，放招時變暗的位置改在兩隻中間
 // K（moves.js 傳進來）：hit、center、targetPoint、isPet、dash（衝過去）、rnd、pick
 // 只有畫面：要動對手只用現有的欄位（z、squashT、flipT、flinchT），不直接改位置
 import { WATER } from './water.js';
 import { FIRE } from './fire.js';
 import { GRASS } from './grass.js';
+import { ELECTRIC } from './electric.js';
+import { ICE_MOVES } from './ice.js';
+import { FIGHTING } from './fighting.js';
 
-export const CHOREO = { ...WATER, ...FIRE, ...GRASS };
+export const CHOREO = { ...WATER, ...FIRE, ...GRASS, ...ELECTRIC, ...ICE_MOVES, ...FIGHTING };
