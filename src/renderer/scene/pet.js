@@ -22,6 +22,7 @@ import { traitsOf } from '../../core/mind.js';
 import { CURSOR_ACTIONS, cursorOptions, wantsToPounce, startPounce, besideCursor } from './cursor.js';
 import { LIFE_ACTIONS, lifeOptions, boostLife } from './lifeacts.js';
 import { actWeight, nextBout, focusBout } from '../../core/ethogram.js';
+import { step, coast, turnTime, wanderPath, pauseTick } from './locomotion.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
@@ -50,6 +51,9 @@ const ANIM_SET = {
   happy: 'happy', hop: 'happy', greet: 'happy', dance: 'happy', cheer: 'happy', twirl: 'happy', bounce: 'happy', hug: 'happy', hugging: 'happy', flashypose: 'happy', keyfound: 'happy',
 };
 const RUNS = new Set(['run', 'chase', 'flee', 'chaseCursor', 'pounce', 'oni', 'tag']);
+const KEEP_ARRIVE = new Set(['walk', 'run', 'trip']); // 換到這些狀態時留著 onArrive（還在往那裡走）
+// 這些狀態本來就是要快速翻來翻去（轉圈、跳舞、搖頭）：面向直接翻，不做轉身
+const INSTANT_FLIP = new Set(['spin', 'dance', 'refuse', 'roll', 'appear', 'held', 'fall', 'evolving']);
 const ANIM_SPEED = { walk: 1.5, approach: 1.5, walkTogether: 1.5, run: 2, chase: 2, flee: 2, chaseCursor: 2, pounce: 1.6, dance: 1.6, held: 1.4, sit: 0.7, sleep: 0.3, dizzy: 0.5, shiver: 2.5 };
 
 export class Pet {
@@ -88,6 +92,19 @@ export class Pet {
     this.clamp();
   }
 
+  // 面向：-1 面向左（原圖方向）。程式讀到的是新的方向（邏輯不變）；畫出來的 viewFacing 等轉身做完（turnT 秒）才翻，
+  // 轉身中往新方向偏一格（預備動作）。規格 PR-N2、F2：以前每次都是 1 幀瞬間翻面
+  get facing() { return this._facing; }
+  set facing(v) {
+    if (v === this._facing) return;
+    const first = this._facing == null;
+    this._facing = v;
+    if (first || INSTANT_FLIP.has(this.state)) { this.viewFacing = v; this.turnT = 0; this.instantFlipAt = this.t; return; }
+    if (v === this.viewFacing) { this.turnT = 0; return; } // 轉到一半又轉回來：不用轉了
+    this.turnT = turnTime(this);
+    this.turnStart = this.t;
+  }
+
   // 圖片依形態而不同（藍花的花蓓蓓、超級蒂安希…）；battleForm 是對戰中暫時的形態，不存檔
   get spriteKey() { return spriteKey(this.mon.species, this.battleForm ?? this.mon.form); }
   // 會動的圖載好了就用它（每一隻有自己的播放位置），還沒就先用不會動的圖
@@ -112,6 +129,9 @@ export class Pet {
   set(state, dur = 0) {
     const was = this.state;
     this.state = state; this.stateT = 0; this.dur = dur;
+    // 不是在往某個地方走了（被叫去看東西、被拎起來、嚇一跳…）：「走到了要做什麼」也不要了，不然會留著舊的（規格 F10）。
+    // 跌倒（trip）例外：站起來會繼續走過去
+    if (!KEEP_ARRIVE.has(state)) this.onArrive = null;
     // 跌倒或頭暈時，感情好的夥伴可能會跑來安慰
     if ((state === 'trip' || state === 'dizzy') && was !== state && !this.leaving && !this.guest) maybeComfort(this);
   }
@@ -203,6 +223,7 @@ export class Pet {
       case 'refuse': p.rot = Math.sin(this.stateT * 20) * 0.06; break;
     }
     this.act?.pose?.(this, p, k);
+    if (this.turnT > 0) p.ox += this.facing; // 轉身的預備動作：往要轉過去的那一邊偏一格
     if (this.flinchT > 0) p.ox += Math.floor(this.flinchT * 30) % 2 ? 2 : -2;
     if (this.squashT > 0) { const s = this.squashT / 0.18; p.sx *= 1 + 0.22 * s; p.sy *= 1 - 0.2 * s; }
     if (this.stage.env.tiny) { p.sx *= TINY; p.sy *= TINY; } // 有視窗全螢幕：躲在角落、變小（director.js）
@@ -216,7 +237,7 @@ export class Pet {
     if (this.act?.intangible?.(this)) return false;
     if (this.state === 'roll' || this.state === 'trip') return true; // 轉動中用外框判定
     let ax = Math.floor((px - r.x) / S), ay = Math.floor((py - r.y) / S);
-    if (this.facing > 0) ax = a.w - 1 - ax;
+    if (this.viewFacing > 0) ax = a.w - 1 - ax;
     if (this.upsideDown) ay = a.h - 1 - ay;
     // 容許 1 美術像素的誤差，細長的寶可夢比較好點
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
@@ -301,17 +322,8 @@ export class Pet {
   }
 
   // 往目標移動，到了回傳 true
-  moveTo(tx, ty, speed, dt) {
-    const dx = tx - this.x, dy = ty - this.gy;
-    const d = Math.hypot(dx, dy);
-    if (d < 3 * this.S) return true;
-    const step = Math.min(d, speed * dt);
-    this.x += (dx / d) * step;
-    this.gy += (dy / d) * step;
-    if (Math.abs(dx) > this.S) this.facing = Math.sign(dx);
-    this.walkPhase += step / (this.S * 4);
-    return false;
-  }
+  // 往 (tx, ty) 走（加減速、轉身、步頻上限都在 scene/locomotion.js）；到了回傳 true
+  moveTo(tx, ty, speed, dt) { return step(this, tx, ty, speed, dt, WALK_SPEED); }
 
   // ---------- 每一幀 ----------
   update(dt) {
@@ -319,8 +331,10 @@ export class Pet {
     this.lastPos = { x: this.x, y: this.gy, dt }; // 碰撞時用來估計速度
     this.hopT = Math.max(0, (this.hopT ?? 0) - dt); // 被撞到時彈一下
     this.t += dt;
-    this.animT += dt * (ANIM_SPEED[this.state] ?? 1);
     this.stateT += dt;
+    // 轉身做完：畫出來的面向才翻過去
+    if (this.turnT > 0) { this.turnT = Math.max(0, this.turnT - dt); if (!this.turnT) { this.viewFacing = this.facing; this.turnedAt = this.t; this.lastTurn = this.t - this.turnStart; } } // lastTurn：這次轉了幾秒（測試用）
+    if (INSTANT_FLIP.has(this.state) && this.viewFacing !== this.facing) { this.viewFacing = this.facing; this.turnT = 0; this.instantFlipAt = this.t; }
     this.squashT = Math.max(0, this.squashT - dt);
     this.flinchT = Math.max(0, (this.flinchT ?? 0) - dt); // 被招式打到
     this.flipT = Math.max(0, (this.flipT ?? 0) - dt); // 被「顛倒」倒過來
@@ -362,8 +376,10 @@ export class Pet {
           arrive?.();
           break;
         }
+        if (this.state === 'walk' && this.explore && pauseTick(this, dt)) break; // 散步：停下來看一看
         if (this.moveTo(this.target.x, this.target.y, speed, dt)) {
           if (this.state === 'run' && this.stateT < this.dur) { this.target = this.randomPoint(60, 200); break; } // 暴衝：一直換方向
+          if (this.state === 'walk' && this.explore && this.path?.length) { this.target = this.path.shift(); break; } // 散步：下一段
           const arrive = this.onArrive;
           this.onArrive = null;
           this.set('idle', 1.5 + Math.random() * 3);
@@ -410,7 +426,8 @@ export class Pet {
       }
       case 'roll': {
         const b = this.bounds();
-        this.x += this.rollDir * 60 * S * dt;
+        const ramp = Math.max(0, Math.min(1, this.stateT / 0.2, (this.dur - this.stateT) / 0.2)); // 前後 0.2 秒加速、減速（猜的，可調整）
+        this.x += this.rollDir * 60 * S * ramp * dt;
         if (this.x <= b.x0 || this.x >= b.x1) this.rollDir *= -1;
         if (done) { this.set('idle', 1); if (Math.random() < 0.5) this.showEmote('♪', 1); }
         break;
@@ -496,11 +513,12 @@ export class Pet {
     // 走出螢幕（出門）、從螢幕外走進來（回家）的時候本來就在螢幕外：不要夾回來，不然會卡在邊上
     const offscreen = (this.state === 'depart' && this.departure?.phase === 'out') || this.state === 'tripReturn';
     if (this.state !== 'held' && !offscreen) {
-      const b = this.bounds();
-      if (this.x < b.x0) { this.x = b.x0; this.vx = Math.abs(this.vx) * 0.5; }
-      if (this.x > b.x1) { this.x = b.x1; this.vx = -Math.abs(this.vx) * 0.5; }
-      if (this.gy < b.y0) { this.gy = b.y0; this.vy = Math.abs(this.vy) * 0.5; }
-      if (this.gy > b.y1) { this.gy = b.y1; this.vy = -Math.abs(this.vy) * 0.5; }
+      const b = this.bounds(), lv = this.lv ?? {};
+      // 走到邊上被擋住：那個方向的走路速度也歸零（不然會一直往邊上滑、看起來是瞬間停住）
+      if (this.x < b.x0) { this.x = b.x0; this.vx = Math.abs(this.vx) * 0.5; if (lv.x < 0) lv.x = 0; }
+      if (this.x > b.x1) { this.x = b.x1; this.vx = -Math.abs(this.vx) * 0.5; if (lv.x > 0) lv.x = 0; }
+      if (this.gy < b.y0) { this.gy = b.y0; this.vy = Math.abs(this.vy) * 0.5; if (lv.y < 0) lv.y = 0; }
+      if (this.gy > b.y1) { this.gy = b.y1; this.vy = -Math.abs(this.vy) * 0.5; if (lv.y > 0) lv.y = 0; }
       // 跳起來（招式、習性）時頭不能超出螢幕上緣：靠近上緣就跳低一點；
       // 動作本身的上下晃動（嚇一跳、蹦蹦跳）也一樣，整隻往下移一點
       if (this.z > 0) {
@@ -511,6 +529,18 @@ export class Pet {
       if (headY < 0) this.gy = Math.min(b.y1, this.gy - headY);
     }
     if (this.leaving) this.alpha = Math.max(0, this.alpha - dt * 3);
+  }
+
+  // 每一幀、所有夥伴都 update 完以後（stage.update 呼叫）：
+  // 有些群體動作是由帶頭的那一隻推著大家走（遊行、合照），誰先 update 不一定，所以要等全部推完才知道這一幀「有沒有被推著走」
+  settle(dt) {
+    coast(this, dt, WALK_SPEED); // 這一幀沒有人叫 moveTo、身上還有速度：滑一小段停下（scene/locomotion.js）
+    // 動畫：走路、跑步照走了多遠播（一輪＝左右腳各一步，一步 stride 美術像素），腳才不會在地上滑；其他照時間播
+    const moved = this.stepDist ?? 0, anim = this.view?.anim, setName = this.animSet(), stride = anim?.info?.stride;
+    this.stepDist = 0;
+    this.lastStepDist = moved; // 測試用：這一幀是不是自己走的（natural.cjs 的 M2 只算自己走的）
+    if (moved > 0 && stride && !this.floats && (setName === 'walk' || setName === 'run')) this.animT += (moved / (2 * stride)) * anim.sets[setName].total;
+    else this.animT += dt * (ANIM_SPEED[this.state] ?? 1);
   }
 
   // 被丟出去：在桌面上滑行，不會飄的會先掉到地上、彈一下
@@ -564,6 +594,7 @@ export class Pet {
     this.onArrive = null;
     this.bedId = null; // 睡醒了：床空出來
     this.homeSpot = null; // 基地空地上占的那一格也空出來（scene/home.js）
+    this.path = null; this.explore = false; // 上一次散步的路線
     this.walkLimit = null;
     if (st.game?.tripStatus(this.uid) === 'away') { startDepart(this); return; } // 已經出發了（例如走到一半被拎起來）：繼續走
 
@@ -597,7 +628,8 @@ export class Pet {
     // 這幾個基本動作怎麼做（多常做、做多久由 core/ethogram.js 的物種生活表決定；d＝nextBout 給的長度）
     const ctx = { ...boutCtx(this), others: others.length };
     const acts = {
-      walk: () => { this.target = this.randomPoint(50, 320); this.set('walk'); },
+      // 散步：微彎的路線、走走停停（scene/locomotion.js）
+      walk: () => { this.path = wanderPath(this); this.target = this.path.shift(); this.explore = true; this.movingT = 0; this.pauseT = 0; this.nextPause = null; this.set('walk'); },
       idle: d => this.set('idle', d),
       look: d => { this.set('look', d); if (Math.random() < 0.5) this.showEmote('?', 1.2); },
       sit: d => this.set('sit', d),
@@ -666,7 +698,7 @@ export class Pet {
       const k = Math.min(1, this.stateT / 0.45);
       const sc = Math.max(1, Math.round(S * (0.3 + 0.7 * k)));
       const w = a.w * sc, h = a.h * sc;
-      blit(ctx, k < 0.7 ? a.white : a.canvas, this.x - w / 2, this.y - h, sc, { flipX: this.facing > 0, alpha });
+      blit(ctx, k < 0.7 ? a.white : a.canvas, this.x - w / 2, this.y - h, sc, { flipX: this.viewFacing > 0, alpha });
       return;
     }
     // 桌面上的影子（離地越高越小越淡）
@@ -690,8 +722,8 @@ export class Pet {
     }
     const flipY = this.upsideDown || this.flipT > 0;
     if (flipY || (pose.sx === 1 && pose.sy === 1 && pose.rot === 0)) {
-      blit(ctx, img, r.x + pose.ox * S, r.y, S, { flipX: this.facing > 0, flipY, alpha });
-      if (sleepy) blit(ctx, a.dark, r.x, r.y, S, { flipX: this.facing > 0, alpha: 0.18 * alpha });
+      blit(ctx, img, r.x + pose.ox * S, r.y, S, { flipX: this.viewFacing > 0, flipY, alpha });
+      if (sleepy) blit(ctx, a.dark, r.x, r.y, S, { flipX: this.viewFacing > 0, alpha: 0.18 * alpha });
     } else {
       const w = a.w * S, h = a.h * S;
       const feetX = Math.round(this.x + pose.ox * S), feetY = r.y + h;
@@ -700,7 +732,7 @@ export class Pet {
       if (pose.pivot === 'center') ctx.translate(feetX, feetY - h / 2);
       else ctx.translate(feetX, feetY);
       ctx.rotate(pose.rot);
-      ctx.scale(pose.sx * (this.facing > 0 ? -1 : 1), pose.sy);
+      ctx.scale(pose.sx * (this.viewFacing > 0 ? -1 : 1), pose.sy);
       const oy = pose.pivot === 'center' ? -h / 2 : -h;
       ctx.drawImage(img, -w / 2, oy, w, h);
       if (sleepy) { ctx.globalAlpha = 0.18 * alpha; ctx.drawImage(a.dark, -w / 2, oy, w, h); }
@@ -708,7 +740,7 @@ export class Pet {
     }
     if (sink > 0) ctx.restore();
     // 被招式打到：白色閃爍
-    if (this.flinchT > 0 && Math.floor(this.flinchT * 20) % 2) blit(ctx, a.white, r.x + pose.ox * S, r.y, S, { flipX: this.facing > 0, flipY, alpha: 0.6 * alpha });
+    if (this.flinchT > 0 && Math.floor(this.flinchT * 20) % 2) blit(ctx, a.white, r.x + pose.ox * S, r.y, S, { flipX: this.viewFacing > 0, flipY, alpha: 0.6 * alpha });
     act?.drawOver?.(this, ctx);
     const carrying = this.stage.game?.tripStatus(this.uid) === 'back';
     if (!this.emote && carrying) drawCarried(this, ctx); // 旅行回來：頂著明信片
@@ -716,7 +748,7 @@ export class Pet {
     const deco = this.stage.env.holidayDeco && art.decos[this.stage.env.holidayDeco];
     if (deco && !this.emote && !carrying && !this.guest && alpha > 0.5) {
       const r2 = this.rect();
-      blit(ctx, deco, Math.round(r2.x + r2.w * (this.facing > 0 ? 0.62 : 0.38) - (deco.width * S) / 2), r2.y - (deco.height - 2) * S, S, { alpha });
+      blit(ctx, deco, Math.round(r2.x + r2.w * (this.viewFacing > 0 ? 0.62 : 0.38) - (deco.width * S) / 2), r2.y - (deco.height - 2) * S, S, { alpha });
     }
     drawForm(this, ctx);
     if (this.eating && this.eating.bites < 3) {

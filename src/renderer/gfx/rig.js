@@ -242,8 +242,12 @@ function frame(src, a, parts, pose) {
 // ---------- 動作（每一組是一串姿勢；秒數都是猜的，可調整）----------
 const TAU = Math.PI * 2;
 const range = (n, f) => Array.from({ length: n }, (_, i) => f(i, (i / n) * TAU));
+// 走路時一隻腳前後各跨幾格：腳越長跨越大，最多 3 格（再大，自動找到的「腳」是葉子、裙擺的會扯開；猜的，可調整）。
+// 一步身體往前 2 × STEP 格（腳從前面 +STEP 踩到後面 −STEP），info.stride 給 scene/locomotion.js 算速度、照距離播動畫
+export const stepOf = a => (a.hasLegs ? Math.max(1, Math.min(3, Math.round((a.H - a.hipY) / 4))) : 0);
 function poseSets(a, floats) {
   const legs = a.hasLegs && !floats;
+  const A = Math.max(1, stepOf(a));
   return {
     // 待機：呼吸（頭慢慢上下）、尾巴慢慢晃、手輕輕動、偶爾抖一下耳朵
     idle: [range(8, (i, ph) => ({
@@ -252,9 +256,9 @@ function poseSets(a, floats) {
     })), 0.2],
     // 走路：左右腳輪流抬、手反方向擺、尾巴跟著甩、身體往前傾一點；會飄的整隻輕輕跳、翅膀一起拍
     walk: legs ? [[
-      { legL: [-1, -1], legR: [1, 0], armSw: 0.3, tailSw: 0.15, lean: -1 },
+      { legL: [-A, -1], legR: [A, 0], armSw: 0.3, tailSw: 0.15, lean: -1 },
       { body: -1, head: [0, -1], lean: -1, ear: 0.08 },
-      { legL: [1, 0], legR: [-1, -1], armSw: -0.3, tailSw: -0.15, lean: -1 },
+      { legL: [A, 0], legR: [-A, -1], armSw: -0.3, tailSw: -0.15, lean: -1 },
       { body: -1, head: [0, -1], lean: -1, ear: 0.08 },
     ], 0.13] : [[
       { arm: 0.3, tail: 0.1 },
@@ -262,11 +266,11 @@ function poseSets(a, floats) {
       { body: -1, legL: [0, -1], legR: [0, -1], head: [0, -1], arm: -0.3, tail: -0.1, lean: -1 },
       { head: [0, -1], arm: 0.05 },
     ], 0.13],
-    // 跑：傾得更前面、身體彈更高、手和尾巴甩更大（腳跨的跟走路一樣：自動找的「腳」有時候是葉子、裙擺，跨太大會扯開）
+    // 跑：傾得更前面、身體彈更高、手和尾巴甩更大（腳跨的跟走路一樣：跑快是步頻變快，不是跨更大）
     run: [[
-      { legL: [-1, -1], legR: [1, 0], body: -1, head: [0, -1], armSw: 0.5, tailSw: 0.3, arm: floats ? 0.4 : 0, lean: -2, ear: -0.2 },
+      { legL: [-A, -1], legR: [A, 0], body: -1, head: [0, -1], armSw: 0.5, tailSw: 0.3, arm: floats ? 0.4 : 0, lean: -2, ear: -0.2 },
       { body: -2, head: [0, -2], lean: -2, ear: -0.25, arm: floats ? -0.3 : 0 },
-      { legL: [1, 0], legR: [-1, -1], body: -1, head: [0, -1], armSw: -0.5, tailSw: -0.3, arm: floats ? 0.4 : 0, lean: -2, ear: -0.2 },
+      { legL: [A, 0], legR: [-A, -1], body: -1, head: [0, -1], armSw: -0.5, tailSw: -0.3, arm: floats ? 0.4 : 0, lean: -2, ear: -0.2 },
       { body: -2, head: [0, -2], lean: -2, ear: -0.25, arm: floats ? -0.3 : 0 },
     ], 0.08],
     // 開心：身體彈、兩手舉高、尾巴大力甩、左右扭
@@ -327,6 +331,6 @@ export function buildRig(srcCanvas, { floats = false } = {}) {
       },
     });
   }
-  const info = { W, H, neckY: a.neckY, hipY: a.hipY, hasLegs: a.hasLegs, legSplit: a.legSplit, pad: PAD, parts: a.parts.map(p => ({ kind: p.kind, n: p.n, pivot: p.pivot })) };
+  const info = { W, H, neckY: a.neckY, hipY: a.hipY, hasLegs: a.hasLegs, legSplit: a.legSplit, pad: PAD, stride: 2 * stepOf(a), parts: a.parts.map(p => ({ kind: p.kind, n: p.n, pivot: p.pivot })) };
   return { sets, w: W + PAD * 2, h: H + PAD, info };
 }

@@ -1,6 +1,6 @@
 // 「動得自然」的量尺（規格 §7 的 M1–M9）：12 隻身體不同的代表在桌面上自由活動，用固定種子模擬，記錄每一幀
-// PR-N1 只量、只回報，不設門檻（門檻在量完舊值、使用者看過以後才固定；之後的 PR 才加上 check）。
-// 唯一的斷言：整段模擬沒有 pageerror、每隻都真的有在做事（不是全部卡住）。
+// PR-N1 只量；PR-N2 起 M2、M3、M4 有門檻（下面的 check），另外有打斷測試（真的滑鼠）。
+// 其他斷言：整段模擬沒有 pageerror、每隻都真的有在做事（不是全部卡住）。
 // 結果寫到 .cache/natural/natural-<名字>.json（不進 repo），也印在最後。
 // 環境變數：NATURAL_MIN＝模擬幾分鐘（預設 10）、NATURAL_TAG＝結果檔名（例如 old / new）
 const fs = require('node:fs');
@@ -63,6 +63,15 @@ const test = async ({ page }, check) => {
     director.updateEnv = () => {};
     Object.assign(stage.env, { hour: 14, sleepy: false, userActive: true, focus: false, plugged: false, lure: null });
 
+    // 每隻的加速度上限（PR-N2 以後才有 scene/locomotion.js；舊版沒有就用固定的 15 px/s）
+    const loco = await import('/src/renderer/scene/locomotion.js').catch(() => null);
+    const { RUN_SPEED } = await import('/src/renderer/scene/behaviors.js');
+    const jumpLimit = p => {
+      if (!loco?.gait) return 15;
+      const g = loco.gait(p), v = loco.topSpeed(p, RUN_SPEED * S, 26) / S; // 美術像素／秒
+      return (v / g.acc) * dt * 1.5; // 規格 M1：一幀的速度變化 > 加速度上限 × dt × 1.5
+    };
+    const INSTANT = new Set(['spin', 'dance', 'refuse', 'roll', 'appear', 'held', 'fall', 'evolving']);
     const mulberry = s => () => { s |= 0; s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
     const realRandom = Math.random;
     const dt = 1 / 30, N = Math.round(30 * 60 * MIN), S = stage.S;
@@ -81,7 +90,7 @@ const test = async ({ page }, check) => {
       return any ? ch / any : 0;
     };
 
-    const seeds = [];
+    const seeds = [], series = [];
     for (const seed of SEEDS) {
       const rng = mulberry(seed * 9973);
       Math.random = rng;
@@ -97,31 +106,39 @@ const test = async ({ page }, check) => {
       const rec = pets.map(p => ({
         sp: p.mon.species, hasLegs: Boolean(p.view?.anim?.info?.hasLegs), moving: 0, jumps: 0, flips: 0, flipTurn: 0, changes: 0, rot: 0, scale: 0,
         states: {}, cls: {}, runs: [], runState: p.state, runT: 0, stillRun: 0, walk: null, walkBouts: 0, walkPaused: 0,
-        wdist: 0, wcyc: 0, lastV: 0, lastF: p.facing, lastSet: p.animSet(), lastCanvas: null, setSwitch: 0, bigSwitch: 0, switchDiffs: [], mv: [], soc: [],
+        wdist: 0, wcyc: 0, bumps: 0, stride: p.view?.anim?.info?.stride || 2, lastV: 0, lastF: p.viewFacing ?? p.facing, jumpStates: {}, lastSet: p.animSet(), lastCanvas: null, setSwitch: 0, bigSwitch: 0, switchDiffs: [], mv: [], soc: [],
       }));
       for (let i = 0; i < N; i++) {
         const before = pets.map(p => ({ x: p.x, y: p.gy, a: p.animT }));
+        const stopped = stage.stopT > 0; // 這一幀開始時在「頓一下」（stage.update 會把 dt 乘 0.12）
         director.update?.(dt);
         stage.update(dt);
         pets.forEach((p, k) => {
           const o = rec[k], b = before[k];
           const v = Math.hypot(p.x - b.x, p.gy - b.y) / S / dt; // 美術像素／秒
           const mv = v > 2;
-          o.mv.push(mv ? 1 : 0); o.soc.push(SOCIAL(p) ? 1 : 0);
+          o.mv.push(mv ? 1 : 0); o.soc.push(SOCIAL(p) || p.bumpT > 0 || Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 || stopped || stage.stopT > 0 ? 1 : 0); // M9：社交、互相擠到、被撞、「頓一下」（全舞台一起放慢）的時間扣掉：兩隻之間的互動或全部一起的，不是各自決定要動
           if (mv) o.moving++;
-          // M1：一幀之內速度差超過 15 px/s（現在還沒有加速度上限，先用固定值）
-          if (!EXEMPT.has(p.state) && Math.abs(v - o.lastV) > 15) o.jumps++;
+          // M1：一幀之內的速度變化超過加速度上限（被拎、掉落、放招、瞬移、被推或被撞到的那幾幀不算）
+          const knocked = Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 || p.hopT > 0; // 被打到、被撞飛
+          const hitStop = stage.stopT > 0 || stopped; // 招式打中時整個舞台放慢一下（「頓一下」）：大家一起慢，不是牠自己瞬間減速
+          const jump = !EXEMPT.has(p.state) && !knocked && !hitStop && Math.abs(v - o.lastV) > jumpLimit(p);
+          if (jump && p.bumpT > 0) o.bumps++; // 被別隻擠了一下（physics.js 推開重疊）：另外算，跟被打到一樣不算在 M1
+          else if (jump) { o.jumps++; o.jumpStates[p.state] = (o.jumpStates[p.state] ?? 0) + 1; }
           o.lastV = v;
-          // M4：翻面前 0.12 秒內有沒有轉身姿勢（pet.turnT；現在還沒有這個欄位）
-          if (p.facing !== o.lastF) { o.flips++; if (p.turnT > 0 || p.turnedAt > p.t - 0.12) o.flipTurn++; o.lastF = p.facing; }
+          // M4：畫出來的面向翻過去之前，有沒有做至少 0.12 秒的轉身（轉圈、跳舞、搖頭這種本來就要快速翻的不算）
+          const vf = p.viewFacing ?? p.facing;
+          // 轉圈這種本來就直接翻的（同一幀結束的也算：instantFlipAt）不算
+          if (vf !== o.lastF) { if (!INSTANT.has(p.state) && p.instantFlipAt !== p.t) { o.flips++; if (p.turnedAt === p.t && p.lastTurn >= 0.12 - 1e-6) o.flipTurn++; else (o.noTurn ??= []).length < 4 && o.noTurn.push([p.state, o.prevState, +(p.t - (p.turnStart ?? -99)).toFixed(2)]); } o.lastF = vf; }
+          o.prevState = p.state;
           // 時間分配、狀態長度（M5、M8）
           o.states[p.state] = (o.states[p.state] ?? 0) + dt;
           const c = CLASS_OF[p.state] ?? 'other';
           o.cls[c] = (o.cls[c] ?? 0) + dt;
           if (p.state !== o.runState) { o.changes++; o.runs.push(o.runT); o.runState = p.state; o.runT = 0; }
           o.runT += dt;
-          // M3：探索（walk）超過 3 秒的那一段，中間有沒有 0.3–2 秒的停頓
-          if (p.state === 'walk') {
+          // M3：探索的散步（walk，而且是散步不是去某個地方：pet.explore；舊版沒有這個欄位就全部的 walk 都算）超過 3 秒的那一段，中間有沒有 0.3–2 秒的停頓
+          if (p.state === 'walk' && (p.explore ?? true)) {
             o.walk ??= { t: 0, still: 0, paused: false };
             o.walk.t += dt;
             if (!mv) o.walk.still += dt; else { if (o.walk.still >= 0.3 && o.walk.still <= 2) o.walk.paused = true; o.walk.still = 0; }
@@ -131,7 +148,8 @@ const test = async ({ page }, check) => {
           }
           // M2：有腳、在走路的時候，一輪步態走了多遠
           const set = p.animSet();
-          if (o.hasLegs && set === 'walk' && mv && p.view?.set?.total) { o.wdist += v * dt; o.wcyc += (p.animT - b.a) / p.view.set.total; }
+          // 只算用腳走的（會飄的走路動畫本來就照時間播），被擠、被撞、被習性直接搬動的那幾幀（位置變了但不是自己走的：lastStepDist = 0）不算
+          if (o.hasLegs && !p.floats && !knocked && !(p.bumpT > 0) && (p.lastStepDist ?? 1) > 0 && set === 'walk' && mv && p.view?.set?.total) { o.wdist += v * dt; o.wcyc += (p.animT - b.a) / p.view.set.total; }
           // M7：整張圖的旋轉、縮放
           const po = p.pose();
           if (po.rot && !ninety(po.rot)) o.rot++;
@@ -148,10 +166,10 @@ const test = async ({ page }, check) => {
         const tot = N * dt;
         const share = Object.fromEntries(Object.entries(o.cls).map(([k, v]) => [k, Math.round(100 * v / tot)]));
         per[o.sp] = {
-          M1_jumpsPerMin: +(o.jumps / MIN).toFixed(1),
-          M2_slide: o.wcyc > 0.5 ? +((o.wdist / o.wcyc) / (2 * 2)).toFixed(2) : null, // 步幅＝2 美術像素（rig.js 走路時腳前後各 1 格）
+          M1_jumpsPerMin: +(o.jumps / MIN).toFixed(1), M1_states: o.jumpStates, M1_bumpsPerMin: +(o.bumps / MIN).toFixed(1),
+          M2_slide: o.wcyc > 0.5 ? +((o.wdist / o.wcyc) / (2 * o.stride)).toFixed(2) : null, // 步幅：rig.js 的 info.stride（舊版沒有＝2，腳前後各 1 格）
           M3_pausedWalks: o.walkBouts ? Math.round(100 * o.walkPaused / o.walkBouts) : null,
-          M4_turnPose: o.flips ? Math.round(100 * o.flipTurn / o.flips) : null,
+          M4_turnPose: o.flips ? Math.round(100 * o.flipTurn / o.flips) : null, M4_misses: o.noTurn ?? [],
           M5_share: share,
           M7_rot: Math.round(100 * o.rot / N), M7_scale: Math.round(100 * o.scale / N),
           M8_changesPerMin: +(o.changes / MIN).toFixed(1), M8_medianBout: +med(o.runs).toFixed(2),
@@ -182,25 +200,123 @@ const test = async ({ page }, check) => {
         const cv = sxy / n - (sx / n) * (sy / n), vx = sxx / n - (sx / n) ** 2, vy = syy / n - (sy / n) ** 2;
         return vx > 0 && vy > 0 ? cv / Math.sqrt(vx * vy) : 0;
       };
-      const cors = [];
+      const cors = [], pairNames = [];
       for (let i = 0; i < rec.length; i++) for (let j = i + 1; j < rec.length; j++) {
         pairs.push(js(rec[i].cls, rec[j].cls));
         const mask = rec[i].soc.map((s, k) => s || rec[j].soc[k]);
         cors.push(corr(rec[i].mv, rec[j].mv, mask));
+        pairNames.push(`${rec[i].sp}-${rec[j].sp}`);
       }
+      series.push(rec.map(o => ({ mv: o.mv, soc: o.soc })));
       seeds.push({
         seed, per,
         M6_jsd: { min: +Math.min(...pairs).toFixed(3), median: +med(pairs).toFixed(3) },
-        M9_corr: { max: +Math.max(...cors).toFixed(3), median: +med(cors).toFixed(3) },
+        M9_corr: { max: +Math.max(...cors).toFixed(3), median: +med(cors).toFixed(3), maxPair: pairNames[cors.indexOf(Math.max(...cors))] },
       });
     }
     Math.random = realRandom;
+    // M9 的對照組：不同種子的兩隻（不在同一次模擬，一定互不相干）也算一樣的相關係數。
+    // 兩隻都常常休息很久時，就算完全無關，66 對裡面最大的也可能很高；這個是「純巧合」有多高
+    const corr0 = (x, y, mx, my) => {
+      let n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+      for (let i = 0; i < x.length; i++) { if (mx[i] || my[i]) continue; n++; sx += x[i]; sy += y[i]; sxx += x[i] * x[i]; syy += y[i] * y[i]; sxy += x[i] * y[i]; }
+      const cv = sxy / n - (sx / n) * (sy / n), vx = sxx / n - (sx / n) ** 2, vy = syy / n - (sy / n) ** 2;
+      return vx > 0 && vy > 0 ? cv / Math.sqrt(vx * vy) : 0;
+    };
+    for (let k = 0; k < series.length; k++) {
+      const A = series[k], B = series[(k + 1) % series.length], null0 = [];
+      for (let i = 0; i < A.length; i++) for (let j = i + 1; j < B.length; j++) null0.push(corr0(A[i].mv, B[j].mv, A[i].soc, B[j].soc));
+      seeds[k].M9_null = { max: +Math.max(...null0).toFixed(3), median: +med(null0).toFixed(3) };
+    }
     return seeds;
   }, { SPECIES, SEEDS, MIN, CLASS_OF });
   const secs = (Date.now() - t0) / 1000;
 
+  // ---------- 打斷測試（規格 §8，PR-N2 起）：用真的滑鼠打斷，5 秒內要回到正常的一段，而且身上沒有留著舊的東西 ----------
+  // 準備狀況（讓牠正在走、正在坐）用 evaluate；打斷本身一定是真的滑鼠
+  const clean = () => page.evaluate(() => [...window.__kalos.stage.pets.values()].map(p => {
+    const bad = [];
+    if (['held', 'fall', 'move'].includes(p.state)) bad.push(`還在 ${p.state}`);
+    if (p.partner && p.partner.partner !== p && !p.group) bad.push(`partner 是單方面的（${p.state} → ${p.partner.mon.species} ${p.partner.state}）`);
+    if (p.onArrive && !['walk', 'trip', 'run', 'approach'].includes(p.state)) bad.push(`不在走路卻留著 onArrive（${p.state}）`);
+    if (p.reserved && ['idle', 'sit', 'nap', 'look'].includes(p.state)) bad.push('閒著卻被 reserved');
+    if (p.lv && Math.hypot(p.lv.x, p.lv.y) > 0 && ['idle', 'sit', 'nap'].includes(p.state) && p.stateT > 2) bad.push('停著很久了卻還有速度');
+    return bad.length ? `${p.mon.species}：${bad.join('、')}` : null;
+  }).filter(Boolean));
+  const spotOn = sp => page.evaluate(sp => {
+    const { stage } = window.__kalos, p = [...stage.pets.values()].find(q => q.mon.species === sp);
+    const r = p.rect();
+    for (let v = 0.5; v < 0.95; v += 0.05) for (let u = 0.3; u <= 0.7; u += 0.05) { const x = r.x + r.w * u, y = r.y + r.h * v; if (p.hit(x, y)) return { x: x / stage.dpr, y: y / stage.dpr }; }
+    return null;
+  }, sp);
+  const stateOf = sp => page.evaluate(sp => { const p = [...window.__kalos.stage.pets.values()].find(q => q.mon.species === sp); return { state: p.state, bout: p.bout?.name ?? null }; }, sp);
+  const interrupts = [];
+  // 1) 走到一半被拎起來、放下
+  await page.evaluate(() => {
+    const { stage } = window.__kalos, p = [...stage.pets.values()].find(q => q.mon.species === 650);
+    // 其他的先移到下面坐著、不讓別隻找去玩（不然滑鼠可能按到疊在上面的另一隻，要測的那隻也可能被拉去遊行）；
+    // 要測的 668、655、656 也先坐著等（測到牠的時候才換）
+    const TESTED = [650, 668, 655, 656];
+    [...stage.pets.values()].forEach((q, i) => {
+      if (q === p) return;
+      q.partner = null; q.group = null;
+      if (!TESTED.includes(q.mon.species)) { q.x = stage.W * (0.05 + 0.08 * i); q.gy = stage.H * 0.95; q.reserved = true; }
+      q.set('sit', 60);
+    });
+    p.x = stage.W * 0.3; p.gy = stage.H * 0.45; p.target = { x: stage.W * 0.7, y: stage.H * 0.45 }; p.onArrive = () => {}; p.set('walk');
+  });
+  await page.waitForTimeout(700);
+  const g = await spotOn(650);
+  if (g) {
+    await page.mouse.move(g.x, g.y); await page.mouse.down();
+    for (let i = 1; i <= 6; i++) { await page.mouse.move(g.x + i * 3, g.y - i * 10); await page.waitForTimeout(30); }
+    interrupts.push(['拎起來', (await stateOf(650)).state]);
+    await page.mouse.up();
+  } else interrupts.push(['拎起來', '點不到']);
+  // 2) 坐著休息時點牠、開選單，再點旁邊空的地方關掉
+  await page.evaluate(() => { const { stage } = window.__kalos, p = [...stage.pets.values()].find(q => q.mon.species === 668); p.x = stage.W * 0.5; p.gy = stage.H * 0.75; p.lv = { x: 0, y: 0 }; p.set('sit', 3); });
+  await page.waitForTimeout(300);
+  const m = await spotOn(668);
+  if (m) {
+    await page.mouse.click(m.x, m.y);
+    const opened = await page.waitForSelector('.bubble:not(.hidden)', { timeout: 3000 }).then(() => true).catch(() => false);
+    interrupts.push(['開選單', opened ? '開了' : '沒開']);
+    await page.mouse.click(20, 20);
+  } else interrupts.push(['開選單', '點不到']);
+  // 3) 放招式打到旁邊那一隻
+  await page.evaluate(() => { const { stage } = window.__kalos, a = [...stage.pets.values()].find(q => q.mon.species === 655), b = [...stage.pets.values()].find(q => q.mon.species === 656); a.x = stage.W * 0.35; a.gy = stage.H * 0.45; b.x = a.x + 60 * stage.S; b.gy = a.gy; a.lv = b.lv = { x: 0, y: 0 }; a.set('sit', 30); b.set('sit', 30); a.facing = 1; });
+  await page.waitForTimeout(300);
+  const k = await spotOn(655);
+  if (k) {
+    await page.mouse.click(k.x, k.y);
+    const ok = await page.waitForSelector('.bubble:not(.hidden) [data-act="moves"]', { timeout: 3000 }).then(() => true).catch(() => false);
+    let st = '沒有招式選單';
+    if (ok) {
+      await page.click('.bubble [data-act="moves"]'); await page.click('.bubble [data-move]');
+      for (let i = 0; i < 10 && st !== 'move'; i++) { st = (await stateOf(655)).state; if (st !== 'move') await page.waitForTimeout(100); }
+    }
+    interrupts.push(['放招', st]);
+  } else interrupts.push(['放招', '點不到']);
+  await page.evaluate(() => { for (const q of window.__kalos.stage.pets.values()) q.reserved = false; }); // 準備用的，放開
+  await page.waitForTimeout(5000); // 5 秒內要回到正常
+  const leftovers = await clean();
+  console.log(`打斷測試：${interrupts.map(([a, b]) => `${a}→${b}`).join('、')}；5 秒後：${leftovers.join('；') || '全部正常'}`);
+  check(interrupts[0][1] === 'held', `拎不起來：${JSON.stringify(interrupts)}`);
+  check(interrupts[1][1] === '開了', `點了沒有開選單：${JSON.stringify(interrupts)}`);
+  check(interrupts[2][1] === 'move', `沒有放招：${JSON.stringify(interrupts)}`);
+  check(leftovers.length === 0, `打斷以後 5 秒還沒回到正常：${leftovers.join('；')}`);
+
   // 每個種子的每一隻都要有在做事（全部卡在同一個狀態＝模擬壞了，量出來的數字沒有意義）
   for (const s of r) for (const [sp, v] of Object.entries(s.per)) check(Object.keys(v.states).length >= 3, `種子 ${s.seed} 的 ${sp} 只做了 ${Object.keys(v.states).join('、')}`);
+
+  // 門檻（PR-N2）：移動做好以後這三個每一隻、每個種子都要過（規格 §7.1，門檻沒動）。
+  // M1（瞬間起步）、M9（不同步）只報告：M1 剩下的大多是習性自己搬位置（PR-N4／N5 重寫），
+  // M9 的「最大值 < 0.3」在休息變長以後，連完全不相干的兩隻都可能超過（見 M9 的 nullMax），要使用者決定怎麼改
+  for (const s of r) for (const [sp, v] of Object.entries(s.per)) {
+    if (v.M2_slide != null) check(v.M2_slide >= 0.85 && v.M2_slide <= 1.15, `M2 腳打滑：種子 ${s.seed} 的 ${sp} 是 ${v.M2_slide}（要 0.85–1.15）`);
+    if (v.M3_pausedWalks != null) check(v.M3_pausedWalks >= 60, `M3 走走停停：種子 ${s.seed} 的 ${sp} 只有 ${v.M3_pausedWalks}%（要 ≥ 60%）`);
+    if (v.M4_turnPose != null) check(v.M4_turnPose === 100, `M4 轉身：種子 ${s.seed} 的 ${sp} 只有 ${v.M4_turnPose}%（要 100%）`);
+  }
 
   // 摘要：每個量尺，12 隻的中位數和最差的那隻；3 個種子分開列
   const med = a => { const s = a.filter(x => x != null).sort((x, y) => x - y); return s.length ? s[s.length >> 1] : null; };
@@ -216,7 +332,7 @@ const test = async ({ page }, check) => {
       M6: s.M6_jsd,
       M7: { rot: worst('M7_rot'), scale: worst('M7_scale') },
       M8: { changesMedian: med(col('M8_changesPerMin')), changesWorst: worst('M8_changesPerMin'), boutMedian: med(col('M8_medianBout')), bigSwitchWorst: worst('M8_bigSwitchPct') },
-      M9: s.M9_corr,
+      M9: { ...s.M9_corr, nullMax: s.M9_null?.max },
     };
   });
   const out = path.join(ROOT, '.cache/natural');

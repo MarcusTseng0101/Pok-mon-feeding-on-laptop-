@@ -203,6 +203,27 @@ export const ACTS = {
   stretch: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 4, dur: [1.2, 2.5, 4] },
   shiver: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 1, dur: 0.6 },
 };
+// ---------- 步態（PR-N2；scene/locomotion.js 用）----------
+// 外型 → 怎麼移動。kind：biped 兩腳、quad 四腳、hop 一跳一跳、crawl 爬（一伸一縮）、float 飄、fly 拍翅膀
+// speed：沒有腳的（或木偶切不出腳的）移動速度倍率；有腳的速度由步幅和步頻決定（scene/locomotion.js）
+// acc：從停著到全速要幾秒（越大越重、越慢起步）；turn：轉身要幾秒。全部是猜的，可調整
+export const GAIT = {
+  upright: { kind: 'biped', speed: 1, acc: 0.3, turn: 0.15 },
+  humanoid: { kind: 'biped', speed: 1, acc: 0.25, turn: 0.14 },
+  quadruped: { kind: 'quad', speed: 1.1, acc: 0.3, turn: 0.18 },
+  legs: { kind: 'hop', speed: 0.9, acc: 0.2, turn: 0.14 },
+  wings: { kind: 'fly', speed: 0.8, acc: 0.35, turn: 0.2 },
+  'bug-wings': { kind: 'fly', speed: 0.8, acc: 0.3, turn: 0.18 },
+  arms: { kind: 'float', speed: 0.7, acc: 0.45, turn: 0.22 },
+  tentacles: { kind: 'float', speed: 0.7, acc: 0.45, turn: 0.22 },
+  heads: { kind: 'float', speed: 0.75, acc: 0.4, turn: 0.2 },
+  ball: { kind: 'hop', speed: 0.8, acc: 0.3, turn: 0.15 },
+  blob: { kind: 'crawl', speed: 0.55, acc: 0.5, turn: 0.25 },
+  squiggle: { kind: 'crawl', speed: 0.55, acc: 0.5, turn: 0.25 },
+  armor: { kind: 'crawl', speed: 0.6, acc: 0.45, turn: 0.22 },
+};
+export const gaitOf = id => GAIT[SPECIES[id]?.body] ?? GAIT.upright;
+
 // 其他地方來的選項（social.js、habits.js、moves.js…）沒有列在 ACTS：用心智類別決定屬於哪一類、用這裡的長度估計
 // 休息的地點：動物大多回窩（巢、洞）休息，不是走到哪睡到哪。回秘密基地休息（心智類別 base）在「休息」裡的權重乘上多少（猜的，可調整）
 const DEN = 3;

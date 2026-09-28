@@ -51,6 +51,8 @@ function rectAt(p, x, y) {
 // 重疊超過這個比例就算擠在一起（一前一後稍微蓋到一點是正常的遠近，蓋掉一大塊就是疊成一團）。
 // 測試（basecrowd.cjs）量的是 30%，這裡 25% 就挪開，才不會卡在剛好 30% 的邊界上（猜的，可調整）
 export const CROWD = 0.25;
+// 挑空格時要更空一點：走路停下的位置跟那一格會差一兩個像素，留點餘裕才不會一到就又算擠（猜的，可調整）
+const SPOT_ROOM = 0.15;
 const DAY_INSIDE = 0.5; // 白天回基地休息時鑽進住的地方的機會（猜的，可調整）
 
 // 基地的空地裡，還沒被別隻占走的：別隻坐在那裡、或正要走過去的格子不算（不然好幾隻擠在同一格、疊在一起）
@@ -60,7 +62,7 @@ export function openSpots(pet) {
   // 別隻要去的那一格、和牠現在真的站的地方（走到空地時停的位置會跟那一格差一點）都要避開
   const taken = [...pet.stage.pets.values()].filter(o => o !== pet && !o.perch && !INSIDE.includes(o.state))
     .flatMap(o => [o.homeSpot && { o, at: o.homeSpot }, view.contains(o.x, o.gy) && { o, at: { x: o.x, y: o.gy } }].filter(Boolean));
-  return view.freeSpots().filter(sp => taken.every(({ o, at }) => overlapFrac(rectAt(pet, sp.x, sp.y), rectAt(o, at.x, at.y)) <= CROWD));
+  return view.freeSpots().filter(sp => taken.every(({ o, at }) => overlapFrac(rectAt(pet, sp.x, sp.y), rectAt(o, at.x, at.y)) <= SPOT_ROOM));
 }
 
 // 走到最近一格沒人的空地，到了做 then（沒有空地就回傳 false）
@@ -69,8 +71,7 @@ function goSpot(pet, then) {
   if (!spots.length) return false;
   const spot = spots.reduce((a, b) => (Math.hypot(b.x - pet.x, b.y - pet.gy) < Math.hypot(a.x - pet.x, a.y - pet.gy) ? b : a));
   pet.homeSpot = spot; // 別隻挑位置時知道這格有人要來了（Pet.decide() 清掉）
-  // 走到了就對準那一格站好（走路停下的位置會差幾個像素，差這一點就可能又蓋到旁邊那隻；床也是這樣對準）
-  walkThen(pet, spot, () => { pet.x = spot.x; pet.gy = spot.y; then(); });
+  walkThen(pet, spot, then);
   return true;
 }
 
@@ -119,7 +120,6 @@ export function goHomeAndRest(pet, { night = false } = {}) {
   const spot = pick(spots);
   pet.homeSpot = spot;
   walkThen(pet, spot, () => {
-    if (!night) { pet.x = spot.x; pet.gy = spot.y; } // 對準那一格（見 goSpot）
     if (night) {
       const cuddle = socialOptions(pet, []).find(([n]) => n === 'cuddle');
       if (cuddle) { cuddle[2](); return; }
@@ -147,7 +147,6 @@ export function goInside(pet, { night = false } = {}) {
   const door = pet.stage.baseView.door();
   walkThen(pet, door, () => {
     if (!roomInside(pet)) { if (!goSpot(pet, () => pet.set('sit', rnd(5, 10)))) pet.set('sit', rnd(3, 6)); return; } // 走到門口才發現住滿了：找一格空地坐（門口會有別隻出來）
-    pet.x = door.x; pet.gy = door.y;
     pet.insideFor = night ? rnd(30, 60) : rnd(15, 30); // 跟睡床一樣久
     pet.insideNight = night; // 晚上鑽進去的：跟睡床一樣睡到早上才出來
     pet.set('goIn', 0.6);
