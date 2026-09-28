@@ -13,8 +13,8 @@ const { run, ROOT } = require('./lib.cjs');
 
 const RATIO = 2; // 猜的，可調整（但只能在第一次量舊動畫之前決定，之後不改）
 const SEEDS = [11, 29];
-const OLD_RULER = 1.213; // 舊的 62 招量到的尺（蒸汽爆炸）；新的尺超過它 1.5 倍＝有招的形狀大部分靠亂數，停下來看
-const DONE_TYPES = ['water', 'fire', 'grass', 'electric', 'ice', 'fighting']; // 這個 PR 要做完的屬性
+const OLD_RULER = 1.162; // 舊的 62 招量到的尺（蒸汽爆炸；等會動的圖載好以後重新量的，一樣 56 招不過）；新的尺超過它 1.5 倍＝有招的形狀大部分靠亂數，停下來看
+const DONE_TYPES = ['water', 'fire', 'grass', 'electric', 'ice', 'fighting', 'poison', 'ground', 'flying']; // 這個 PR 要做完的屬性
 // 使用者同意的例外（只在 old 還沒有自己的演出時才算；old 重做以後自動失效，要重新比）：
 //   尖刺防守 vs 5 個舊的「自己用」招（反射壁、蝶舞、王者盾牌、妖精之鎖、大地掌控，1.80–1.83 倍）：這 5 招現在是同一個舊演出，
 //   形狀完全不同（刺藤半圓頂 vs 彩色圈圈），近是因為都在自己身上放、周圍一樣變暗。這 5 招在 PR③、PR④ 重做
@@ -51,11 +51,16 @@ const test = async ({ page }, check) => {
     game.canDepart = () => false;
     Object.assign(stage.env, { sleepy: false, userActive: false, hour: 14, focus: null });
     const [a, b] = [...stage.pets.values()];
+    // 會動的圖是非同步載入的：等兩隻的都載好再量（不然有時候量到不會動的圖）
+    const t1 = Date.now();
+    while (![a, b].every(p => stage.sprites.peekAnim?.(p.spriteKey, p.mon.shiny)) && Date.now() - t1 < 10000) await new Promise(res => setTimeout(res, 50));
+    const animated = [a, b].map(p => Boolean(stage.sprites.peekAnim?.(p.spriteKey, p.mon.shiny)));
     const dpr = stage.dpr;
     const place = () => {
       stage.fx.parts = []; stage.stopT = 0; stage.shakeT = 0; stage.dimFx = null;
+      stage.clock = 0; stage.lastBump = new Map(); // 碰撞的冷卻看舞台時間：頁面開了多久不一定，每招都從 0 開始
       for (const p of [a, b]) {
-        p.set('idle', 999); p.moveCtx = null; p.kvx = p.kvy = 0; p.vx = p.vy = p.vz = 0; p.z = 0; p.t = 0; p.walkPhase = 0; p.hopT = 0;
+        p.set('idle', 999); p.moveCtx = null; p.kvx = p.kvy = 0; p.vx = p.vy = p.vz = 0; p.z = 0; p.t = 0; p.walkPhase = 0; p.hopT = 0; p.animT = 0; p.view = null; p.lastPos = null; // 播放位置也從頭開始
         p.flinchT = 0; p.flipT = 0; p.squashT = 0; p.moveAlpha = 1;
       }
       a.x = 400 * dpr; a.gy = 450 * dpr; b.x = 700 * dpr; b.gy = 450 * dpr; a.facing = 1; b.facing = -1;
@@ -124,9 +129,10 @@ const test = async ({ page }, check) => {
     const types = Object.fromEntries(ids.map(id => [id, M.MOVES[id].type]));
     const out = {};
     for (const [g, x] of Object.entries(sheets)) out[g] = x.c.toDataURL('image/png');
-    return { prints, choreo, distinct, types, sheets: out };
+    return { prints, choreo, distinct, types, sheets: out, animated };
   }, { SEEDS, GROUPS });
 
+  check(r.animated.every(Boolean), `會動的圖沒有載好：${r.animated}`);
   const ids = Object.keys(r.prints);
   const dist = (u, v) => { let s = 0; for (let i = 0; i < u.length; i++) s += (u[i] - v[i]) ** 2; return Math.sqrt(s); };
   const self = Object.fromEntries(ids.map(id => [id, dist(r.prints[id][0], r.prints[id][1])]));

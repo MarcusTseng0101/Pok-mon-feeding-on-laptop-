@@ -15,5 +15,8 @@ import { GRASS } from './grass.js';
 import { ELECTRIC } from './electric.js';
 import { ICE_MOVES } from './ice.js';
 import { FIGHTING } from './fighting.js';
+import { POISON } from './poison.js';
+import { GROUND } from './ground.js';
+import { FLYING } from './flying.js';
 
-export const CHOREO = { ...WATER, ...FIRE, ...GRASS, ...ELECTRIC, ...ICE_MOVES, ...FIGHTING };
+export const CHOREO = { ...WATER, ...FIRE, ...GRASS, ...ELECTRIC, ...ICE_MOVES, ...FIGHTING, ...POISON, ...GROUND, ...FLYING };
