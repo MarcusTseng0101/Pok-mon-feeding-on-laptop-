@@ -200,18 +200,26 @@ export class PuppetView extends AnimView {
       }
     }
     this.budget = Math.min(BUILD_PER_SEC, this.budget + dt * BUILD_PER_SEC);
-    // 量化加遲滯：過了分界再多 HYST 級才換，彈簧在分界附近抖的時候不會一直換圖（少做很多張，規格 F13）
-    const lv = (this.level ??= {}), p = {};
+    // 量化加遲滯：過了分界再多 HYST 級才換，彈簧在分界附近抖的時候不會一直換圖（少做很多張，規格 F13）。
+    // 每一幀每個參數最多換 1 級（1 格、1 個角度級）：畫出來的姿勢永遠不會跳格（規格 F8、M8）
+    const was = this.level, lv = {}, p = {};
     for (const k of KEYS) {
-      const step = PARTS.has(k) ? ANG_STEP : 1, cur = this.x[k] / step, was = lv[k];
-      lv[k] = was == null || Math.abs(cur - was) > 0.5 + HYST ? Math.round(cur) : was;
-      p[k] = lv[k] * step;
+      const step = PARTS.has(k) ? ANG_STEP : 1, cur = this.x[k] / step, w = was?.[k];
+      lv[k] = w == null ? Math.round(cur) : Math.abs(cur - w) > 0.5 + HYST ? w + Math.max(-1, Math.min(1, Math.round(cur) - w)) : w;
     }
+    // 頭的位置＝身體下沉＋低頭−吸氣：三個一起換一級，頭會一次動 3 格。頭一幀也最多動 1 格（先讓身體動，低頭、呼吸晚一幀）
+    if (was) {
+      const head = l => l.crouch + l.headPitch - l.breath;
+      if (Math.abs(head(lv) - head(was)) > 1) lv.headPitch = was.headPitch;
+      if (Math.abs(head(lv) - head(was)) > 1) lv.breath = was.breath;
+    }
+    for (const k of KEYS) p[k] = lv[k] * (PARTS.has(k) ? ANG_STEP : 1);
     const before = this.anim.stats.built;
     const q = quantize({ ...p, legL: [p.lLx, p.lLy], legR: [p.lRx, p.lRy] });
     const f = this.anim.pose(q, { build: this.budget >= 1 || !this.cur });
     if (this.anim.stats.built > before) this.budget -= 1;
-    if (f) { this.cur = f; this.key = q.key; } // key：畫出來那一張的量化參數（測試用）
+    // 這一幀做不出新圖（超過預算）：還是畫上一張，級數也留在上一張（下一次才不會一次跳兩級）
+    if (f) { this.cur = f; this.key = q.key; this.level = lv; } // key：畫出來那一張的量化參數（測試用）
     return this;
   }
   get frame() { return this.cur ?? super.frame; }
