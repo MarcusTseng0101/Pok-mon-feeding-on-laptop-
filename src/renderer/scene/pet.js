@@ -62,6 +62,9 @@ const INSTANT_FLIP = new Set(['spin', 'dance', 'refuse', 'roll', 'appear', 'held
 const ANIM_SPEED = { walk: 1.5, approach: 1.5, walkTogether: 1.5, run: 2, chase: 2, flee: 2, chaseCursor: 2, pounce: 1.6, dance: 1.6, held: 1.4, sit: 0.7, sleep: 0.3, dizzy: 0.5, shiver: 2.5 };
 // 休息中（跟隨的擺幅打折，規格 F9）
 const RESTING = new Set(['idle', 'sit', 'sleep', 'nap', 'inside', 'cursorSit', 'watch', 'chill', 'wait', 'sunbathe', 'read']);
+// 休息中被嚇到只彈一下、不打斷的狀態（睡著的、在帳篷裡的不算：會醒）；反應多短以內才這樣（PR-N5）
+const REACT_KEEP = new Set(['idle', 'sit', 'cursorSit', 'watch', 'chill', 'wait', 'sunbathe', 'read']);
+const REACT_MAX = 1; // 猜的，可調整
 
 // ---------- 集中轉換器（規格 PR-N3、§4.3、F7）----------
 // 行為、習性、招式的 pose() 還是寫整張圖的 { sx, sy, rot, ox, pivot }（140 處不用改），畫之前在這裡翻成像素木偶的參數：
@@ -156,6 +159,9 @@ export class Pet {
     // 互動結束的「開心」（0.6 秒，遊行、合照、切磋、追完、吃完…）：彈一下、舉手（cheerT），不另外切一個狀態，
     // 接著直接挑下一件事（使用者決定的 M8 做法：以前每次互動結束都多換一次狀態）
     if (state === 'happy' && dur <= CHEER_MAX && !this.guest) { this.cheerT = dur; this.hopT = Math.max(this.hopT ?? 0, 0.25); state = 'idle'; dur = 1; }
+    // 休息中被別隻嚇到、冷到（吼叫、超音波、放招逗牠…1 秒以內的反應）：彈一下（表情是呼叫的人放的），接著休息，不另外切一個狀態。
+    // 跟上面的開心一樣（PR-N5，規格 M8：以前每次都打斷休息、嚇完再挑下一件事，休息多的物種被旁邊吵到，換狀態的次數超過上限）。睡著的照舊會醒
+    if ((state === 'startle' || state === 'shiver') && dur <= REACT_MAX && REACT_KEEP.has(this.state) && !this.guest) { this.hopT = Math.max(this.hopT ?? 0, 0.25); return; }
     const was = this.state;
     this.state = state; this.stateT = 0; this.dur = dur;
     // 不是在往某個地方走了（被叫去看東西、被拎起來、嚇一跳…）：「走到了要做什麼」也不要了，不然會留著舊的（規格 F10）。
