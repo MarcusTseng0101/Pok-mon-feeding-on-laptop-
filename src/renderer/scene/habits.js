@@ -83,198 +83,233 @@ function beginSpar(pet, o) {
 }
 
 export const HABITS = {
+  // PR-N4：650–685 的習性改成「身體做的事」（像素木偶的參數 puppet、移動用 moveTo），特效只當點綴。
+  // 每一種上面一行寫真實參考。身體參數：lean 負的往前、crouch 正的蹲低（負的伸長）、headPitch 正的低頭、arm／ear／tail 正的舉起來（弧度）。
+  // 一段的長度照規格 §3（動物做一件事會持續一段時間），比以前長；數字都是猜的，可調整
+
   // ---------- 哈力栗系列：硬殼、互相衝撞鍛鍊 ----------
+  // 真實參考：犰狳、刺蝟受驚時縮起來，過一會兒先探頭看看再放鬆
   hunker: {
-    zh: '縮進硬殼裡', dur: 2.5,
+    zh: '縮進硬殼裡', dur: () => rnd(3, 6),
     start: pet => pet.showEmote('!', 0.8),
-    pose: (pet, p) => { p.sx = 1.1; p.sy = 0.78; },
+    puppet: (pet, k) => (k < 0.8 ? { crouch: 3, headPitch: 2, arm: -0.6, ear: -0.5, tail: -0.4, lean: 1, breath: 0 } : { crouch: 1, headPitch: -1, ear: 0.2 }),
     lift: () => 0,
     end: pet => { idle(pet); pet.showEmote('♪', 1); },
   },
+  // 真實參考：山羊、羊頂角前會先低頭、往後退一步蓄力
   ram: {
     zh: '跟夥伴互相衝撞鍛鍊', social: true,
     pick: (pet, others) => pick(others),
     begin: beginSpar,
   },
+  // 真實參考：拳擊的護臉架勢（兩手舉到臉前、重心放低、腳站開）
   guard: {
-    zh: '舉起拳頭擺出防禦姿勢', dur: 2.4,
-    update(pet, dt) { const m = pet.mouth(); if (Math.random() < dt * 8) burst(pet, m.x + pet.facing * 6 * pet.S, m.y, ['#ffffff', '#c8f0a0'], { n: 1, speed: 10, spread: 6.3, g: 0, life: 0.4 }); },
-    pose: (pet, p) => { p.sy = 0.95; p.sx = 1.04; },
+    zh: '舉起拳頭擺出防禦姿勢', dur: () => rnd(3, 5),
+    update(pet, dt, k) { if (once(pet, 'pose', k > 0.2)) { const m = pet.mouth(); burst(pet, m.x + pet.facing * 6 * pet.S, m.y, ['#ffffff', '#c8f0a0'], { n: 4, speed: 12, spread: 6.3, g: 0, life: 0.4 }); } },
+    puppet: (pet, k) => ({ arm: 0.85, armSw: 0, crouch: 1, lean: k < 0.15 ? 1 : 0, headPitch: 1, legL: [-1, 0], legR: [1, 0] }),
     end: pet => { idle(pet); pet.showEmote('✦', 1); },
   },
 
   // ---------- 火狐狸系列：咬樹枝、耳朵噴熱氣、樹枝火把 ----------
+  // 真實參考：狐狸叼著樹枝走，頭抬高一點、耳朵朝前
   twig: {
-    zh: '咬著樹枝散步', dur: () => rnd(4, 7),
+    zh: '咬著樹枝散步', dur: () => rnd(6, 10),
     start: pet => { pet.target = pet.randomPoint(60, 200); },
-    update(pet, dt) { pet.moveTo(pet.target.x, pet.target.y, WALK_SPEED * pet.S * 0.7, dt); },
-    lift: pet => Math.round(Math.abs(Math.sin(pet.walkPhase)) * 2),
+    update(pet, dt) { if (pet.moveTo(pet.target.x, pet.target.y, WALK_SPEED * pet.S * 0.7, dt)) pet.target = pet.randomPoint(40, 140); },
+    puppet: () => ({ headPitch: -1, ear: 0.3 }),
     drawOver: (pet, ctx) => holdAtMouth(pet, ctx, art.twig),
     end: pet => { idle(pet); pet.showEmote('♪', 1); },
   },
+  // 真實參考：耳廓狐的大耳朵散熱；生氣、太興奮時耳朵往後貼、身體壓低
   earpuff: {
-    zh: '從耳朵噴出熱氣', dur: 1.4,
-    start: pet => pet.showEmote('💢', 0.8),
-    update(pet, dt) {
+    zh: '從耳朵噴出熱氣', dur: () => rnd(2.5, 4),
+    update(pet, dt, k) {
+      if (k < 0.3) return; // 先壓低、耳朵往後貼，才噴
       const r = pet.rect();
-      if (Math.random() < dt * 16) for (const sx of [0.2, 0.8]) burst(pet, r.x + r.w * sx, r.y + 2 * pet.S, ['#ffffff', '#ffd0a0', '#e0e0e0'], { n: 1, speed: 30, dir: -Math.PI / 2 + (sx - 0.5), spread: 0.4, g: -20, life: 0.8, wobble: true });
+      if (Math.random() < dt * 10) for (const sx of [0.2, 0.8]) burst(pet, r.x + r.w * sx, r.y + 2 * pet.S, ['#ffffff', '#ffd0a0', '#e0e0e0'], { n: 1, speed: 30, dir: -Math.PI / 2 + (sx - 0.5), spread: 0.4, g: -20, life: 0.8, wobble: true });
     },
-    pose: (pet, p) => { p.sy = 1.05; },
+    puppet: (pet, k) => (k < 0.3 ? { ear: -0.6, crouch: 1, headPitch: 1, tail: 0.4 } : { ear: 0.5, earSw: 0.15 * Math.sin(pet.stateT * 18), crouch: 0, tail: 0.2 }),
   },
+  // 真實參考：舉高火把揮動打信號（手舉高、左右揮）
   signal: {
-    zh: '點燃尾巴的樹枝向同伴打信號', dur: 2.6,
+    zh: '點燃尾巴的樹枝向同伴打信號', dur: () => rnd(3, 5),
     update(pet, dt, k) {
       const S = pet.S, h = pet.head();
-      const tip = { x: h.x + pet.facing * 12 * S, y: h.y - 6 * S + Math.sin(pet.stateT * 8) * 3 * S };
-      if (k > 0.15 && Math.random() < dt * 25) burst(pet, tip.x, tip.y, ['#ff6a2a', '#ffb13a', '#ffe066'], { n: 1, speed: 20, g: -60, life: 0.4 });
+      const tip = { x: h.x + pet.facing * 12 * S, y: h.y - 6 * S + Math.sin(pet.stateT * 5) * 3 * S };
+      if (k > 0.15 && Math.random() < dt * 18) burst(pet, tip.x, tip.y, ['#ff6a2a', '#ffb13a', '#ffe066'], { n: 1, speed: 20, g: -60, life: 0.4 });
       if (once(pet, 'seen', k > 0.4)) for (const o of around(pet, 400)) { o.facing = pet.x > o.x ? 1 : -1; o.showEmote('!', 1); }
     },
     drawOver(pet, ctx) {
       const S = pet.S, h = pet.head(), img = art.twig;
-      blit(ctx, img, h.x + pet.facing * 12 * S - (img.width * S) / 2, h.y - 6 * S + Math.sin(pet.stateT * 8) * 3 * S, S, { flipX: pet.facing < 0 });
+      blit(ctx, img, h.x + pet.facing * 12 * S - (img.width * S) / 2, h.y - 6 * S + Math.sin(pet.stateT * 5) * 3 * S, S, { flipX: pet.facing < 0 });
     },
-    pose: (pet, p) => { p.rot = -pet.facing * 0.06; },
+    puppet: pet => ({ arm: 0.8, armSw: 0.35 * Math.sin(pet.stateT * 5), tail: 0.4, headPitch: -1, lean: 1 }),
     lift: () => 0,
   },
+  // 真實參考：靜靜凝視火焰（冥想）：身體不動、低頭看、只有呼吸
   vortex: {
-    zh: '用超能力轉出火焰漩渦', dur: 2.4,
-    update(pet) { orbit(pet, ['#ff6a2a', '#ffb13a', '#ffe066', T.psychic], pet.asset.w * 0.7, 4, 7); },
-    pose: (pet, p) => { p.sy = 1.04; },
+    zh: '用超能力轉出火焰漩渦', dur: () => rnd(6, 12),
+    update(pet, dt, k) { if (k > 0.25) orbit(pet, ['#ff6a2a', '#ffb13a', '#ffe066', T.psychic], pet.asset.w * 0.7, 3, 3); },
+    puppet: () => ({ headPitch: 2, arm: 0.4, armSw: 0, lean: -1, tailSw: 0 }),
     end: pet => { idle(pet); pet.showEmote('✦', 0.8); },
   },
 
   // ---------- 呱呱泡蛙系列：泡泡、爬高塔、忍者 ----------
+  // 真實參考：樹蛙蹲坐不動、只有眼睛（頭）左右掃視
   frubbles: {
-    zh: '用泡泡包住全身，一邊留意四周', dur: 2.6,
+    zh: '用泡泡包住全身，一邊留意四周', dur: () => rnd(5, 9),
     update(pet, dt) {
       const r = pet.rect();
-      if (Math.random() < dt * 14) burst(pet, r.x + Math.random() * r.w, r.y + Math.random() * r.h, ['#ffffff', '#d8f0ff'], { n: 1, speed: 6, g: -4, life: 1.2, size: pet.S, wobble: true });
-      pet.facing = Math.floor(pet.stateT / 0.7) % 2 ? 1 : -1;
+      if (Math.random() < dt * 6) burst(pet, r.x + Math.random() * r.w, r.y + Math.random() * r.h, ['#ffffff', '#d8f0ff'], { n: 1, speed: 6, g: -4, life: 1.2, size: pet.S, wobble: true });
+      pet.facing = Math.floor(pet.stateT / 1.6) % 2 ? 1 : -1; // 慢慢往兩邊看（會轉身，不是瞬間翻）
     },
+    puppet: pet => ({ crouch: 2, headPitch: -1 + (Math.floor(pet.stateT / 0.8) % 2), lean: 0, breath: 1 }),
     start: pet => pet.showEmote('?', 1.2),
   },
+  // 真實參考：青蛙起跳前先蹲低、腿一蹬跳出去，落地再蹲一下
   leap: {
-    zh: '一口氣跳得老高', dur: 1.3,
-    start: pet => { pet.target = pet.randomPoint(150, 380); pet.hd.d = Math.hypot(pet.target.x - pet.x, pet.target.y - pet.gy); },
+    zh: '一口氣跳得老高', dur: () => rnd(1.6, 2.2),
+    start: pet => { pet.target = pet.randomPoint(80, 200); },
     update(pet, dt, k) {
-      pet.z = Math.min(maxZ(pet), Math.sin(k * Math.PI) * 90);
-      pet.moveTo(pet.target.x, pet.target.y, pet.hd.d / pet.dur * 1.05, dt);
+      const air = k > 0.2 && k < 0.85, u = (k - 0.2) / 0.65;
+      pet.z = air ? Math.min(maxZ(pet), Math.sin(u * Math.PI) * 60) : 0;
+      if (air) pet.moveTo(pet.target.x, pet.target.y, RUN_SPEED * pet.S, dt); // 最快跟跑步一樣（加速度有上限，規格 M1）
+      if (once(pet, 'land', k > 0.85)) { pet.squashT = 0.18; pet.stage.audio.sfx('land'); }
     },
-    pose: (pet, p, k) => { p.sx = k < 0.1 ? 1.15 : 0.92; p.sy = k < 0.1 ? 0.85 : 1.1; },
+    puppet: (pet, k) => (k < 0.2 ? { crouch: 3, lean: -2, headPitch: -1, arm: -0.3 } : k < 0.85 ? { crouch: -2, lean: -2, arm: 0.5, legL: [0, 1], legR: [0, 1] } : { crouch: 2 }),
     lift: () => 0,
-    end: pet => { pet.z = 0; pet.squashT = 0.18; pet.stage.audio.sfx('land'); idle(pet); },
+    end: pet => { pet.z = 0; idle(pet); },
   },
+  // 真實參考：忍者先壓低身子、一瞬間消失（瞬移型習性：規格 M1 不算）
   ninja: {
-    zh: '像忍者一樣消失，又從別的地方冒出來', dur: 1.5,
+    zh: '像忍者一樣消失，又從別的地方冒出來', dur: 1.8, teleport: true,
     update(pet, dt, k) {
       const S = pet.S, c = center(pet);
-      if (once(pet, 'poof1', k > 0.15)) burst(pet, c.x, c.y, ['#c8c8d8', '#ffffff', '#9898a8'], { n: 14, speed: 40, spread: 6.3, g: -10, life: 0.7 });
-      if (once(pet, 'jump', k > 0.4)) {
+      if (once(pet, 'poof1', k > 0.3)) burst(pet, c.x, c.y, ['#c8c8d8', '#ffffff', '#9898a8'], { n: 14, speed: 40, spread: 6.3, g: -10, life: 0.7 });
+      if (once(pet, 'jump', k > 0.5)) {
         const p = pet.stage.pointer;
         const spot = p.known && Math.random() < 0.5 ? { x: p.x + rnd(-80, 80) * S, y: p.y + 40 * S } : pet.randomPoint(150, 450);
         pet.x = spot.x; pet.gy = spot.y; pet.clamp();
+        if (pet.lv) pet.lv.x = pet.lv.y = 0;
         const c2 = center(pet);
         burst(pet, c2.x, c2.y, ['#c8c8d8', '#ffffff', '#9898a8'], { n: 14, speed: 40, spread: 6.3, g: -10, life: 0.7 });
       }
     },
-    alpha: pet => { const k = pet.stateT / pet.dur; return k < 0.15 ? 1 : k < 0.6 ? 0 : Math.min(1, (k - 0.6) * 5); },
-    intangible: pet => pet.stateT / pet.dur < 0.65,
+    puppet: () => ({ crouch: 3, lean: -3, headPitch: 1, arm: -0.4, ear: -0.3 }),
+    alpha: pet => { const k = pet.stateT / pet.dur; return k < 0.3 ? 1 : k < 0.65 ? 0 : Math.min(1, (k - 0.65) * 5); },
+    intangible: pet => pet.stateT / pet.dur < 0.7,
     end: pet => { idle(pet); pet.showEmote('✦', 0.8); },
   },
+  // 真實參考：投擲：手往後拉、重心往後 → 往前甩、重心往前
   shuriken: {
-    zh: '丟出水手裏劍', dur: 1.2,
+    zh: '丟出水手裏劍', dur: () => rnd(1.6, 2.2),
     update(pet, dt, k) {
       const S = pet.S, m = pet.mouth();
-      if (once(pet, 'throw', k > 0.3)) {
+      if (once(pet, 'throw', k > 0.45)) {
         pet.stage.fx.add({ img: art.star, x: m.x, y: m.y, vx: pet.facing * 320 * S, life: 1.1, fade: false });
         pet.stage.audio.sfx('throw');
       }
-      if (k > 0.3 && k < 0.9 && Math.random() < dt * 30) {
-        const x = m.x + pet.facing * (pet.stateT - 0.36) * 320 * S;
-        burst(pet, x, m.y, ['#8ec5ff', '#ffffff'], { n: 1, speed: 10, g: 60, life: 0.3 });
-      }
     },
-    pose: (pet, p, k) => { p.rot = k < 0.3 ? -pet.facing * 0.15 : pet.facing * 0.12; },
+    puppet: (pet, k) => (k < 0.45 ? { arm: 0.9, lean: 2, crouch: 1, headPitch: 0 } : { arm: -0.5, lean: -3, crouch: 0, headPitch: 0 }),
   },
 
   // ---------- 掘掘兔系列 ----------
+  // 真實參考：穴兔警戒時用後腳站直、耳朵豎起、一動也不動，然後才衝去躲
   alert: {
     zh: '聽到翅膀聲就馬上挖洞躲起來',
     // 桌面上有會飛的夥伴時特別敏感
     w: pet => ([...pet.stage.pets.values()].some(o => o !== pet && o.floats && has(o, 'flying')) ? 14 : 5),
-    dur: 1,
+    dur: () => rnd(2, 3.5),
     start: pet => pet.showEmote('!', 1),
-    pose: (pet, p) => { p.sy = 1.08; },
+    puppet: () => ({ crouch: -2, headPitch: -2, ear: 0.6, earSw: 0, arm: 0.2, breath: 0 }),
     lift: () => 0,
     end: pet => { pet.target = pet.randomPoint(100, 300); pet.set('dig', 3); },
   },
+  // 真實參考：狗甩乾身體（從頭到尾快速左右扭）
   shed: {
-    zh: '抖一抖，掉下保暖的毛', dur: 1.6,
-    update(pet, dt) { const r = pet.rect(); if (Math.random() < dt * 12) burst(pet, r.x + Math.random() * r.w, r.y + r.h * 0.6, ['#f0e0c0', '#c8a878', '#ffffff'], { n: 1, speed: 15, g: 25, life: 1.6, wobble: true }); },
-    pose: (pet, p) => { p.ox = Math.floor(pet.stateT * 26) % 2 ? 1 : -1; },
+    zh: '抖一抖，掉下保暖的毛', dur: () => rnd(1.8, 2.6),
+    update(pet, dt) { const r = pet.rect(); if (Math.random() < dt * 8) burst(pet, r.x + Math.random() * r.w, r.y + r.h * 0.6, ['#f0e0c0', '#c8a878', '#ffffff'], { n: 1, speed: 15, g: 25, life: 1.6, wobble: true }); },
+    puppet: pet => { const s = Math.sin(pet.stateT * 22); return { lean: 2 * s, earSw: 0.4 * s, tailSw: 0.5 * s, crouch: 1 }; },
   },
 
   // ---------- 小箭雀系列 ----------
+  // 真實參考：小鳥啄食：身體前傾、頭一下一下點地，中間抬頭看一下
   peck: {
-    zh: '低頭啄地面', dur: 2.2,
+    zh: '低頭啄地面', dur: () => rnd(4, 7), set: 'eat',
     update(pet) {
-      const n = Math.floor(pet.stateT / 0.28);
-      if (n !== pet.hd.n) { pet.hd.n = n; if (n % 2 === 0) burst(pet, pet.mouth().x + pet.facing * 3 * pet.S, pet.gy - pet.S, ['#8a7a4a', '#b8a06a'], { n: 2, speed: 25, spread: 2, g: 180, life: 0.3 }); }
+      const n = Math.floor(pet.stateT / 0.35);
+      if (n !== pet.hd.n) { pet.hd.n = n; if (n % 2 === 0 && n % 8 < 6) burst(pet, pet.mouth().x + pet.facing * 3 * pet.S, pet.gy - pet.S, ['#8a7a4a', '#b8a06a'], { n: 2, speed: 25, spread: 2, g: 180, life: 0.3 }); }
     },
-    pose: (pet, p) => { p.rot = pet.facing * (Math.floor(pet.stateT / 0.14) % 2 ? 0.35 : 0.1); },
+    puppet: pet => { const n = Math.floor(pet.stateT / 0.35); return n % 8 >= 6 ? { lean: 0, headPitch: -1, crouch: 0 } : { lean: -2, headPitch: n % 2 ? 0 : 2, crouch: 1, tail: 0.3 }; },
     lift: () => 0,
   },
+  // 真實參考：鳥興奮、發熱時羽毛蓬起來、翅膀微微張開散熱
   heatup: {
-    zh: '一興奮身體就發燙', dur: 1.6,
+    zh: '一興奮身體就發燙', dur: () => rnd(2.5, 4),
     start: pet => pet.showEmote('!', 0.8),
-    update(pet, dt) { const r = pet.rect(); if (Math.random() < dt * 14) burst(pet, r.x + Math.random() * r.w, r.y + r.h * 0.5, ['#ff9d3a', '#ffd84a', '#ff6a2a'], { n: 1, speed: 18, g: -40, life: 0.7, wobble: true }); },
-    lift: pet => Math.round(Math.abs(Math.sin(pet.stateT * 10)) * 2),
+    update(pet, dt) { const r = pet.rect(); if (Math.random() < dt * 8) burst(pet, r.x + Math.random() * r.w, r.y + r.h * 0.5, ['#ff9d3a', '#ffd84a', '#ff6a2a'], { n: 1, speed: 18, g: -40, life: 0.7, wobble: true }); },
+    puppet: pet => ({ crouch: -1, arm: 0.35 + 0.1 * Math.sin(pet.stateT * 9), tail: 0.4, headPitch: -1 }),
   },
+  // 真實參考：鳥趕走闖入者前先張開翅膀、壓低身子威嚇，再追
   shoo: {
     zh: '把靠近地盤的傢伙趕走', social: true,
     pick: (pet, others) => { const near = others.filter(o => dist(pet, o) < 350); return near.length ? pick(near) : null; },
     begin(pet, o) {
-      pet.partner = o; o.partner = pet;
-      pet.set('chase', 2.5); o.set('flee', 2.5);
-      pet.showEmote('💢', 1); o.showEmote('!', 0.8);
+      pet.facing = o.x > pet.x ? 1 : -1;
+      startHabit(pet, 'threat', { o });
     },
   },
+  threat: {
+    zh: '張開翅膀威嚇', dur: 0.9,
+    start: pet => { pet.showEmote('💢', 1); pet.hd.o?.showEmote('!', 0.8); },
+    puppet: () => ({ arm: 0.9, crouch: 1, lean: -2, tail: 0.5, headPitch: 1 }),
+    end(pet) {
+      const o = pet.hd.o;
+      if (!o || o.leaving || o.partner || !o.free) { idle(pet); return; }
+      pet.partner = o; o.partner = pet;
+      pet.set('chase', 2.5); o.set('flee', 2.5);
+    },
+  },
+  // 真實參考：游隼俯衝（stoop）：先蹲低起飛、收起翅膀、身體往前傾直直衝下去
   dive: {
-    zh: '從高空高速俯衝', dur: 1.8,
-    start: pet => { pet.target = pet.randomPoint(250, 600); },
+    zh: '從高空高速俯衝', dur: () => rnd(2.4, 3.2),
+    start: pet => { pet.target = pet.randomPoint(150, 350); },
     update(pet, dt, k) {
       const S = pet.S;
-      pet.z = Math.min(maxZ(pet), k < 0.35 ? (k / 0.35) * 70 : Math.max(0, 70 * (1 - (k - 0.35) / 0.65)));
+      pet.z = Math.min(maxZ(pet), k < 0.35 ? (k / 0.35) * 60 : Math.max(0, 60 * (1 - (k - 0.35) / 0.55)));
       if (k > 0.35) {
-        pet.moveTo(pet.target.x, pet.target.y, RUN_SPEED * S * 3, dt);
-        if (Math.random() < dt * 40) { const c = center(pet); burst(pet, c.x - pet.facing * 6 * S, c.y, ['#ff6a2a', '#ffb13a'], { n: 1, speed: 10, g: -10, life: 0.4 }); }
+        pet.moveTo(pet.target.x, pet.target.y, RUN_SPEED * S, dt); // 最快跟跑步一樣，加速度有上限（規格 M1）
+        if (Math.random() < dt * 20) { const c = center(pet); burst(pet, c.x - pet.facing * 6 * S, c.y, ['#ff6a2a', '#ffb13a'], { n: 1, speed: 10, g: -10, life: 0.4 }); }
       }
-      if (once(pet, 'hit', k > 0.97)) { pet.stage.fx.stars(pet.x, pet.gy - 4 * S, S, 6); pet.stage.audio.sfx('land'); }
+      if (once(pet, 'hit', k > 0.92)) { pet.stage.fx.stars(pet.x, pet.gy - 4 * S, S, 4); pet.stage.audio.sfx('land'); }
     },
-    pose: (pet, p, k) => { p.rot = k < 0.35 ? -pet.facing * 0.2 : pet.facing * 0.35; },
+    puppet: (pet, k) => (k < 0.12 ? { crouch: 2, lean: 1, arm: 0.3 } : k < 0.35 ? { arm: 0.8, armSw: 0.3 * Math.sin(pet.stateT * 14), lean: 0, headPitch: -1 } : k < 0.92 ? { arm: -0.6, lean: -4, headPitch: 1, tail: 0.3 } : { arm: 0.6, crouch: 2, lean: 1 }),
     lift: () => 0,
     end: pet => { pet.z = 0; idle(pet); },
   },
 
   // ---------- 粉蝶蟲系列 ----------
+  // 真實參考：毛毛蟲受驚時身體縮起、一陣一陣抖動
   powder: {
-    zh: '噴出保護自己的粉末', dur: 1.5,
-    update(pet, dt) { const c = center(pet); if (Math.random() < dt * 20) burst(pet, c.x, c.y, ['#d8d0c0', '#b8b0a0', '#fff8e8'], { n: 1, speed: 30, spread: 6.3, g: 10, life: 0.9, wobble: true }); },
-    pose: (pet, p) => { p.sy = 0.94 + Math.sin(pet.stateT * 14) * 0.03; },
+    zh: '噴出保護自己的粉末', dur: () => rnd(2, 3),
+    update(pet, dt) { const c = center(pet); if (Math.random() < dt * 12) burst(pet, c.x, c.y, ['#d8d0c0', '#b8b0a0', '#fff8e8'], { n: 1, speed: 30, spread: 6.3, g: 10, life: 0.9, wobble: true }); },
+    puppet: pet => ({ crouch: 2, lean: Math.sin(pet.stateT * 16) > 0 ? 1 : -1, headPitch: 1, tailSw: 0.3 * Math.sin(pet.stateT * 16) }),
   },
+  // 真實參考：蛹、竹節蟲裝死：全身僵住，連呼吸都看不出來
   harden: {
-    zh: '變得硬梆梆一動也不動', dur: 3,
-    update(pet, dt) { const r = pet.rect(); if (Math.random() < dt * 3) pet.stage.fx.sparkles(r.x + Math.random() * r.w, r.y + Math.random() * r.h, pet.S, 1, 2); },
+    zh: '變得硬梆梆一動也不動', dur: () => rnd(6, 12),
+    update(pet, dt) { const r = pet.rect(); if (Math.random() < dt * 1) pet.stage.fx.sparkles(r.x + Math.random() * r.w, r.y + Math.random() * r.h, pet.S, 1, 2); },
+    puppet: () => ({ crouch: 1, breath: 0, arm: -0.3, tail: -0.3, ear: -0.3, armSw: 0, tailSw: 0, earSw: 0, lean: 0, headPitch: 1 }),
     lift: () => 0,
   },
+  // 真實參考：蝴蝶停著曬太陽，翅膀慢慢張開、合起
   scales: {
-    zh: '灑下色彩繽紛的鱗粉', dur: 3.2,
-    start: pet => { pet.target = pet.randomPoint(80, 250); },
+    zh: '灑下色彩繽紛的鱗粉', dur: () => rnd(6, 10),
     update(pet, dt) {
-      pet.moveTo(pet.target.x, pet.target.y, WALK_SPEED * pet.S * 1.2, dt);
       const r = pet.rect();
-      if (Math.random() < dt * 18) burst(pet, r.x + Math.random() * r.w, r.y + r.h * 0.5, ['#ff5d8f', '#ffd84a', '#7ab8ff', '#9be15d', '#c070ff'], { n: 1, speed: 8, dir: Math.PI / 2, g: 30, life: 1.4, wobble: true });
+      if (Math.sin(pet.stateT * 1.6) > 0.6 && Math.random() < dt * 8) burst(pet, r.x + Math.random() * r.w, r.y + r.h * 0.5, ['#ff5d8f', '#ffd84a', '#7ab8ff', '#9be15d', '#c070ff'], { n: 1, speed: 8, dir: Math.PI / 2, g: 30, life: 1.4, wobble: true });
     },
+    puppet: pet => ({ arm: 0.1 + 0.7 * (0.5 + 0.5 * Math.sin(pet.stateT * 1.6)), armSw: 0, ear: 0.2, lean: 0 }),
   },
 
   // ---------- 小獅獅系列 ----------
@@ -291,21 +326,25 @@ export const HABITS = {
       walkThen(pet, t.x + (pet.x < t.x ? -1 : 1) * (pet.asset.w / 2 + 14) * S, t.y, 'sniffat');
     },
   },
+  // 真實參考：貓狗聞東西：身體伸長往前、低頭、鼻子一下一下動
   sniffat: {
-    zh: '湊過去聞一聞', dur: 1.8,
-    update(pet, dt, k) { if (once(pet, 'e', k > 0.5)) pet.showEmote(Math.random() < 0.6 ? '♪' : '?', 1); },
-    pose: (pet, p) => { p.rot = pet.facing * 0.14 + Math.sin(pet.stateT * 12) * 0.03; },
+    zh: '湊過去聞一聞', dur: () => rnd(2.5, 4),
+    update(pet, dt, k) { if (once(pet, 'e', k > 0.6)) pet.showEmote(Math.random() < 0.6 ? '♪' : '?', 1); },
+    puppet: pet => ({ lean: -3, headPitch: 1 + (Math.floor(pet.stateT / 0.3) % 2), crouch: 0, ear: 0.3, tail: 0.3 }),
     lift: () => 0,
   },
+  // 真實參考：貓、獅子生氣時毛豎起來、身體看起來變大、尾巴翹高
   mane: {
-    zh: '鬃毛變得熱呼呼', dur: 1.4,
+    zh: '鬃毛變得熱呼呼', dur: () => rnd(2, 3),
     start: pet => pet.showEmote('💢', 1),
-    update(pet, dt) { const h = pet.head(); if (Math.random() < dt * 20) burst(pet, h.x + rnd(-8, 8) * pet.S, h.y + 4 * pet.S, ['#ff6a2a', '#ffb13a'], { n: 1, speed: 20, g: -50, life: 0.5 }); },
+    update(pet, dt) { const h = pet.head(); if (Math.random() < dt * 10) burst(pet, h.x + rnd(-8, 8) * pet.S, h.y + 4 * pet.S, ['#ff6a2a', '#ffb13a'], { n: 1, speed: 20, g: -50, life: 0.5 }); },
+    puppet: () => ({ crouch: -1, ear: 0.5, tail: 0.7, headPitch: 0, lean: 1 }),
   },
+  // 真實參考：獅子吼叫：頭先往後、吸氣，再往前伸長脖子吼
   roar: {
-    zh: '大聲吼叫，大家都嚇一跳', dur: 1.4,
+    zh: '大聲吼叫，大家都嚇一跳', dur: () => rnd(2, 2.8),
     update(pet, dt, k) {
-      if (once(pet, 'roar', k > 0.25)) {
+      if (once(pet, 'roar', k > 0.35)) {
         const m = pet.mouth();
         pet.stage.fx.ring(m.x, m.y, pet.S, '#ff9d3a', 70);
         pet.stage.fx.ring(m.x, m.y, pet.S, '#ffe066', 45);
@@ -313,34 +352,38 @@ export const HABITS = {
         for (const o of around(pet, 300)) startle(o);
       }
     },
-    pose: (pet, p, k) => { if (k > 0.2 && k < 0.7) { p.sx = 1.06; p.sy = 1.06; p.rot = -pet.facing * 0.08; } },
+    puppet: (pet, k) => (k < 0.35 ? { headPitch: -2, lean: 2, crouch: -1, breath: 1 } : k < 0.8 ? { headPitch: 0, lean: -3, crouch: 1, tail: 0.6, ear: -0.3 } : { lean: 0, crouch: 0 }),
   },
 
   // ---------- 花蓓蓓系列：花粉、照顧花、庭園 ----------
+  // 真實參考：蒲公英的種子隨風輕輕晃（抱著花、整隻慢慢左右擺）
   pollen: {
-    zh: '收集花粉', dur: 3,
+    zh: '收集花粉', dur: () => rnd(5, 8),
     update(pet, dt) {
-      if (Math.random() > dt * 10) return;
+      if (Math.random() > dt * 5) return;
       const c = center(pet), S = pet.S, a = Math.random() * Math.PI * 2, r = 26 * S, v = 30 * S;
       pet.stage.fx.add({ rect: '#ffe066', size: S / 2, x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r, vx: -Math.cos(a) * v, vy: -Math.sin(a) * v, life: r / v });
     },
+    puppet: pet => ({ lean: 1.5 * Math.sin(pet.stateT * 1.8), arm: 0.5, armSw: 0.1 * Math.sin(pet.stateT * 1.8), headPitch: 1 }),
     end: pet => { idle(pet); pet.showEmote('♪', 1); },
   },
+  // 真實參考：園丁彎腰種花：身體前傾、頭低、手往下伸，種好再站直
   tend: {
-    zh: '種花、照顧花', dur: 2.4,
+    zh: '種花、照顧花', dur: () => rnd(3.5, 5.5),
     update(pet, dt, k) {
-      if (once(pet, 'plant', k > 0.35)) {
+      if (once(pet, 'plant', k > 0.5)) {
         const x = pet.x + pet.facing * (pet.asset.w / 2 + 3) * pet.S, y = pet.gy;
         pet.stage.addDecal(pick(art.flowers), x, y, 60);
-        pet.stage.fx.sparkles(x, y - 3 * pet.S, pet.S, 4, 8);
+        pet.stage.fx.sparkles(x, y - 3 * pet.S, pet.S, 3, 8);
       }
     },
-    pose: (pet, p) => { p.rot = pet.facing * 0.14; },
+    puppet: (pet, k) => (k < 0.8 ? { lean: -3, crouch: 2, headPitch: 2, arm: -0.4 + 0.15 * Math.sin(pet.stateT * 5) } : { lean: 0, crouch: 0, headPitch: -1 }),
     lift: () => 0,
     end: pet => { idle(pet); pet.showEmote('♥', 1); },
   },
+  // 真實參考：站在庭園邊很久，雙手慢慢張開（像曬太陽）
   garden: {
-    zh: '在身邊種出一圈花', dur: 3,
+    zh: '在身邊種出一圈花', dur: () => rnd(6, 10),
     update(pet, dt, k) {
       const n = Math.floor(k * 6);
       if (n > (pet.hd.n ?? -1) && n < 6) {
@@ -351,49 +394,64 @@ export const HABITS = {
         pet.stage.fx.sparkles(x, y - 3 * S, S, 2, 6);
       }
     },
+    puppet: (pet, k) => ({ crouch: -1, arm: 0.2 + 0.5 * Math.min(1, k * 3), headPitch: -1, lean: 0 }),
     end: pet => { idle(pet); pet.showEmote('♥', 1); },
   },
+  // 真實參考：羊吃草：低著頭一小步一小步往前，邊走邊嚼
   graze: {
-    zh: '低頭吃草', dur: 0.01,
-    start: pet => { pet.target = pet.randomPoint(15, 40); pet.set('forage', rnd(3, 5)); },
+    zh: '低頭吃草', dur: () => rnd(8, 14),
+    set: pet => (pet.lv && Math.hypot(pet.lv.x, pet.lv.y) > 2 * pet.S ? 'walk' : 'eat'),
+    start: pet => { pet.hd.next = rnd(1.5, 3); pet.target = { x: pet.x, y: pet.gy }; },
+    update(pet, dt) {
+      // 嚼一陣（站著）→ 往前挪一小步 → 再嚼
+      if (pet.stateT > pet.hd.next) { pet.target = pet.randomPoint(10, 25); pet.hd.next = pet.stateT + rnd(2, 4); }
+      pet.moveTo(pet.target.x, pet.target.y, WALK_SPEED * pet.S * 0.35, dt);
+    },
+    puppet: pet => ({ headPitch: 2, lean: -1, crouch: 1, ear: -0.1 + 0.1 * Math.sin(pet.stateT * 6), tail: 0.1 * Math.sin(pet.stateT * 3) }),
   },
 
   // ---------- 頑皮熊貓系列 ----------
+  // 真實參考：小孩逞強瞪人：身體前傾、握拳、低頭往上瞪，撐不住就笑著跳一下
   glare: {
-    zh: '努力瞪人，但忍不住笑出來', dur: 3,
+    zh: '努力瞪人，但忍不住笑出來', dur: () => rnd(4, 6),
+    set: pet => (pet.stateT / pet.dur > 0.75 ? 'happy' : 'idle'),
     start: pet => pet.showEmote('💢', 1.4),
     update(pet, dt, k) {
       const p = pet.stage.pointer;
-      if (p.known) pet.facing = p.x > pet.x ? 1 : -1;
-      if (once(pet, 'smile', k > 0.7)) pet.showEmote('♪', 1.2);
+      if (p.known && k < 0.75) pet.facing = p.x > pet.x ? 1 : -1;
+      if (once(pet, 'smile', k > 0.75)) pet.showEmote('♪', 1.2);
     },
-    pose: (pet, p, k) => { if (k < 0.7) { p.sy = 0.95; p.sx = 1.03; } },
-    lift: (pet, k) => (k > 0.7 ? Math.round(Math.abs(Math.sin((k - 0.7) * 20)) * 3) : 0),
+    puppet: (pet, k) => (k < 0.75 ? { lean: -2, headPitch: 1, arm: 0.5, crouch: 1, ear: -0.2 } : null),
+    lift: (pet, k) => (k > 0.75 ? Math.round(Math.abs(Math.sin((k - 0.75) * 20)) * 3) : 0),
   },
+  // 真實參考：動物聽聲音：站定、頭抬起來、慢慢往兩邊轉
   leafsense: {
-    zh: '咬著葉子感覺四周的動靜', dur: 3.5,
-    update(pet) { pet.facing = Math.floor(pet.stateT / 1.1) % 2 ? 1 : -1; },
+    zh: '咬著葉子感覺四周的動靜', dur: () => rnd(5, 8),
+    update(pet) { pet.facing = Math.floor(pet.stateT / 1.8) % 2 ? 1 : -1; },
     drawOver: (pet, ctx) => holdAtMouth(pet, ctx, art.leaf, { dy: -1 }),
+    puppet: () => ({ headPitch: -1, ear: 0.5, crouch: -1, arm: 0, breath: 0 }),
     lift: () => 0,
   },
 
   // ---------- 多麗米亞 ----------
+  // 真實參考：狗理毛：轉頭往身上舔，一下一下
   groom: {
-    zh: '整理毛，游標靠近時撒嬌', dur: 2,
+    zh: '整理毛，游標靠近時撒嬌', dur: () => rnd(4, 7),
     update(pet, dt, k) {
       const r = pet.rect(), p = pet.stage.pointer;
-      if (Math.random() < dt * 10) burst(pet, r.x + Math.random() * r.w, r.y + r.h * 0.5, ['#ffffff', '#f0f0f0'], { n: 1, speed: 12, g: 20, life: 1.2, wobble: true });
+      if (Math.random() < dt * 5) burst(pet, r.x + Math.random() * r.w, r.y + r.h * 0.5, ['#ffffff', '#f0f0f0'], { n: 1, speed: 12, g: 20, life: 1.2, wobble: true });
       if (once(pet, 'love', k > 0.5 && p.known && Math.hypot(p.x - pet.x, p.y - pet.y) < 250 * pet.S)) { pet.facing = p.x > pet.x ? 1 : -1; pet.showEmote('♥', 1.2); }
     },
-    pose: (pet, p) => { p.ox = Math.floor(pet.stateT * 20) % 2 ? 1 : 0; },
+    puppet: pet => ({ headPitch: 2, lean: 2, crouch: 1, ear: -0.2, tail: 0.2 * Math.sin(pet.stateT * 4), breath: Math.floor(pet.stateT / 0.4) % 2 }),
   },
 
   // ---------- 妙喵系列：控制不了的超能力、保護夥伴 ----------
+  // 真實參考：憋著一股力氣（全身繃緊、手舉起來、耳朵豎起），爆出去以後不好意思地縮起來
   psyburst: {
-    zh: '超能力不小心爆發，把旁邊的夥伴彈開', dur: 1.8,
+    zh: '超能力不小心爆發，把旁邊的夥伴彈開', dur: () => rnd(2.5, 3.5),
     start: pet => pet.showEmote('!', 0.6),
     update(pet, dt, k) {
-      if (!once(pet, 'burst', k > 0.35)) return;
+      if (!once(pet, 'burst', k > 0.45)) return;
       const c = center(pet), S = pet.S;
       pet.stage.fx.ring(c.x, c.y, S, T.psychic, 90);
       pet.stage.fx.ring(c.x, c.y, S, '#ffffff', 60);
@@ -407,7 +465,7 @@ export const HABITS = {
         o.showEmote('!', 0.8);
       }
     },
-    pose: (pet, p, k) => { if (k < 0.35) { p.sy = 1 + k * 0.3; } },
+    puppet: (pet, k) => (k < 0.45 ? { crouch: -2, arm: 0.8, ear: 0.6, breath: 1, lean: 0 } : { crouch: 2, arm: -0.3, ear: -0.4, headPitch: 2, lean: 1 }),
     end: pet => { idle(pet); pet.showEmote('…', 1.4); },
   },
   protect: {
@@ -417,18 +475,20 @@ export const HABITS = {
       return [...others].sort((a, b) => (g?.bondOf(pet.uid, b.uid) ?? 0) - (g?.bondOf(pet.uid, a.uid) ?? 0))[0];
     },
     begin(pet, o) {
-      meet(pet, o, { gap: 4, then: (a, b) => { a.partner = b; b.partner = a; startHabit(a, 'barrier'); b.set('wait', 2.4); } });
+      meet(pet, o, { gap: 4, then: (a, b) => { a.partner = b; b.partner = a; startHabit(a, 'barrier'); b.set('wait', 3.4); } });
     },
   },
+  // 真實參考：擋在同伴前面、張開手臂、耳朵張開（超能妙喵把耳朵內側的眼紋露出來）
   barrier: {
-    zh: '張開保護罩', dur: 2.2,
+    zh: '張開保護罩', dur: () => rnd(3, 4),
     update(pet, dt, k) {
       const o = pet.partner;
       if (!o) return;
-      const n = Math.floor(pet.stateT / 0.55);
+      const n = Math.floor(pet.stateT / 0.8);
       if (n !== pet.hd.n) { pet.hd.n = n; const c = center(o); pet.stage.fx.ring(c.x, c.y, pet.S, n % 2 ? '#7ab8ff' : T.psychic, (o.asset.w / 2 + 8)); }
       pet.facing = o.x > pet.x ? 1 : -1;
     },
+    puppet: () => ({ arm: 0.9, ear: 0.7, crouch: 1, lean: -1, legL: [-1, 0], legR: [1, 0] }),
     end(pet) {
       const o = pet.partner;
       pet.partner = null;
@@ -438,20 +498,23 @@ export const HABITS = {
   },
 
   // ---------- 獨劍鞘系列 ----------
+  // 真實參考：掛著的東西慢慢晃（像鐘擺，越到兩邊越慢）
   sway: {
-    zh: '劍身輕輕搖晃', dur: 3,
-    pose: (pet, p) => { p.rot = Math.sin(pet.stateT * 2.5) * 0.28; p.pivot = 'center'; },
+    zh: '劍身輕輕搖晃', dur: () => rnd(5, 9),
+    puppet: pet => ({ lean: 3 * Math.sin(pet.stateT * 1.6), armSw: 0.2 * Math.sin(pet.stateT * 1.6 - 0.6), tailSw: 0.2 * Math.sin(pet.stateT * 1.6 - 0.9) }),
   },
   drain: {
     zh: '偷偷吸一點夥伴的精氣（對方會想睡）', social: true,
     pick: (pet, others) => pick(others),
     begin(pet, o) {
-      meet(pet, o, { gap: 18, then: (a, b) => { a.partner = b; b.partner = a; startHabit(a, 'drainOn'); b.set('wait', 2.2); } });
+      meet(pet, o, { gap: 18, then: (a, b) => { a.partner = b; b.partner = a; startHabit(a, 'drainOn'); b.set('wait', 3.2); } });
     },
   },
+  // 真實參考：伸手（布條）慢慢靠過去、身體往對方傾
   drainOn: {
-    zh: '吸取精氣', dur: 2,
-    update(pet, dt) { const o = pet.partner; if (o) stream(pet, center(o), center(pet), ['#7ab8ff', '#b8d8ff'], { dt, rate: 25, speed: 80 }); },
+    zh: '吸取精氣', dur: () => rnd(2.5, 3.5),
+    update(pet, dt) { const o = pet.partner; if (o) { pet.facing = o.x > pet.x ? 1 : -1; stream(pet, center(o), center(pet), ['#7ab8ff', '#b8d8ff'], { dt, rate: 15, speed: 80 }); } },
+    puppet: (pet, k) => ({ arm: 0.3 + 0.6 * Math.min(1, k * 3), lean: -2, headPitch: 1 }),
     end(pet) {
       const o = pet.partner;
       pet.partner = null;
@@ -459,27 +522,30 @@ export const HABITS = {
       if (o) { if (o.partner === pet) o.partner = null; o.set('nap', rnd(4, 7)); o.showEmote('…', 1.2); bond(pet, o, 1); }
     },
   },
+  // 真實參考：劍術練習：兩手輪流快速往前揮、身體跟著前後移重心
   swordplay: {
-    zh: '兩把劍輪流快速揮舞', dur: 1.8,
-    update(pet, dt) { const c = center(pet); if (Math.random() < dt * 20) burst(pet, c.x + pet.facing * 10 * pet.S, c.y + rnd(-10, 10) * pet.S, ['#ffffff', '#d8e8ff'], { n: 2, speed: 60, spread: 0.6, dir: pet.facing > 0 ? 0 : Math.PI, g: 0, life: 0.15 }); },
-    pose: (pet, p) => { p.rot = (Math.floor(pet.stateT / 0.15) % 2 ? 1 : -1) * 0.35; p.pivot = 'center'; },
+    zh: '兩把劍輪流快速揮舞', dur: () => rnd(2.5, 4),
+    update(pet, dt) { const c = center(pet); if (Math.random() < dt * 10) burst(pet, c.x + pet.facing * 10 * pet.S, c.y + rnd(-10, 10) * pet.S, ['#ffffff', '#d8e8ff'], { n: 2, speed: 60, spread: 0.6, dir: pet.facing > 0 ? 0 : Math.PI, g: 0, life: 0.15 }); },
+    puppet: pet => { const s = Math.floor(pet.stateT / 0.3) % 2 ? 1 : -1; return { armSw: 0.8 * s, arm: 0.3, lean: -2 * (s > 0 ? 1 : 0.3), crouch: 1 }; },
   },
+  // 真實參考：換架勢：先縮起來（盾），再伸展開（劍）
   stance: {
-    zh: '切換盾牌與劍的架勢', dur: 1.3,
-    update(pet, dt, k) { if (once(pet, 'flash', k > 0.45)) { const c = center(pet); pet.stage.fx.sparkles(c.x, c.y, pet.S, 8, 20); pet.stage.audio.sfx('click'); } },
-    pose: (pet, p, k) => { const s = Math.sin(k * Math.PI); p.sx = 1 - s * 0.25; p.sy = 1 + s * 0.12; },
+    zh: '切換盾牌與劍的架勢', dur: () => rnd(2, 3),
+    update(pet, dt, k) { if (once(pet, 'flash', k > 0.5)) { const c = center(pet); pet.stage.fx.sparkles(c.x, c.y, pet.S, 8, 20); pet.stage.audio.sfx('click'); } },
+    puppet: (pet, k) => (k < 0.5 ? { crouch: 3, arm: -0.6, tail: -0.5, headPitch: 1 } : { crouch: -2, arm: 0.8, tail: 0.5, headPitch: -1 }),
     drawOver(pet, ctx) {
       const a = Math.sin(Math.min(1, pet.stateT / pet.dur) * Math.PI);
-      if (a > 0.3) { const r = pet.rect(); blit(ctx, pet.asset.white, r.x, r.y, pet.S, { flipX: pet.facing > 0, alpha: (a - 0.3) * 0.9 }); }
+      if (a > 0.6) { const r = pet.rect(); blit(ctx, pet.asset.white, r.x, r.y, pet.S, { flipX: pet.viewFacing > 0, alpha: (a - 0.6) * 0.8 }); }
     },
   },
 
   // ---------- 粉香香系列：香味 ----------
+  // 真實參考：嬰兒床的吊飾：懸著輕輕左右晃（52poke：粉香香懸停時像吊飾）
   perfume: {
-    zh: '散發香氣，把夥伴吸引過來', dur: 3,
+    zh: '散發香氣，把夥伴吸引過來', dur: () => rnd(5, 8),
     update(pet, dt, k) {
       const c = center(pet);
-      if (Math.random() < dt * 10) burst(pet, c.x + rnd(-8, 8) * pet.S, c.y, ['#ffb0d0', '#ffd6ea', '#e08ab8'], { n: 1, speed: 15, g: -15, life: 1.6, wobble: true });
+      if (Math.random() < dt * 6) burst(pet, c.x + rnd(-8, 8) * pet.S, c.y, ['#ffb0d0', '#ffd6ea', '#e08ab8'], { n: 1, speed: 15, g: -15, life: 1.6, wobble: true });
       if (once(pet, 'lure', k > 0.3)) {
         const fans = around(pet, 450);
         if (fans.length) {
@@ -489,44 +555,53 @@ export const HABITS = {
         }
       }
     },
+    puppet: pet => ({ lean: 2 * Math.sin(pet.stateT * 2.2), arm: 0.4, armSw: 0.15 * Math.sin(pet.stateT * 2.2 - 0.5), tailSw: 0.2 * Math.sin(pet.stateT * 2.2 - 0.8) }),
   },
+  // 真實參考：佛朗明哥的舞姿：手舉高、身體左右擺、停一下再換邊（52poke：芳香精的動作像佛朗明哥）
   aroma: {
-    zh: '用芳香讓身邊的夥伴放鬆', dur: 2.6,
+    zh: '用芳香讓身邊的夥伴放鬆', dur: () => rnd(4, 6),
     update(pet, dt, k) {
       const c = center(pet);
-      if (Math.random() < dt * 12) burst(pet, c.x + rnd(-10, 10) * pet.S, c.y, ['#ffb0d0', '#ffffff', '#e08ab8'], { n: 1, speed: 25, spread: 6.3, g: -10, life: 1.4, wobble: true });
+      if (Math.random() < dt * 6) burst(pet, c.x + rnd(-10, 10) * pet.S, c.y, ['#ffb0d0', '#ffffff', '#e08ab8'], { n: 1, speed: 25, spread: 6.3, g: -10, life: 1.4, wobble: true });
+      pet.facing = Math.floor(pet.stateT / 1.5) % 2 ? 1 : -1;
       if (once(pet, 'calm', k > 0.5)) for (const o of around(pet, 260)) { o.set('happy', 0.6); pet.stage.fx.hearts(o.head().x, o.head().y, pet.S, 1); bond(pet, o, 1); }
     },
+    puppet: pet => ({ arm: 0.9, armSw: 0.3 * Math.sin(pet.stateT * 4.2), lean: -2, crouch: -1, headPitch: -1 }),
   },
   string: {
     zh: '吐出黏答答的絲黏住夥伴', social: true,
     pick: (pet, others) => pick(others),
     begin(pet, o) {
-      meet(pet, o, { gap: 26, then: (a, b) => { a.partner = b; b.partner = a; startHabit(a, 'spin'); b.set('wait', 1); } });
+      meet(pet, o, { gap: 26, then: (a, b) => { a.partner = b; b.partner = a; startHabit(a, 'spin'); b.set('wait', 1.8); } });
     },
   },
+  // 真實參考：蜘蛛、蠶吐絲：身體往前壓低、頭一直對著對方
   spin: {
-    zh: '吐絲', dur: 1.2,
+    zh: '吐絲', dur: () => rnd(1.6, 2.2),
     update(pet, dt, k) {
       const o = pet.partner;
       if (!o) return;
-      if (k < 0.6) stream(pet, pet.mouth(), center(o), ['#ffffff', '#f0e8f0'], { dt, rate: 40, speed: 200 });
+      pet.facing = o.x > pet.x ? 1 : -1;
+      if (k < 0.6) stream(pet, pet.mouth(), center(o), ['#ffffff', '#f0e8f0'], { dt, rate: 30, speed: 200 });
       if (once(pet, 'hit', k > 0.6)) { o.partner = null; startHabit(o, 'stuck'); }
     },
+    puppet: () => ({ lean: -3, crouch: 1, headPitch: 0 }),
     end: pet => { pet.partner = null; pet.set('happy', 0.6); pet.showEmote('♪', 1); },
   },
+  // 真實參考：被黏住的動物用力掙扎：身體左右扭、壓低
   stuck: {
-    zh: '被黏住了', dur: 2,
+    zh: '被黏住了', dur: () => rnd(2.5, 3.5),
     start: pet => pet.showEmote('…', 1.6),
-    update(pet, dt) { const r = pet.rect(); if (Math.random() < dt * 6) burst(pet, r.x + Math.random() * r.w, r.y + Math.random() * r.h, ['#ffffff'], { n: 1, speed: 4, g: 0, life: 0.6 }); },
-    pose: (pet, p) => { p.ox = Math.floor(pet.stateT * 14) % 2 ? 1 : -1; p.sx = 0.96; },
+    update(pet, dt) { const r = pet.rect(); if (Math.random() < dt * 4) burst(pet, r.x + Math.random() * r.w, r.y + Math.random() * r.h, ['#ffffff'], { n: 1, speed: 4, g: 0, life: 0.6 }); },
+    puppet: pet => { const s = Math.sin(pet.stateT * 10); return { lean: 2 * s, crouch: 2, armSw: 0.4 * s, ear: -0.3 }; },
     lift: () => 0,
     end: pet => { idle(pet); pet.showEmote('💢', 1); },
   },
+  // 真實參考：小狗開心蹦跳：每一跳先蹲再彈，落地又蹲
   bounce: {
-    zh: '軟綿綿地彈跳', dur: 1.8,
-    lift: pet => Math.round(Math.abs(Math.sin(pet.stateT * Math.PI / 0.45)) * 8),
-    pose(pet, p) { const u = Math.abs(Math.sin(pet.stateT * Math.PI / 0.45)); p.sx = 1.15 - u * 0.2; p.sy = 0.85 + u * 0.2; },
+    zh: '軟綿綿地彈跳', dur: () => rnd(2.5, 4),
+    lift: pet => Math.round(Math.max(0, Math.sin(pet.stateT * Math.PI / 0.5)) * 8),
+    puppet: pet => { const u = Math.sin(pet.stateT * Math.PI / 0.5); return u > 0 ? { crouch: -1, arm: 0.5 } : { crouch: 2, arm: 0 }; },
   },
   sweettooth: {
     zh: '聞到甜甜的誘餌就跑過去',
@@ -1155,6 +1230,9 @@ export const HABIT_ACTIONS = {
       return pet.floats ? Math.round(Math.sin(pet.t * 2) * 2) : Math.floor(pet.t * 1.6) % 2;
     },
     pose: (pet, p, k) => pet.habit?.pose?.(pet, p, k),
+    // 身體怎麼擺（像素木偶的參數，蓋過那一組動作的目標；彈簧會自己過渡）、播哪一組動作（PR-N4）
+    puppet: (pet, k) => pet.habit?.puppet?.(pet, k),
+    animSet: pet => (typeof pet.habit?.set === 'function' ? pet.habit.set(pet) : pet.habit?.set),
     alpha: pet => pet.habit?.alpha?.(pet) ?? 1,
     intangible: pet => pet.habit?.intangible?.(pet) ?? false,
     drawOver: (pet, ctx) => pet.habit?.drawOver?.(pet, ctx),

@@ -185,10 +185,11 @@ export class PuppetView extends AnimView {
     this.puppet = true;
   }
   // 每一幀：set＝哪一組動作、ph＝這一組的步相（0–1）、extra＝整張圖的姿勢翻成的 lean／crouch（scene/pet.js 的 toPuppet）、rest＝在休息
-  drive(dt, setName, ph, extra = {}, rest = false) {
+  // over＝直接指定的參數（習性的身體姿勢，habits.js 的 puppet）：蓋過這一組動作的目標，其他照這一組
+  drive(dt, setName, ph, extra = {}, rest = false, over = null) {
     const name = this.anim.sets[setName] ? setName : 'idle';
     this.set = this.anim.sets[name];
-    const tg = flat(this.anim.target(name, ph));
+    const tg = flat(over ? { ...this.anim.target(name, ph), ...over } : this.anim.target(name, ph));
     tg.lean = (tg.lean ?? 0) + (extra.lean ?? 0);
     tg.crouch = (tg.crouch ?? 0) + (extra.crouch ?? 0);
     const x = this.x, v = this.v;

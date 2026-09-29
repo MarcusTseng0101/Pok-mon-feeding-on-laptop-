@@ -81,6 +81,24 @@ export function weigh(pet, choices) {
 }
 
 // 做了這個選項以後：滿足需求、想一個理由、記下來
+// 附近（FRIEND_NEAR 美術像素以內）的好朋友（感情夠好：M.FRIEND_BOND）或剛一起玩過的（PLAYED_RECENT 以內）；有好幾隻挑感情最好的
+const FRIEND_NEAR = 160; // 猜的，可調整
+const PLAYED_RECENT = 30 * MIN; // 猜的，可調整
+function friendNear(pet) {
+  const g = pet.stage.game;
+  if (!g) return null;
+  const mem = pet.mon.memory ?? [], now = Date.now();
+  let best = null, bestBond = -Infinity;
+  for (const o of pet.stage.pets.values()) {
+    if (o === pet || o.leaving) continue;
+    if (Math.hypot(o.x - pet.x, o.gy - pet.gy) / pet.S > FRIEND_NEAR) continue;
+    const b = g.bondOf(pet.uid, o.uid);
+    const played = recall(mem, { k: 'played-with', with: o.uid, since: now - PLAYED_RECENT }).length > 0;
+    if ((b >= M.FRIEND_BOND || played) && b > bestBond) { best = o; bestBond = b; }
+  }
+  return best;
+}
+
 export function afterChoice(pet, [name, , , cat]) {
   const st = pet.stage, game = st.game;
   const mind = ensureMind(pet);
@@ -89,6 +107,7 @@ export function afterChoice(pet, [name, , , cat]) {
   // 對象：一起玩的夥伴、一群裡的其他成員；練習的話找競爭對手
   let otherPet = pet.partner ?? pet.group?.members?.find(o => o !== pet) ?? null;
   if (!otherPet && cat === 'train') otherPet = topRival(pet)?.pet ?? null;
+  if (!otherPet && cat === 'rest') otherPet = friendNear(pet); // 休息：感情好的就在旁邊的話，理由會提到牠（PR-N4b）
   const other = otherPet && game ? {
     name: nameOf(st, otherPet.mon),
     bond: game.bondOf(pet.uid, otherPet.uid),
