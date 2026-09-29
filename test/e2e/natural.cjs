@@ -100,7 +100,7 @@ const test = async ({ page }, check) => {
         Object.assign(p.mon, { fullness: 150, enjoyment: 150 });
         p.mon.mind = null; p.mon.memory = [];
         p.x = stage.W * (0.1 + 0.8 * ((i + 0.5) / pets.length)); p.gy = stage.H * (0.5 + 0.3 * rng());
-        p.vx = p.vy = p.vz = p.z = 0; p.partner = null; p.group = null; p.onArrive = null; p.reserved = null; p.perch = null;
+        p.vx = p.vy = p.vz = p.z = 0; p.lv = { x: 0, y: 0 }; /* 移動速度也清掉：以前上一個種子留下的速度讓第一幀就在滑（被算成瞬間起步） */ p.partner = null; p.group = null; p.onArrive = null; p.reserved = null; p.perch = null;
         p.set('idle', 0.5 + rng());
       });
       const rec = pets.map(p => ({
@@ -109,7 +109,7 @@ const test = async ({ page }, check) => {
         wdist: 0, wcyc: 0, bumps: 0, stride: p.view?.anim?.info?.stride || 2, lastV: 0, lastF: p.viewFacing ?? p.facing, jumpStates: {}, lastSet: p.animSet(), lastCanvas: null, setSwitch: 0, bigSwitch: 0, switchDiffs: [], mv: [], soc: [], frames: new Set(),
       }));
       for (let i = 0; i < N; i++) {
-        const before = pets.map(p => ({ x: p.x, y: p.gy, a: p.animT }));
+        const before = pets.map(p => ({ x: p.x, y: p.gy, a: p.animT, kv: Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 }));
         const stopped = stage.stopT > 0; // 這一幀開始時在「頓一下」（stage.update 會把 dt 乘 0.12）
         director.update?.(dt);
         stage.update(dt);
@@ -120,13 +120,15 @@ const test = async ({ page }, check) => {
           o.mv.push(mv ? 1 : 0); o.soc.push(SOCIAL(p) || p.bumpT > 0 || Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 || stopped || stage.stopT > 0 ? 1 : 0); // M9：社交、互相擠到、被撞、「頓一下」（全舞台一起放慢）的時間扣掉：兩隻之間的互動或全部一起的，不是各自決定要動
           if (mv) o.moving++;
           // M1：一幀之內的速度變化超過加速度上限（被拎、掉落、放招、瞬移、被推或被撞到的那幾幀不算）
-          const knocked = Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 || p.hopT > 0; // 被打到、被撞飛
+          const knocked = b.kv || Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 || p.hopT > 0; // 被打到、被撞飛（這一幀開始時還有擊退速度也算：擊退在這一幀裡衰減到 0，這一幀還是被推了）
           const hitStop = stage.stopT > 0 || stopped; // 招式打中時整個舞台放慢一下（「頓一下」）：大家一起慢，不是牠自己瞬間減速
           const teleport = p.state === 'habit' && p.habit?.teleport; // 瞬移型習性（規格 M1 的排除；habits.js 標 teleport）
-          const jump = !EXEMPT.has(p.state) && !teleport && !knocked && !hitStop && Math.abs(v - o.lastV) > jumpLimit(p);
+          const exempt = EXEMPT.has(p.state) || teleport || knocked || hitStop;
+          // 上一幀是排除的（頓一下時 dt × 0.12、放招、被拎、被打到）：這一幀的速度不跟它比（PR-N4 修量法：以前頓完的下一幀會被算成「瞬間起步」，26 → 3 剛好是 × 0.12）
+          const jump = !exempt && !o.lastExempt && Math.abs(v - o.lastV) > jumpLimit(p);
           if (jump && p.bumpT > 0) o.bumps++; // 被別隻擠了一下（physics.js 推開重疊）：另外算，跟被打到一樣不算在 M1
           else if (jump) { o.jumps++; o.jumpStates[p.state] = (o.jumpStates[p.state] ?? 0) + 1; }
-          o.lastV = v;
+          o.lastV = v; o.lastExempt = exempt;
           // M4：畫出來的面向翻過去之前，有沒有做至少 0.12 秒的轉身（轉圈、跳舞、搖頭這種本來就要快速翻的不算）
           const vf = p.viewFacing ?? p.facing;
           // 轉圈這種本來就直接翻的（同一幀結束的也算：instantFlipAt）不算
@@ -142,7 +144,9 @@ const test = async ({ page }, check) => {
           if (p.state === 'walk' && (p.explore ?? true)) {
             o.walk ??= { t: 0, still: 0, paused: false };
             o.walk.t += dt;
-            if (!mv) o.walk.still += dt; else { if (o.walk.still >= 0.3 && o.walk.still <= 2) o.walk.paused = true; o.walk.still = 0; }
+            // 停著＝自己沒有在走（lastStepDist：這一幀自己走了幾格，跟 M2 一樣）。被別隻擠、被推（例如旁邊在集合遊行）位置會變，但不是牠在走（PR-N4 修量法；舊版沒有這個欄位就看位置）
+            const selfMv = p.lastStepDist != null ? p.lastStepDist / dt > 2 : mv;
+            if (!selfMv) o.walk.still += dt; else { if (o.walk.still >= 0.3 && o.walk.still <= 2) o.walk.paused = true; o.walk.still = 0; }
           } else if (o.walk) {
             // 散步停在一個 0.3–2 秒的停頓裡被叫走（遊行、被找去玩）：那一次停頓也算（以前要等「又開始走」才算，會漏掉）
             if (o.walk.still >= 0.3 && o.walk.still <= 2) o.walk.paused = true;
@@ -178,6 +182,7 @@ const test = async ({ page }, check) => {
       const per = {};
       // M7：木偶圖裡有沒有原圖沒有的顏色（糊掉、混色）；部位轉的角度有沒有超過上限（gfx/rig.js 的 PART_MAX）
       const rigMod = await import('/src/renderer/gfx/rig.js');
+      const etho = await import('/src/core/ethogram.js'); // M8：每一種自己的上限（switchMaxAt）
       const colorsOf = cv => { const s = new Set(), d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 0) s.add(`${d[i]},${d[i + 1]},${d[i + 2]},${d[i + 3]}`); return s; };
       rec.forEach((o, k) => {
         const p = pets[k], base = colorsOf(stage.sprites.peek(p.spriteKey, p.mon.shiny).canvas);
@@ -197,7 +202,7 @@ const test = async ({ page }, check) => {
           M5_share: share,
           M7_rot: Math.round(100 * o.rot / N), M7_scale: Math.round(100 * o.scale / N), M7_rotFrames: o.rot, M7_scaleFrames: o.scale,
           M7_frames: o.frames.size, M7_newColors: o.newColors, M7_partMax: o.partMax == null ? null : +o.partMax.toFixed(3), M7_partLimit: o.partLimit,
-          M8_changesPerMin: +(o.changes / MIN).toFixed(1), M8_medianBout: +med(o.runs).toFixed(2),
+          M8_changesPerMin: +(o.changes / MIN).toFixed(1), M8_max: etho.switchMaxAt?.(o.sp, stage.env.hour, {}, stage.dex.get(o.sp)?.types ?? []) ?? null, M8_medianBout: +med(o.runs).toFixed(2),
           M8_bigSwitchPct: o.setSwitch ? Math.round(100 * o.bigSwitch / o.setSwitch) : 0, M8_switchMedian: +(med(o.switchDiffs)).toFixed(2), M8_big: o.bigList ?? [],
           M8_maxStep: o.maxStep ?? null, M8_switchStep: o.switchStep ?? null, M8_steps: o.stepList ?? [],
           moving: Math.round(100 * o.moving / N),
@@ -364,8 +369,9 @@ const test = async ({ page }, check) => {
   for (const s of r) for (const [sp, v] of Object.entries(s.per)) check(Object.keys(v.states).length >= 3, `種子 ${s.seed} 的 ${sp} 只做了 ${Object.keys(v.states).join('、')}`);
 
   // 門檻（PR-N2）：移動做好以後這三個每一隻、每個種子都要過（規格 §7.1，門檻沒動）。
-  // M1（瞬間起步）只報告：剩下的大多是習性自己搬位置，使用者決定在 PR-N4／N5 重寫習性時一起達成 0
+  // M1（瞬間起步）＝ 0（使用者決定在 PR-N4 起達成；照規格排除被拎、掉落、放招、被打到／被擠、瞬移型習性、「頓一下」）
   for (const s of r) for (const [sp, v] of Object.entries(s.per)) {
+    check(v.M1_jumpsPerMin === 0, `M1 瞬間起步：種子 ${s.seed} 的 ${sp} 每分鐘 ${v.M1_jumpsPerMin} 次（要 0）：${JSON.stringify(v.M1_states)}`);
     if (v.M2_slide != null) check(v.M2_slide >= 0.85 && v.M2_slide <= 1.15, `M2 腳打滑：種子 ${s.seed} 的 ${sp} 是 ${v.M2_slide}（要 0.85–1.15）`);
     if (v.M3_pausedWalks != null) check(v.M3_pausedWalks >= 60, `M3 走走停停：種子 ${s.seed} 的 ${sp} 只有 ${v.M3_pausedWalks}%（要 ≥ 60%）`);
     if (v.M4_turnPose != null) check(v.M4_turnPose === 100, `M4 轉身：種子 ${s.seed} 的 ${sp} 只有 ${v.M4_turnPose}%（要 100%）`);
@@ -374,7 +380,7 @@ const test = async ({ page }, check) => {
     check(v.M7_newColors === 0, `M7 原圖沒有的顏色：種子 ${s.seed} 的 ${sp} 有 ${v.M7_newColors} 種`);
     check(v.M7_partMax != null && v.M7_partMax <= v.M7_partLimit + 1e-9, `M7 部位角度：種子 ${s.seed} 的 ${sp} 轉到 ${v.M7_partMax}（上限 ${v.M7_partLimit}）`);
     check(v.M8_maxStep != null && v.M8_maxStep <= 1, `M8 姿勢跳格：種子 ${s.seed} 的 ${sp} 相鄰兩幀有參數一次變 ${v.M8_maxStep} 級：${v.M8_steps.join('；')}`);
-    // M8 的「每分鐘換狀態 ≤ 6」：main 就是 9–16 次，是選下一件事的節奏（姿勢改不到）。使用者決定 N3 只報告，在 PR-N4／N5 重寫習性時一起達成
+    // M8 的「每分鐘換狀態 ≤ 表的值」：使用者決定照模板給每一種自己的上限（core/ethogram.js 的 switchMaxAt），N4 只報告，PR-N5 結束時每一隻都要過
   }
   // M9（不同步，使用者同意的門檻修改）：規格原本是「66 對取最大值 < 0.3」，但休息變長以後，連不同種子的兩隻（一定不相干）最大值也有 0.2–0.4，
   // 量不出同步。改成：實際量到的最大值 ≤ 不相干配對「一樣多對取最大」的 99 百分位＝不比純巧合更同步（算法見上面的 M9_test）
@@ -394,7 +400,7 @@ const test = async ({ page }, check) => {
       M4: { median: med(col('M4_turnPose')), worst: worst('M4_turnPose', false) },
       M6: s.M6_jsd,
       M7: { rot: worst('M7_rot'), scale: worst('M7_scale'), newColors: worst('M7_newColors'), partMax: worst('M7_partMax'), frames: worst('M7_frames') },
-      M8: { changesMedian: med(col('M8_changesPerMin')), changesWorst: worst('M8_changesPerMin'), boutMedian: med(col('M8_medianBout')), bigSwitchWorst: worst('M8_bigSwitchPct'), maxStep: worst('M8_maxStep'), switchStep: worst('M8_switchStep') },
+      M8: { overMax: Object.values(s.per).filter(v => v.M8_max != null && v.M8_changesPerMin > v.M8_max).length, changesMedian: med(col('M8_changesPerMin')), changesWorst: worst('M8_changesPerMin'), boutMedian: med(col('M8_medianBout')), bigSwitchWorst: worst('M8_bigSwitchPct'), maxStep: worst('M8_maxStep'), switchStep: worst('M8_switchStep') },
       M9: { ...s.M9_corr, nullMax: s.M9_null?.max },
     };
   });

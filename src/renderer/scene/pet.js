@@ -21,8 +21,8 @@ import { TRAVEL_ACTIONS, startDepart, drawCarried } from './travel.js';
 import { traitsOf } from '../../core/mind.js';
 import { CURSOR_ACTIONS, cursorOptions, wantsToPounce, startPounce, besideCursor } from './cursor.js';
 import { LIFE_ACTIONS, lifeOptions, boostLife } from './lifeacts.js';
-import { actWeight, nextBout, focusBout } from '../../core/ethogram.js';
-import { step, coast, turnTime, wanderPath, pauseTick, RUN_STRIDE } from './locomotion.js';
+import { actWeight, nextBout, focusBout, ACTS as BOUT_ACTS } from '../../core/ethogram.js';
+import { step, coast, turnTime, wanderPath, pauseTick, gait, topSpeed, RUN_STRIDE } from './locomotion.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
@@ -51,6 +51,10 @@ const ANIM_SET = {
   happy: 'happy', hop: 'happy', greet: 'happy', dance: 'happy', cheer: 'happy', twirl: 'happy', bounce: 'happy', hug: 'happy', hugging: 'happy', flashypose: 'happy', keyfound: 'happy',
 };
 const RUNS = new Set(['run', 'chase', 'flee', 'chaseCursor', 'pounce', 'oni', 'tag']);
+const CHEER_MAX = 0.8; // 這麼短以內的 happy 算「互動結束的開心」 // 猜的，可調整
+const REST_GUARD = 0.8; // 休息的前多少不會被找去玩 // 猜的，可調整
+const HEAD_ROOM = 14; // 頭上留幾格（美術像素）：嚇一跳往上跳 10 格＋開心彈一下 4 格也碰不到螢幕上緣，不用瞬間把整隻往下推（PR-N4，規格 M1；以前 6） // 猜的，可調整
+const EDGE_SOFT = 3; // 自己走、滑到螢幕邊可以超出幾格（美術像素），照減速度停下 // 猜的，可調整
 const FILLER_MAX = 5; // 這麼短以內的 idle 算「做完一件事的過場」（各處寫的是 1–4.5 秒；測試、導演要牠停著的都是 10 秒以上） // 猜的，可調整
 const KEEP_ARRIVE = new Set(['walk', 'run', 'trip']); // 換到這些狀態時留著 onArrive（還在往那裡走）
 // 這些狀態本來就是要快速翻來翻去（轉圈、跳舞、搖頭）：面向直接翻，不做轉身
@@ -139,6 +143,7 @@ export class Pet {
     const s = ANIM_SET[this.state] ?? this.act?.animSet?.(this); // 習性可以指定播哪一組（habits.js 的 set）
     if (s) return s;
     const lp = this.lastPos, moving = lp && Math.hypot(this.x - lp.x, this.gy - lp.y) > 0.25 * this.S;
+    if (this.cheerT > 0 && !moving) return 'happy'; // 互動結束開心地舉手（停著的時候）
     return moving ? (RUNS.has(this.state) ? 'run' : 'walk') : 'idle';
   }
   get S() { return this.stage.S; }
@@ -148,6 +153,9 @@ export class Pet {
   get y() { return this.gy - (this.alt + this.z) * this.S; }
   restY() { return this.gy - this.alt * this.S; }
   set(state, dur = 0) {
+    // 互動結束的「開心」（0.6 秒，遊行、合照、切磋、追完、吃完…）：彈一下、舉手（cheerT），不另外切一個狀態，
+    // 接著直接挑下一件事（使用者決定的 M8 做法：以前每次互動結束都多換一次狀態）
+    if (state === 'happy' && dur <= CHEER_MAX && !this.guest) { this.cheerT = dur; this.hopT = Math.max(this.hopT ?? 0, 0.25); state = 'idle'; dur = 1; }
     const was = this.state;
     this.state = state; this.stateT = 0; this.dur = dur;
     // 不是在往某個地方走了（被叫去看東西、被拎起來、嚇一跳…）：「走到了要做什麼」也不要了，不然會留著舊的（規格 F10）。
@@ -157,6 +165,8 @@ export class Pet {
     // 不是「下一件事」選出來的休息、又很短的 idle＝過場：這一幀 update 結束時直接挑下一件事（呼叫的人接著換了別的狀態就照它的）。
     // 長的（測試、導演要牠停著）、nextBout 選的休息（restIdle）照舊
     this.fillerIdle = state === 'idle' && !this.restIdle && dur <= FILLER_MAX;
+    if (this.boutRep && state !== 'idle' && state !== this.boutRep.name) this.boutRep = null; // 被叫去做別的：這一段玩完了
+    if (this.restBout && state !== this.restBout.state) this.restBout = null; // 休息結束了（或被叫走）
     this.restIdle = false;
     // 跌倒或頭暈時，感情好的夥伴可能會跑來安慰
     if ((state === 'trip' || state === 'dizzy') && was !== state && !this.leaving && !this.guest) maybeComfort(this);
@@ -167,7 +177,7 @@ export class Pet {
     if (this.perch) { const pb = perchBounds(this); if (pb) return pb; }
     const a = this.asset, S = this.S, st = this.stage;
     const half = (a.w * S) / 2;
-    return { x0: half, x1: st.W - half, y0: (a.h + this.alt + 6) * S, y1: st.H - 3 * S };
+    return { x0: half, x1: st.W - half, y0: (a.h + this.alt + HEAD_ROOM) * S, y1: st.H - 3 * S };
   }
   clamp() {
     const b = this.bounds();
@@ -281,7 +291,8 @@ export class Pet {
   // 可以被其他夥伴找去玩／被打斷的狀態
   // reserved：正在過去陪你（晚睡時走到游標旁邊），別隻不能在半路找牠玩
   // 閒著、可以被找去玩：正要去看日落、正在看日落的不算（director.js 安排的）
-  get free() { return ['idle', 'walk', 'sit', 'look', 'stretch'].includes(this.state) && !this.leaving && !this.reserved && !this.sunsetSit && !(this.state === 'sit' && this.t < (this.gazeWestUntil ?? 0)); }
+  // 正在休息（nextBout 選的休息）的前 80%：不會被找去玩（動物休息時不會一直被拉起來；使用者決定的 M8 做法）
+  get free() { return ['idle', 'walk', 'sit', 'look', 'stretch'].includes(this.state) && !(this.restBout?.state === this.state && this.t < this.restBout.until) && !this.leaving && !this.reserved && !this.sunsetSit && !(this.state === 'sit' && this.t < (this.gazeWestUntil ?? 0)); }
 
   // ---------- 反應 ----------
   onStroke(result) {
@@ -362,6 +373,7 @@ export class Pet {
     const st = this.stage, S = this.S;
     this.lastPos = { x: this.x, y: this.gy, dt }; // 碰撞時用來估計速度
     this.hopT = Math.max(0, (this.hopT ?? 0) - dt); // 被撞到時彈一下
+    this.cheerT = Math.max(0, (this.cheerT ?? 0) - dt); // 開心地舉手（見 set）
     this.t += dt;
     this.stateT += dt;
     // 轉身做完：畫出來的面向才翻過去
@@ -457,10 +469,16 @@ export class Pet {
         break;
       }
       case 'roll': {
-        const b = this.bounds();
-        const ramp = Math.max(0, Math.min(1, this.stateT / 0.2, (this.dur - this.stateT) / 0.2)); // 前後 0.2 秒加速、減速（猜的，可調整）
-        this.x += this.rollDir * 60 * S * ramp * dt;
-        if (this.x <= b.x0 || this.x >= b.x1) this.rollDir *= -1;
+        // 打滾：跟走路一樣有加速度上限（PR-N4，規格 M1：以前直接改位置，碰到邊瞬間反向）；快到邊先減速再彈回來，快結束時慢下來
+        const b = this.bounds(), lv = (this.lv ??= { x: 0, y: 0 });
+        const acc = topSpeed(this, RUN_SPEED * S, WALK_SPEED) / gait(this).acc;
+        const room = this.rollDir > 0 ? b.x1 - this.x : this.x - b.x0;
+        if (room < (lv.x * lv.x) / (2 * acc) + 4 * S && Math.sign(lv.x) === this.rollDir) this.rollDir *= -1; // 照現在的速度煞車要多遠：來不及就提早轉向
+        const want = Math.min(60 * S, Math.sqrt(2 * acc * Math.max(0, room)), acc * Math.max(0, this.dur - this.stateT));
+        const dv = this.rollDir * want - lv.x;
+        lv.x += Math.sign(dv) * Math.min(Math.abs(dv), acc * dt); lv.y = 0;
+        this.x += lv.x * dt;
+        this.moved = true; // 這一幀自己動過了（locomotion 的 coast 不要再滑一次）
         if (done) { this.set('idle', 1); if (Math.random() < 0.5) this.showEmote('♪', 1); }
         break;
       }
@@ -545,7 +563,11 @@ export class Pet {
     // 走出螢幕（出門）、從螢幕外走進來（回家）的時候本來就在螢幕外：不要夾回來，不然會卡在邊上
     const offscreen = (this.state === 'depart' && this.departure?.phase === 'out') || this.state === 'tripReturn';
     if (this.state !== 'held' && !offscreen) {
-      const b = this.bounds(), lv = this.lv ?? {};
+      const b0 = this.bounds(), lv = this.lv ?? {};
+      // 軟邊（PR-N4，規格 M1）：自己走、滑過去的可以超出一點點（EDGE_SOFT 格），照減速度停下，不會撞牆一樣瞬間停住；
+      // 再超出去（或被丟出去）才夾回來
+      const soft = this.state === 'fall' ? 0 : EDGE_SOFT * S;
+      const b = { x0: b0.x0 - soft, x1: b0.x1 + soft, y0: b0.y0 - soft, y1: b0.y1 + soft };
       // 走到邊上被擋住：那個方向的走路速度也歸零（不然會一直往邊上滑、看起來是瞬間停住）
       if (this.x < b.x0) { this.x = b.x0; this.vx = Math.abs(this.vx) * 0.5; if (lv.x < 0) lv.x = 0; }
       if (this.x > b.x1) { this.x = b.x1; this.vx = -Math.abs(this.vx) * 0.5; if (lv.x > 0) lv.x = 0; }
@@ -562,7 +584,13 @@ export class Pet {
     }
     if (this.leaving) this.alpha = Math.max(0, this.alpha - dt * 3);
     // 換到過場的 idle（這一幀、或上一幀在別的地方被換的）：直接挑下一件事（見 set()）
-    if (this.fillerIdle && this.state === 'idle' && !this.guest && !this.leaving) { this.fillerIdle = false; this.decide(); }
+    if (this.fillerIdle && this.state === 'idle' && !this.guest && !this.leaving) {
+      this.fillerIdle = false;
+      // 一段裡重複做的小動作（ACTS 的 rep）：這一段還沒滿就再做一次，滿了才挑下一件事
+      const r = this.boutRep, env = this.stage.env;
+      if (r && this.t < r.until && !env.sleepy && !env.focus && !this.perch) r.start(r.rep);
+      else { this.boutRep = null; this.decide(); }
+    }
   }
 
   // 每一幀、所有夥伴都 update 完以後（stage.update 呼叫）：
@@ -637,6 +665,7 @@ export class Pet {
     this.bedId = null; // 睡醒了：床空出來
     this.homeSpot = null; // 基地空地上占的那一格也空出來（scene/home.js）
     this.path = null; this.explore = false; // 上一次散步的路線
+    this.boutRep = null;
     this.walkLimit = null;
     if (st.game?.tripStatus(this.uid) === 'away') { startDepart(this); return; } // 已經出發了（例如走到一半被拎起來）：繼續走
 
@@ -693,7 +722,7 @@ export class Pet {
       run: d => { this.target = this.randomPoint(80, 260); this.set('run', d); },
       spin: () => this.set('spin', 0.9),
       dance: d => this.set('dance', d),
-      roll: () => { this.rollDir = this.facing; this.set('roll', 1); },
+      roll: () => { const b = this.bounds(); this.rollDir = this.x - b.x0 > b.x1 - this.x ? -1 : 1; this.facing = this.rollDir; this.set('roll', 1); }, // 往空間大的那邊滾
       play: () => {
         const o = others[Math.floor(Math.random() * others.length)];
         this.partner = o; o.partner = this;
@@ -727,7 +756,11 @@ export class Pet {
     const c = bout && offers.find(o => o[0] === bout.name && o[1] > 0);
     if (!c) { this.restIdle = true; this.set('idle', rp(2, 4)); return; }
     this.bout = bout; // 測試、之後的移動（PR-N2）用：這一段屬於哪一類
-    c[2](bout.dur);
+    this.restBout = null;
+    const rep = BOUT_ACTS[c[0]]?.rep;
+    if (rep) { c[2](rep); this.boutRep = { name: this.state, start: c[2], rep, until: this.t + bout.dur }; } // 重複做到這一段滿
+    else c[2](bout.dur);
+    if (bout.kind === 'rest' && this.state !== 'walk') this.restBout = { state: this.state, until: this.t + (this.dur || bout.dur) * REST_GUARD }; // 走去休息的地方的路上不算
     afterChoice(this, c);
   }
 

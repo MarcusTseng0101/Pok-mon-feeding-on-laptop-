@@ -14,6 +14,7 @@ const RUN_HZ = 6; // 跑（猜的，可調整）
 // 跑的時候每一步有騰空，身體往前的距離比腳跨的多（木偶的腳不能畫得跨更開；猜的，可調整）。Pet.settle 播跑步動畫也照這個
 export const RUN_STRIDE = 1.5;
 const RUN_OVER = 1.5; // 呼叫的人給的速度超過走路速度的幾倍算在跑（決定用哪個步頻上限）
+const RUN_REF = 72 / 26; // 跑步速度是走路的幾倍（behaviors.js 的 RUN_SPEED ÷ WALK_SPEED）：加速度的上限照跑步起步算
 const ARRIVE = 2; // 離目標幾個美術像素以內算到了
 const AVOID = 1.6; // 腳印距離小於這個（1＝剛好碰到）就開始繞
 
@@ -38,7 +39,8 @@ export function step(pet, tx, ty, speed, dt, walkSpeed) {
   const S = pet.S, g = gait(pet);
   const lv = (pet.lv ??= { x: 0, y: 0 });
   const vmax = topSpeed(pet, speed, walkSpeed);
-  const acc = vmax / g.acc;
+  // 加速度上限依身體（規格 F2）：呼叫的人要比跑步還快（衝過去、被叫過去）也不會加速得比跑步起步還猛（規格 M1）
+  const acc = Math.min(vmax, topSpeed(pet, walkSpeed * S * RUN_REF, walkSpeed)) / g.acc;
   const dx = tx - pet.x, dy = ty - pet.gy, d = Math.hypot(dx, dy);
   pet.moved = true;
   // 翻面（有遲滯）：目標在背後、而且不是很近，持續 FLIP_HOLD 秒才轉
@@ -106,7 +108,7 @@ export function turnTime(pet) { return gaitOf(pet.mon.species).turn; }
 // ---------- 探索：走走停停、微彎的路線 ----------
 // 相關隨機漫步（correlated random walk）：每一段的方向跟上一段差一點點（大多在 ±30° 以內），不是直直走到隨機點；
 // 間歇式移動（Kramer & McLaughlin 2001）：走一陣就停下來看一看再走。有目的地的走路（去吃、去基地）不停
-const LEGS = [2, 3]; // 幾段（猜的，可調整）
+const LEGS = [3, 4, 5]; // 幾段（PR-N4 從 2–3 段拉長：散步一段 10 秒左右，中間照樣走走停停，規格 M8；猜的，可調整）
 const LEG_LEN = [30, 70]; // 一段幾個美術像素（猜的，可調整）
 const TURN_SD = 0.5; // 每段轉的角度（弧度）的標準差（猜的，可調整）
 const WALK_BEFORE_PAUSE = [0.8, 2]; // 走幾秒就停一下（猜的，可調整）
