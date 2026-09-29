@@ -168,6 +168,10 @@ export class Pet {
     if (this.boutRep && state !== 'idle' && state !== this.boutRep.name) this.boutRep = null; // 被叫去做別的：這一段玩完了
     if (this.restBout && state !== this.restBout.state) this.restBout = null; // 休息結束了（或被叫走）
     this.restIdle = false;
+    // 散步的路線只屬於 decide() 開始的那一段散步：別的地方換狀態（被找去玩、導演叫牠去角落）就不要了。
+    // 以前留著，導演叫牠走到角落以後，會接著走舊散步路線的下一段又走開（PR-N4b 找到的舊 bug）
+    if (!this.exploreStart) { this.explore = false; this.path = null; }
+    this.exploreStart = false;
     // 跌倒或頭暈時，感情好的夥伴可能會跑來安慰
     if ((state === 'trip' || state === 'dizzy') && was !== state && !this.leaving && !this.guest) maybeComfort(this);
   }
@@ -416,7 +420,8 @@ export class Pet {
         // 路被別隻擋住太久就放棄
         // 已經很近了（被別隻擋住最後幾步）就當作到了，不然放棄
         if (this.state === 'walk' && this.stateT > (this.walkLimit ?? 15)) {
-          const arrive = Math.hypot(this.target.x - this.x, this.target.y - this.gy) < 40 * S ? this.onArrive : null;
+          // 導演交代的差事（reserved：躲到角落、去你旁邊）走不到也照樣在這裡做完（PR-N4b：做完一件事會直接接下一件，放棄的話就走開了）
+          const arrive = Math.hypot(this.target.x - this.x, this.target.y - this.gy) < 40 * S || this.reserved ? this.onArrive : null;
           this.onArrive = null;
           this.set('idle', 1);
           arrive?.();
@@ -704,7 +709,7 @@ export class Pet {
     const ctx = { ...boutCtx(this), others: others.length };
     const acts = {
       // 散步：微彎的路線、走走停停（scene/locomotion.js）
-      walk: () => { this.path = wanderPath(this); this.target = this.path.shift(); this.explore = true; this.movingT = 0; this.pauseT = 0; this.nextPause = null; this.set('walk'); },
+      walk: () => { this.path = wanderPath(this); this.target = this.path.shift(); this.explore = true; this.movingT = 0; this.pauseT = 0; this.nextPause = null; this.exploreStart = true; this.set('walk'); },
       idle: d => { this.restIdle = true; this.set('idle', d); },
       look: d => { this.set('look', d); if (Math.random() < 0.5) this.showEmote('?', 1.2); },
       sit: d => this.set('sit', d),
