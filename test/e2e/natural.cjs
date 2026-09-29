@@ -1,5 +1,5 @@
 // 「動得自然」的量尺（規格 §7 的 M1–M9）：12 隻身體不同的代表在桌面上自由活動，用固定種子模擬，記錄每一幀
-// PR-N1 只量；PR-N2 起 M2、M3、M4 有門檻（下面的 check），另外有打斷測試（真的滑鼠）；PR-N3 起 M7、M8、M9 也有門檻。
+// PR-N1 只量；PR-N2 起 M2、M3、M4 有門檻（下面的 check），另外有打斷測試（真的滑鼠）；PR-N3 起 M7、M8、M9 也有門檻；PR-N5 起 M8 的每分鐘換狀態也有（每一種自己的上限）。
 // 其他斷言：整段模擬沒有 pageerror、每隻都真的有在做事（不是全部卡住）。
 // 結果寫到 .cache/natural/natural-<名字>.json（不進 repo），也印在最後。
 // 環境變數：NATURAL_MIN＝模擬幾分鐘（預設 10）、NATURAL_TAG＝結果檔名（例如 old / new）
@@ -294,7 +294,8 @@ const test = async ({ page }, check) => {
     const bad = [];
     // 卡在拎起、掉落、放招裡出不來（4 秒以上）；放下以後自己又去練招（PR-N4 起做完一件事會直接接下一件）是新的一段，不算
     if (['held', 'fall', 'move'].includes(p.state) && p.stateT > 4) bad.push(`還在 ${p.state}（${p.stateT.toFixed(1)} 秒）`);
-    if (p.partner && p.partner.partner !== p && !p.group) bad.push(`partner 是單方面的（${p.state} → ${p.partner.mon.species} ${p.partner.state}）`);
+    // 放招逗對方（cast）本來就是單方面的：behaviors.js 開始 cast 時刻意把對方的 partner 清掉（對方不用停下來等）。PR-N5 以前檢查剛好碰到 cast 的那一刻會誤判
+    if (p.partner && p.partner.partner !== p && !p.group && p.state !== 'cast') bad.push(`partner 是單方面的（${p.state} → ${p.partner.mon.species} ${p.partner.state}）`);
     if (p.onArrive && !['walk', 'trip', 'run', 'approach'].includes(p.state)) bad.push(`不在走路卻留著 onArrive（${p.state}）`);
     if (p.reserved && ['idle', 'sit', 'nap', 'look'].includes(p.state)) bad.push('閒著卻被 reserved');
     if (p.lv && Math.hypot(p.lv.x, p.lv.y) > 0 && ['idle', 'sit', 'nap'].includes(p.state) && p.stateT > 2) bad.push('停著很久了卻還有速度');
@@ -381,7 +382,13 @@ const test = async ({ page }, check) => {
     check(v.M7_newColors === 0, `M7 原圖沒有的顏色：種子 ${s.seed} 的 ${sp} 有 ${v.M7_newColors} 種`);
     check(v.M7_partMax != null && v.M7_partMax <= v.M7_partLimit + 1e-9, `M7 部位角度：種子 ${s.seed} 的 ${sp} 轉到 ${v.M7_partMax}（上限 ${v.M7_partLimit}）`);
     check(v.M8_maxStep != null && v.M8_maxStep <= 1, `M8 姿勢跳格：種子 ${s.seed} 的 ${sp} 相鄰兩幀有參數一次變 ${v.M8_maxStep} 級：${v.M8_steps.join('；')}`);
-    // M8 的「每分鐘換狀態 ≤ 表的值」：使用者決定照模板給每一種自己的上限（core/ethogram.js 的 switchMaxAt），N4 只報告，PR-N5 結束時每一隻都要過
+  }
+  // M8 的「每分鐘換狀態 ≤ 表的值」：使用者決定照模板給每一種自己的上限（core/ethogram.js 的 switchMaxAt），PR-N5 起每一隻都要過。
+  // 用每一隻 3 個種子合起來（30 分鐘）的平均：同一隻 10 分鐘一段差很多（量過同一隻 1.9–7.7），一段 10 分鐘量的是運氣，不是牠的節奏。每個種子的也印出來
+  for (const sp of Object.keys(r[0].per)) {
+    const rates = r.map(s => s.per[sp].M8_changesPerMin), max = r[0].per[sp].M8_max, avg = rates.reduce((a, b) => a + b, 0) / rates.length;
+    console.log(`M8 ${sp}：每分鐘換 ${avg.toFixed(1)} 次（上限 ${max}；各種子 ${rates.join('／')}）`);
+    check(max != null && avg <= max, `M8 換狀態太頻繁：${sp} 30 分鐘平均每分鐘 ${avg.toFixed(1)} 次（上限 ${max}；各種子 ${rates.join('／')}）`);
   }
   // M9（不同步，使用者同意的門檻修改）：規格原本是「66 對取最大值 < 0.3」，但休息變長以後，連不同種子的兩隻（一定不相干）最大值也有 0.2–0.4，
   // 量不出同步。改成：實際量到的最大值 ≤ 不相干配對「一樣多對取最大」的 99 百分位＝不比純巧合更同步（算法見上面的 M9_test）

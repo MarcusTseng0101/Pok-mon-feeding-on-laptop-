@@ -161,6 +161,13 @@ export function switchMaxAt(id, hour, env = {}, types = []) {
   const rest = budgetAt(id, hour, env, types).rest;
   return Math.round(4 + 6 * (1 - rest));
 }
+// 一段多長的倍率（PR-N5，規格 M8）：跟上面的上限同一個模板。休息越多的物種，每一段也越長（安靜的動物換事情慢）：
+// （10 ÷（4 + 6 ×（醒著做事的比例）））的 1.5 次方＝ 休息 0% 時 1 倍、四成約 1.5 倍、一半約 1.7 倍、八成約 2.7 倍。
+// 1 次方的時候（休息八成約 1.9 倍）量過：一段的長度裡還有被叫去玩、被嚇到這些不照節奏的，換狀態的次數只比上限低一點點，每次跑的起伏（±15%）就會超過 // 猜的，可調整
+export function tempoAt(id, hour, env = {}, types = []) {
+  const rest = budgetAt(id, hour, env, types).rest;
+  return (10 / (4 + 6 * (1 - rest))) ** 1.5;
+}
 
 // ---------- 行為：屬於哪一類、多常、一段多長 ----------
 // dur：固定秒數，或 [最短, 中位數, 最長]（多數短、少數很長；全部是猜的，可調整）
@@ -171,14 +178,15 @@ const day = c => { const h = c.hour ?? 12; return h >= 7 && h < 17; };
 const has = (c, ...ts) => (c.types ?? []).some(t => ts.includes(t));
 export const ACTS = {
   // 休息：大宗，而且一段可以很長（真實動物一次休息幾分鐘到幾小時；桌面上取短一點，猜的，可調整）
-  idle: { cls: 'rest', w: 14, dur: [4, 12, 90] },
-  sit: { cls: 'rest', w: 10, dur: [6, 20, 120] },
-  nap: { cls: 'rest', w: c => (activeAt(SPECIES[c.id]?.diel, c.hour ?? 12) ? 1 : 8), dur: [10, 30, 180] }, // 不是牠的時段比較會打瞌睡
-  sunbathe: { cls: 'rest', w: c => (has(c, 'grass', 'fire') && day(c) ? 6 : 0), dur: [8, 15, 60] },
+  // PR-N5（規格 M8：每分鐘換狀態 ≤ 每一種自己的上限）：休息一段再拉長（另外再乘上這一種的節奏 tempoAt）。以前 idle [4, 12, 90]、sit [6, 20, 120]、nap [10, 30, 180]、sunbathe [8, 15, 60]
+  idle: { cls: 'rest', w: 14, dur: [6, 18, 90] },
+  sit: { cls: 'rest', w: 10, dur: [8, 20, 150] },
+  nap: { cls: 'rest', w: c => (activeAt(SPECIES[c.id]?.diel, c.hour ?? 12) ? 1 : 8), dur: [15, 45, 180] }, // 不是牠的時段比較會打瞌睡
+  sunbathe: { cls: 'rest', w: c => (has(c, 'grass', 'fire') && day(c) ? 6 : 0), dur: [12, 25, 90] },
   chill: { cls: 'rest', w: c => (has(c, 'ice') ? 4 : 0), dur: 2.5 },
   // 探索
-  walk: { cls: 'explore', w: 30, dur: [1.5, 3.5, 8] }, // 走路多長由距離決定，這裡只是估計（算時間分配用）
-  look: { cls: 'explore', w: 10, dur: [2.5, 4, 8] }, // 停下來東張西望：動物掃視一次常常好幾秒（PR-N4 拉長，規格 M8）
+  walk: { cls: 'explore', w: 30, dur: [4, 8, 20] }, // 一段散步多長（PR-N5：pet.js 會走滿這個長度；以前 [1.5, 3.5, 8] 只是估計，實際走完 2–3 段路線平均 7 秒，比估的長，散步被挑得太常；猜的，可調整）
+  look: { cls: 'explore', w: 10, dur: [3, 5, 10] }, // 停下來東張西望：動物掃視一次常常好幾秒（PR-N4 拉長，規格 M8；PR-N5 再拉長，以前 [2.5, 4, 8]）
   dig: { cls: 'explore', w: c => (!c.floats && (has(c, 'ground') || c.digger) ? 4 : 0), dur: 3 },
   slime: { cls: 'explore', w: c => (has(c, 'dragon') && !c.floats ? 4 : 0), dur: 8 },
   soar: { cls: 'explore', w: c => (c.floats ? (night(c) && SPECIES[c.id]?.diel === 'night' ? 6 : 3) : 0), dur: [2.8, 3.3, 4] },
@@ -186,8 +194,8 @@ export const ACTS = {
   // 權重是對著 main 量出來的：物種表讓大家多休息、少走動以後，要讓「自己跳上視窗」跟以前一樣常見（10 分鐘 6 隻約 4 次；猜的，可調整）
   perch: { cls: 'explore', w: c => (c.floats ? 24 : 16), dur: [2, 3, 5] },
   // 找吃的：肚子不餓也會找（真實動物的時間分配本來就有覓食），餓了更想找
-  hungry: { cls: 'forage', w: c => ((c.fullness ?? 100) < 100 ? 5 : 2), dur: [4, 5, 7] },
-  forage: { cls: 'forage', w: c => (!c.floats && has(c, 'bug', 'normal', 'ground', 'grass') ? 4 : 0), dur: [4, 6, 12] }, // 找吃的一段（PR-N4 拉長）
+  hungry: { cls: 'forage', w: c => ((c.fullness ?? 100) < 100 ? 5 : 2), dur: [6, 10, 18] }, // 走過去＋找（PR-N5：pet.js 找到滿這個長度；以前 [4, 5, 7] 比實際短）
+  forage: { cls: 'forage', w: c => (!c.floats && has(c, 'bug', 'normal', 'ground', 'grass') ? 4 : 0), dur: [6, 10, 20] }, // 找吃的一段（PR-N4 拉長；PR-N5 再拉長，以前 [4, 6, 12]）
   beg: { cls: 'forage', w: c => ((c.fullness ?? 100) < 30 ? 4 : 0), dur: 2 },
   sniff: { cls: 'forage', w: c => (c.lure ? ((c.fullness ?? 100) < 80 ? 12 : 4) : 0), dur: 4 },
   // 玩
@@ -204,12 +212,13 @@ export const ACTS = {
   teleport: { cls: 'play', w: c => (has(c, 'psychic') ? 3 : 0), dur: [2, 3, 6], rep: 0.9 },
   shine: { cls: 'play', w: c => (has(c, 'steel', 'rock') ? 3 : 0), dur: [3, 5, 10], rep: 1.6 },
   train: { cls: 'play', w: c => (has(c, 'fighting') ? 6 : 0), dur: [4, 7, 14], rep: 2.1 },
+  practice: { cls: 'play', w: 0, dur: [4, 7, 14], rep: 1.5 }, // 自己練招式（權重由 scene/moves.js 給）：一段裡練好幾次，不是練一下就換別的事（PR-N5，規格 M8）
   twirl: { cls: 'play', w: c => (has(c, 'fairy') ? 4 : 0), dur: [3, 5, 10], rep: 1.2 },
   // 社交
   play: { cls: 'social', w: c => ((c.others ?? 0) > 0 && (c.hearts ?? 0) >= 1 ? 6 : 0), dur: [4, 5, 6] }, // 找一隻追著玩
   // 理毛、整理身體：伸懶腰（動物伸懶腰會停在最伸展的姿勢一下）、抖一抖（見上面 GROOM_ACTS：現在算在休息裡）
-  stretch: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 4, dur: [2, 3, 5] },
-  shiver: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 1, dur: [1.2, 1.6, 2.5] }, // 抖一抖（像狗甩毛）
+  stretch: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 4, dur: [3, 4, 6] }, // PR-N5 以前 [2, 3, 5]
+  shiver: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 1, dur: [1.5, 2, 3] }, // 抖一抖（像狗甩毛；PR-N5 以前 [1.2, 1.6, 2.5]）
 };
 // ---------- 步態（PR-N2；scene/locomotion.js 用）----------
 // 外型 → 怎麼移動。kind：biped 兩腳、quad 四腳、hop 一跳一跳、crawl 爬（一伸一縮）、float 飄、fly 拍翅膀
@@ -272,6 +281,8 @@ const durOf = (name, cls) => ACTS[name]?.dur ?? CLASS_DUR[cls];
 // 下一段做什麼、做多久。
 // ctx：{ hour, weather, plugged, types, mind: { 心智類別: 倍率 }, offers: [{ name, w, cat }] }
 //   offers 是 renderer 現在「做得到」的選項（w 是同一類裡的相對權重：ACTS 的來自 actWeight，其他檔案的照它們自己的）
+//   mean（可以沒有）：這個選項做一次平均幾秒（例如習性自己定的長度）。有 mean 的選項 renderer 會做滿回傳的 dur（短的就重複做）；
+//   mean 比 ACTS 或 CLASS_DUR 的估計長才用（長的習性不會占掉太多時間）
 // rng：0–1 的亂數（從參數來；不准用 Math.random）
 // 回傳 { kind: 類別, name: 選項名稱, dur: 秒 }；沒有任何選項時回傳 null
 export function nextBout(id, ctx, rng) {
@@ -279,6 +290,7 @@ export function nextBout(id, ctx, rng) {
   if (!offers.length) return null;
   const mind = ctx.mind ?? {};
   const budget = budgetAt(id, ctx.hour ?? 12, ctx, ctx.types);
+  const tempo = tempoAt(id, ctx.hour ?? 12, ctx, ctx.types), scaled = o => Boolean(ACTS[o.name]) || o.mean != null;
   const groups = new Map();
   const favor = SPECIES[id]?.favor ?? {};
   for (const o of offers) {
@@ -288,7 +300,9 @@ export function nextBout(id, ctx, rng) {
     if (!groups.has(cls)) groups.set(cls, { list: [], w: 0, wm: 0, pw: 0, pwd: 0 });
     const g = groups.get(cls);
     g.list.push({ o, wm: pick });
-    g.w += o.w; g.wm += o.w * m; g.pw += pick; g.pwd += pick * meanDur(durOf(o.name, cls));
+    // 一段多長的估計：照這一種的節奏拉長（ACTS 的、有 mean 的：renderer 會做滿 dur，短的就在一段裡重複做）；別的檔案的選項（社交…）長度是自己定的。
+    // mean 比估計長才用：短的習性一段裡重複做，不會因為短就更常被挑（規格 M8）
+    g.w += o.w; g.wm += o.w * m; g.pw += pick; g.pwd += pick * Math.max(o.mean ?? 0, meanDur(durOf(o.name, cls)) * (scaled(o) ? tempo : 1));
   }
   // 挑類別：時間分配 × 需求（這一類選項的平均心智倍率）÷ 這一類平均一段多長（招牌動作只影響類別裡挑哪個，不影響時間分配）
   const cls = [];
@@ -310,7 +324,7 @@ export function nextBout(id, ctx, rng) {
   let r = rng() * total;
   const hit = (pool.find(x => (r -= x.wm) < 0) ?? pool[pool.length - 1]).o;
   const kind = classOf(hit.name, hit.cat);
-  return { kind, name: hit.name, dur: durAt(durOf(hit.name, kind), rng()) };
+  return { kind, name: hit.name, dur: durAt(durOf(hit.name, kind), rng()) * (scaled(hit) ? tempo : 1) }; // 這一種的節奏（tempoAt）
 }
 
 // 專注番茄鐘進行中：只做安靜的事（優先規則；權重和長度也在這裡，renderer 不自己寫）
