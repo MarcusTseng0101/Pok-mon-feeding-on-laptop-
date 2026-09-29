@@ -28,6 +28,9 @@ run('habits', async ({ page }, check) => {
       for (const p of pets) {
         for (const [name, , start] of H.habitOptions(p, pets.filter(o => o !== p))) {
           for (const q of pets) { q.set('idle', 99); q.partner = null; q.habit = null; q.z = 0; }
+          // 做完習性、回去挑下一件事＝結束了（PR-N4 起做完一件事不一定先停在 idle，會直接接下一件）
+          p.__decided = false;
+          if (!p.__wrapped) { const orig = p.decide; p.decide = function () { this.__decided = true; return orig.call(this); }; p.__wrapped = true; }
           stage.env.sleepy = false; // 半夜（01:00–06:00）跑測試的時候，做完習性會直接去睡（這裡只測習性本身會結束）
           start();
           runs++;
@@ -39,7 +42,7 @@ run('habits', async ({ page }, check) => {
               const rc = q.rect();
               if (!Number.isFinite(q.x + q.gy + q.z) || q.gy > stage.H + 2 || rc.y < -3) oob.push(`${dex.name(q.mon.species)} ${q.state} gy=${Math.round(q.gy)}`);
             }
-            if (f > 40 && p.state === 'idle') break;
+            if (f > 40 && (p.state === 'idle' || p.__decided)) break;
           }
           if (f >= LIMIT_S * 20) stuck.push(`${dex.name(p.mon.species)}:${name}（還在 ${p.state}）`);
         }

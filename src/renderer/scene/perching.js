@@ -115,6 +115,7 @@ function land(pet) {
   pet.gy = l.y;
   pet.z = 0;
   pet.squashT = 0.15;
+  pet.restIdle = true; // 跳上去先站穩一下（不是做完一件事的過場，scene/pet.js 的 set）
   pet.set('idle', 1.5);
   pet.showEmote('♪', 1);
   st.audio.sfx('land');

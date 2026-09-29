@@ -155,8 +155,16 @@ export function budgetAt(id, hour, env = {}, types = []) {
   return b;
 }
 
+// 規格 M8 的「每分鐘換狀態 ≤ 表的值（預設 6）」：每一隻、每個時段自己的上限（使用者決定照模板給，不是一律 6）。
+// 休息越多的越安靜：4 + 6 ×（醒著做事的比例），四捨五入（休息包含理毛、不是牠的時段）。下午兩點：哈力栗 7、坐騎山羊 8、火炎獅 5、哲爾尼亞斯 5 // 猜的，可調整
+export function switchMaxAt(id, hour, env = {}, types = []) {
+  const rest = budgetAt(id, hour, env, types).rest;
+  return Math.round(4 + 6 * (1 - rest));
+}
+
 // ---------- 行為：屬於哪一類、多常、一段多長 ----------
 // dur：固定秒數，或 [最短, 中位數, 最長]（多數短、少數很長；全部是猜的，可調整）
+// rep：一次動作本身多長（秒）。有 rep 的是一段裡重複做的小動作（動物玩一段＝同一個動作做好幾次）：dur 是這一段多長，做滿才換別的事（PR-N4，規格 M8）
 // w：同一類裡面的相對權重；when(ctx)：這個選項現在能不能做、權重多少（ctx 見 nextBout）
 const night = c => { const h = c.hour ?? 12; return h >= 20 || h < 6; };
 const day = c => { const h = c.hour ?? 12; return h >= 7 && h < 17; };
@@ -170,7 +178,7 @@ export const ACTS = {
   chill: { cls: 'rest', w: c => (has(c, 'ice') ? 4 : 0), dur: 2.5 },
   // 探索
   walk: { cls: 'explore', w: 30, dur: [1.5, 3.5, 8] }, // 走路多長由距離決定，這裡只是估計（算時間分配用）
-  look: { cls: 'explore', w: 10, dur: [1.6, 2, 3] },
+  look: { cls: 'explore', w: 10, dur: [2.5, 4, 8] }, // 停下來東張西望：動物掃視一次常常好幾秒（PR-N4 拉長，規格 M8）
   dig: { cls: 'explore', w: c => (!c.floats && (has(c, 'ground') || c.digger) ? 4 : 0), dur: 3 },
   slime: { cls: 'explore', w: c => (has(c, 'dragon') && !c.floats ? 4 : 0), dur: 8 },
   soar: { cls: 'explore', w: c => (c.floats ? (night(c) && SPECIES[c.id]?.diel === 'night' ? 6 : 3) : 0), dur: [2.8, 3.3, 4] },
@@ -179,29 +187,29 @@ export const ACTS = {
   perch: { cls: 'explore', w: c => (c.floats ? 24 : 16), dur: [2, 3, 5] },
   // 找吃的：肚子不餓也會找（真實動物的時間分配本來就有覓食），餓了更想找
   hungry: { cls: 'forage', w: c => ((c.fullness ?? 100) < 100 ? 5 : 2), dur: [4, 5, 7] },
-  forage: { cls: 'forage', w: c => (!c.floats && has(c, 'bug', 'normal', 'ground', 'grass') ? 4 : 0), dur: [2.5, 3, 4] },
+  forage: { cls: 'forage', w: c => (!c.floats && has(c, 'bug', 'normal', 'ground', 'grass') ? 4 : 0), dur: [4, 6, 12] }, // 找吃的一段（PR-N4 拉長）
   beg: { cls: 'forage', w: c => ((c.fullness ?? 100) < 30 ? 4 : 0), dur: 2 },
   sniff: { cls: 'forage', w: c => (c.lure ? ((c.fullness ?? 100) < 80 ? 12 : 4) : 0), dur: 4 },
   // 玩
-  run: { cls: 'play', w: c => ((c.enjoyment ?? 0) > 120 || (c.hearts ?? 0) >= 2 ? 4 : 1), dur: [2.5, 3.2, 4.5] },
-  spin: { cls: 'play', w: c => ((c.hearts ?? 0) >= 2 ? 3 : 0), dur: 0.9 },
+  run: { cls: 'play', w: c => ((c.enjoyment ?? 0) > 120 || (c.hearts ?? 0) >= 2 ? 4 : 1), dur: [3, 4.5, 7] },
+  spin: { cls: 'play', w: c => ((c.hearts ?? 0) >= 2 ? 3 : 0), dur: [2, 3, 5], rep: 0.9 },
   dance: { cls: 'play', w: c => (c.music && (c.hearts ?? 0) >= 1 ? 4 : 0), dur: [3, 4, 6] },
-  roll: { cls: 'play', w: c => (!c.floats && (c.hearts ?? 0) >= 1 ? 3 : 0), dur: 1 },
+  roll: { cls: 'play', w: c => (!c.floats && (c.hearts ?? 0) >= 1 ? 3 : 0), dur: [2, 3, 5], rep: 1 },
   follow: { cls: 'social', w: c => ((c.hearts ?? 0) >= 3 && c.pointer && c.userActive ? 9 : 0), dur: [3, 4.5, 7] },
-  splash: { cls: 'play', w: c => (has(c, 'water') ? 4 : 0), dur: 1.2 },
-  ember: { cls: 'play', w: c => (has(c, 'fire') ? 3 : 0), dur: 1.3 },
-  spark: { cls: 'play', w: c => (has(c, 'electric') ? (c.plugged ? 12 : 4) : 0), dur: 1.4 },
-  bubbles: { cls: 'play', w: c => (has(c, 'poison') ? 4 : 0), dur: 2.5 },
+  splash: { cls: 'play', w: c => (has(c, 'water') ? 4 : 0), dur: [3, 5, 10], rep: 1.2 },
+  ember: { cls: 'play', w: c => (has(c, 'fire') ? 3 : 0), dur: [3, 5, 10], rep: 1.3 },
+  spark: { cls: 'play', w: c => (has(c, 'electric') ? (c.plugged ? 12 : 4) : 0), dur: [3, 5, 10], rep: 1.4 },
+  bubbles: { cls: 'play', w: c => (has(c, 'poison') ? 4 : 0), dur: [4, 6, 12], rep: 2.5 },
   fade: { cls: 'play', w: c => (has(c, 'ghost') ? (night(c) ? 7 : 3) : 0), dur: 3 },
-  teleport: { cls: 'play', w: c => (has(c, 'psychic') ? 3 : 0), dur: 0.9 },
-  shine: { cls: 'play', w: c => (has(c, 'steel', 'rock') ? 3 : 0), dur: 1.6 },
-  train: { cls: 'play', w: c => (has(c, 'fighting') ? 6 : 0), dur: 2.1 },
-  twirl: { cls: 'play', w: c => (has(c, 'fairy') ? 4 : 0), dur: 1.2 },
+  teleport: { cls: 'play', w: c => (has(c, 'psychic') ? 3 : 0), dur: [2, 3, 6], rep: 0.9 },
+  shine: { cls: 'play', w: c => (has(c, 'steel', 'rock') ? 3 : 0), dur: [3, 5, 10], rep: 1.6 },
+  train: { cls: 'play', w: c => (has(c, 'fighting') ? 6 : 0), dur: [4, 7, 14], rep: 2.1 },
+  twirl: { cls: 'play', w: c => (has(c, 'fairy') ? 4 : 0), dur: [3, 5, 10], rep: 1.2 },
   // 社交
   play: { cls: 'social', w: c => ((c.others ?? 0) > 0 && (c.hearts ?? 0) >= 1 ? 6 : 0), dur: [4, 5, 6] }, // 找一隻追著玩
   // 理毛、整理身體：伸懶腰（動物伸懶腰會停在最伸展的姿勢一下）、抖一抖（見上面 GROOM_ACTS：現在算在休息裡）
-  stretch: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 4, dur: [1.2, 2.5, 4] },
-  shiver: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 1, dur: 0.6 },
+  stretch: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 4, dur: [2, 3, 5] },
+  shiver: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 1, dur: [1.2, 1.6, 2.5] }, // 抖一抖（像狗甩毛）
 };
 // ---------- 步態（PR-N2；scene/locomotion.js 用）----------
 // 外型 → 怎麼移動。kind：biped 兩腳、quad 四腳、hop 一跳一跳、crawl 爬（一伸一縮）、float 飄、fly 拍翅膀
@@ -228,7 +236,7 @@ export const gaitOf = id => GAIT[SPECIES[id]?.body] ?? GAIT.upright;
 // 休息的地點：動物大多回窩（巢、洞）休息，不是走到哪睡到哪。回秘密基地休息（心智類別 base）在「休息」裡的權重乘上多少（猜的，可調整）
 const DEN = 3;
 const CAT_CLASS = { rest: 'rest', base: 'rest', explore: 'explore', need: 'forage', play: 'play', cursor: 'play', train: 'play', social: 'social', habit: 'habit', trip: 'explore' };
-const CLASS_DUR = { rest: [2, 6, 40], explore: [1.5, 4, 10], forage: [2, 4, 8], play: [1, 2.5, 6], social: [2, 4, 8], groom: [0.6, 1.2, 2], habit: [2, 4, 8] };
+const CLASS_DUR = { rest: [2, 6, 40], explore: [2, 5, 12], forage: [3, 6, 12], play: [1.5, 3.5, 8], social: [3, 6, 12], groom: [1.5, 3, 5], habit: [4, 6, 10] }; // PR-N4：一段拉長（規格 M8），習性照 habits.js 的新長度
 
 // 不在 ACTS 裡、但不能照心智類別分的：坐到你的游標旁邊、跟著你走＝想待在你身邊（跟你的社交），不是「玩」
 // （N1 把它們算在「玩」，「玩」很少的物種就幾乎不會來找你，cursor.cjs 量到只剩原本的 1/5）

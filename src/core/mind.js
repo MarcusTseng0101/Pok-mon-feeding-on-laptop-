@@ -198,6 +198,8 @@ export const REASONS = {
     energy: ['好睏…先休息一下', '走累了，坐下來喘口氣', '眼皮好重，瞇一下就好', '今天動太多了，要充電'],
     comfort: ['找個舒服的姿勢待著', '想安安靜靜地待一下', '這裡涼涼的，好舒服'],
     calm: ['沒什麼事，發呆也不錯', '看看桌面，放空一下', '慢慢來，不急'],
+    friend: ['想待在{name}旁邊休息', '跟{name}待在一起好安心', '靠著{name}休息一下'], // 感情好的就在旁邊（動物會靠著同伴休息）
+    memory: ['剛剛跟{name}玩得好累，休息一下', '跟{name}玩完了，坐下來喘口氣', '剛剛跟{name}玩得好開心，在旁邊歇一下'], // 剛一起玩過的就在旁邊
   },
   explore: {
     peeker: ['外面好像有誰在看？', '螢幕邊邊有東西！', '剛剛好像有誰探頭進來'],
@@ -245,6 +247,7 @@ export const REASONS = {
     food: ['肚子咕嚕叫，找找有沒有樹果', '好餓…附近應該有吃的', '想吃東西，去找找看', '肚子餓扁了'],
   },
 };
+export const FRIEND_BOND = 60; // 感情多好算「好朋友」（跟 social 的 friend 一樣） // 猜的，可調整
 const CITES = { night: null, bored: 'need', peeker: 'memory', energy: 'need', comfort: 'need', curiosity: 'need', fun: 'need', food: 'need', lonely: 'need', friend: 'relation', rival: 'relation', memory: 'memory' };
 export const citesOf = key => CITES[key.split('.')[1]] ?? null;
 
@@ -254,7 +257,8 @@ export function reason(category, lv, rng, ctx = {}) {
   const other = ctx.other;
   let sub;
   switch (category) {
-    case 'rest': sub = lv.energy < 60 ? 'energy' : lv.comfort < 60 ? 'comfort' : 'calm'; break;
+    // 感情好的、剛一起玩過的夥伴就在旁邊（ctx.other，scene/mindlink.js 只有這時候才給）：想待在牠旁邊；很累的時候還是先說累
+    case 'rest': sub = lv.energy < 40 ? 'energy' : other && ctx.playedWithOther ? 'memory' : other && other.bond >= FRIEND_BOND ? 'friend' : lv.energy < 60 ? 'energy' : lv.comfort < 60 ? 'comfort' : 'calm'; break;
     case 'explore': sub = lv.curiosity < 65 ? 'curiosity' : 'calm'; break;
     case 'play': sub = ctx.recentFed || ctx.recentStroke ? 'memory' : lv.fun < 55 ? 'fun' : 'happy'; break;
     case 'social':

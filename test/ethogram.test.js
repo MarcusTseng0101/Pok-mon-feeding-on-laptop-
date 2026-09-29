@@ -170,6 +170,16 @@ test('架構規則：renderer 的 pet.js、behaviors.js 沒有權重表；core/e
   assert.ok(!/Math\.random|Date\.now|document\.|window\./.test(core), 'core/ethogram.js 不能用 Math.random、Date.now、DOM');
 });
 
+test('M8 每分鐘換狀態的上限：照模板的休息比例，休息越多越低（使用者決定）', () => {
+  for (const id of Object.keys(E.SPECIES).map(Number)) {
+    const m = E.switchMaxAt(id, 14);
+    assert.ok(Number.isInteger(m) && m >= 4 && m <= 10, `${id}：${m}`);
+  }
+  // 休息多的（傳說、獅子）比休息少的（坐騎山羊：草食）低
+  assert.ok(E.switchMaxAt(716, 14) < E.switchMaxAt(673, 14));
+  assert.ok(E.switchMaxAt(668, 14) < E.switchMaxAt(673, 14));
+});
+
 test('範圍外的介面：learn 先回傳原表', () => {
   assert.equal(E.learn(650, []), E.SPECIES[650]);
 });
