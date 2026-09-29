@@ -14,6 +14,7 @@ const RUN_HZ = 6; // 跑（猜的，可調整）
 // 跑的時候每一步有騰空，身體往前的距離比腳跨的多（木偶的腳不能畫得跨更開；猜的，可調整）。Pet.settle 播跑步動畫也照這個
 export const RUN_STRIDE = 1.5;
 const RUN_OVER = 1.5; // 呼叫的人給的速度超過走路速度的幾倍算在跑（決定用哪個步頻上限）
+const RUN_REF = 72 / 26; // 跑步速度是走路的幾倍（behaviors.js 的 RUN_SPEED ÷ WALK_SPEED）：加速度的上限照跑步起步算
 const ARRIVE = 2; // 離目標幾個美術像素以內算到了
 const AVOID = 1.6; // 腳印距離小於這個（1＝剛好碰到）就開始繞
 
@@ -36,9 +37,15 @@ export function topSpeed(pet, speed, walkSpeed) {
 // 往 (tx, ty) 走一幀；到了回傳 true。speed：裝置像素／秒
 export function step(pet, tx, ty, speed, dt, walkSpeed) {
   const S = pet.S, g = gait(pet);
+  // 目標先夾進這一隻自己能站的範圍（PR-N4a，規格 M1）：會飄的能站的範圍比較小，跟著地上的走、去找別隻時目標可能在外面，
+  // 以前走到邊被 Pet.update 夾回來、速度瞬間歸零。夾進來以後照煞車距離在邊前面停下。出門、旅行回來本來就要走出螢幕，不夾
+  if (!OFFSCREEN.has(pet.state)) { const bb = pet.bounds(); tx = Math.max(bb.x0, Math.min(bb.x1, tx)); ty = Math.max(bb.y0, Math.min(bb.y1, ty)); }
   const lv = (pet.lv ??= { x: 0, y: 0 });
   const vmax = topSpeed(pet, speed, walkSpeed);
-  const acc = vmax / g.acc;
+  // 加速度上限依身體（規格 F2），不看這次要走多快（PR-N4a，規格 M1）：
+  //  - 呼叫的人要比跑步還快（衝過去、被叫過去）也不會加速得比跑步起步還猛
+  //  - 以前照這次的速度算：慢慢走（找吃的）時減速度也很小，從跑步接過來會煞不住、滑到螢幕邊被夾住
+  const acc = topSpeed(pet, walkSpeed * S * RUN_REF, walkSpeed) / g.acc;
   const dx = tx - pet.x, dy = ty - pet.gy, d = Math.hypot(dx, dy);
   pet.moved = true;
   // 翻面（有遲滯）：目標在背後、而且不是很近，持續 FLIP_HOLD 秒才轉
@@ -91,7 +98,8 @@ export function coast(pet, dt, walkSpeed) {
   if (!lv || (!lv.x && !lv.y)) return;
   if (FROZEN.has(pet.state)) { lv.x = lv.y = 0; return; } // 被拎著、掉下來、出招…：交給那些動作自己管位置
   const g = gait(pet), S = pet.S;
-  const acc = topSpeed(pet, walkSpeed * S, walkSpeed) / g.acc;
+  // 減速度跟 step 的加速度上限一樣（照跑步起步算）：以前照走路算比較小，從跑的速度滑行會來不及在螢幕邊前面停下
+  const acc = topSpeed(pet, walkSpeed * S * RUN_REF, walkSpeed) / g.acc;
   accelerate(lv, 0, 0, acc * dt);
   const sx = lv.x * dt, sy = lv.y * dt;
   pet.x += sx; pet.gy += sy;

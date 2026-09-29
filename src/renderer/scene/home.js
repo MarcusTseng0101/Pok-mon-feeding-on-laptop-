@@ -27,12 +27,17 @@ export function goToBed(pet, { night = false } = {}) {
   const bed = pick(freeBeds(pet));
   if (!bed) return false;
   const spot = pet.stage.baseView.spotOf(bed);
-  walkThen(pet, spot, () => {
-    pet.x = spot.x; pet.gy = spot.y;
+  const lieDown = () => {
     pet.bedId = bed.id;
     // 晚上的 sleep 會睡到早上；白天用 nap（睡一陣子就起來）
     pet.set(night ? 'sleep' : 'nap', night ? rnd(30, 60) : rnd(15, 30));
     pet.showEmote('Z', 1.5);
+  };
+  // 到了才躺下。以前一到（包括被別隻擋住、走太久「差不多到了」）就直接把位置設成床的位置，最多會一幀瞬移 40 格（PR-N4a，規格 M1）：
+  // 還沒到就把剩下幾步走完（最多再走 3 秒），走不到就在床邊躺下（動物也會在窩的旁邊躺）
+  walkThen(pet, spot, () => {
+    if (Math.hypot(spot.x - pet.x, spot.y - pet.gy) <= 3 * pet.S) { lieDown(); return; }
+    pet.target = { x: spot.x, y: spot.y }; pet.walkLimit = 3; pet.set('walk'); pet.onArrive = lieDown;
   });
   return true;
 }
