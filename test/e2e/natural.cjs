@@ -1,5 +1,5 @@
 // 「動得自然」的量尺（規格 §7 的 M1–M9）：12 隻身體不同的代表在桌面上自由活動，用固定種子模擬，記錄每一幀
-// PR-N1 只量；PR-N2 起 M2、M3、M4 有門檻（下面的 check），另外有打斷測試（真的滑鼠）。
+// PR-N1 只量；PR-N2 起 M2、M3、M4 有門檻（下面的 check），另外有打斷測試（真的滑鼠）；PR-N3 起 M7、M8、M9 也有門檻。
 // 其他斷言：整段模擬沒有 pageerror、每隻都真的有在做事（不是全部卡住）。
 // 結果寫到 .cache/natural/natural-<名字>.json（不進 repo），也印在最後。
 // 環境變數：NATURAL_MIN＝模擬幾分鐘（預設 10）、NATURAL_TAG＝結果檔名（例如 old / new）
@@ -106,7 +106,7 @@ const test = async ({ page }, check) => {
       const rec = pets.map(p => ({
         sp: p.mon.species, hasLegs: Boolean(p.view?.anim?.info?.hasLegs), moving: 0, jumps: 0, flips: 0, flipTurn: 0, changes: 0, rot: 0, scale: 0,
         states: {}, cls: {}, runs: [], runState: p.state, runT: 0, stillRun: 0, walk: null, walkBouts: 0, walkPaused: 0,
-        wdist: 0, wcyc: 0, bumps: 0, stride: p.view?.anim?.info?.stride || 2, lastV: 0, lastF: p.viewFacing ?? p.facing, jumpStates: {}, lastSet: p.animSet(), lastCanvas: null, setSwitch: 0, bigSwitch: 0, switchDiffs: [], mv: [], soc: [],
+        wdist: 0, wcyc: 0, bumps: 0, stride: p.view?.anim?.info?.stride || 2, lastV: 0, lastF: p.viewFacing ?? p.facing, jumpStates: {}, lastSet: p.animSet(), lastCanvas: null, setSwitch: 0, bigSwitch: 0, switchDiffs: [], mv: [], soc: [], frames: new Set(),
       }));
       for (let i = 0; i < N; i++) {
         const before = pets.map(p => ({ x: p.x, y: p.gy, a: p.animT }));
@@ -150,18 +150,29 @@ const test = async ({ page }, check) => {
           const set = p.animSet();
           // 只算用腳走的（會飄的走路動畫本來就照時間播），被擠、被撞、被習性直接搬動的那幾幀（位置變了但不是自己走的：lastStepDist = 0）不算
           if (o.hasLegs && !p.floats && !knocked && !(p.bumpT > 0) && (p.lastStepDist ?? 1) > 0 && set === 'walk' && mv && p.view?.set?.total) { o.wdist += v * dt; o.wcyc += (p.animT - b.a) / p.view.set.total; }
-          // M7：整張圖的旋轉、縮放
-          const po = p.pose();
+          // M7：整張圖的旋轉、縮放：量「真的畫出來的」那一個（PR-N3 起 draw() 畫的是 toPuppet 翻過以後的 puppetXf；舊版沒有就是 pose()，舊版 draw() 直接畫它）
+          const po = p.puppetXf ?? p.pose();
           if (po.rot && !ninety(po.rot)) o.rot++;
           if (Math.abs(Math.abs(po.sx) - 1) > 1e-6 || Math.abs(Math.abs(po.sy) - 1) > 1e-6) o.scale++;
+          if (p.view?.puppet && p.view.cur && o.frames.size < 4000) o.frames.add(p.view.cur.canvas); // M7 的顏色：畫過的每一張木偶圖，最後檢查
           // M8：換動作組那一幀的像素變化
           const cv = p.asset?.canvas;
-          if (set !== o.lastSet && o.lastCanvas && cv) { const d = diff(pix(o.lastCanvas), pix(cv)); o.setSwitch++; o.switchDiffs.push(d); if (d > 0.25) o.bigSwitch++; }
-          o.lastSet = set; o.lastCanvas = cv;
+          if (set !== o.lastSet && o.lastCanvas && cv) { const d = diff(pix(o.lastCanvas), pix(cv)); o.setSwitch++; o.switchDiffs.push(d); if (d > 0.25) { o.bigSwitch++; if ((o.bigList ??= []).length < 6) o.bigList.push(`${o.lastSet}→${set} ${p.state} ${d.toFixed(2)} [${o.lastKey}]→[${p.view?.key}]`); } }
+          o.lastSet = set; o.lastCanvas = cv; o.lastKey = p.view?.key;
         });
       }
       // 整理
       const per = {};
+      // M7：木偶圖裡有沒有原圖沒有的顏色（糊掉、混色）；部位轉的角度有沒有超過上限（gfx/rig.js 的 PART_MAX）
+      const rigMod = await import('/src/renderer/gfx/rig.js');
+      const colorsOf = cv => { const s = new Set(), d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 0) s.add(`${d[i]},${d[i + 1]},${d[i + 2]},${d[i + 3]}`); return s; };
+      rec.forEach((o, k) => {
+        const p = pets[k], base = colorsOf(stage.sprites.peek(p.spriteKey, p.mon.shiny).canvas);
+        o.newColors = 0;
+        for (const cv of o.frames) for (const c of colorsOf(cv)) if (!base.has(c)) o.newColors++;
+        o.partMax = p.view?.anim?.stats?.maxPart ?? null;
+        o.partLimit = rigMod.PART_MAX ?? null;
+      });
       for (const o of rec) {
         const tot = N * dt;
         const share = Object.fromEntries(Object.entries(o.cls).map(([k, v]) => [k, Math.round(100 * v / tot)]));
@@ -171,9 +182,10 @@ const test = async ({ page }, check) => {
           M3_pausedWalks: o.walkBouts ? Math.round(100 * o.walkPaused / o.walkBouts) : null,
           M4_turnPose: o.flips ? Math.round(100 * o.flipTurn / o.flips) : null, M4_misses: o.noTurn ?? [],
           M5_share: share,
-          M7_rot: Math.round(100 * o.rot / N), M7_scale: Math.round(100 * o.scale / N),
+          M7_rot: Math.round(100 * o.rot / N), M7_scale: Math.round(100 * o.scale / N), M7_rotFrames: o.rot, M7_scaleFrames: o.scale,
+          M7_frames: o.frames.size, M7_newColors: o.newColors, M7_partMax: o.partMax == null ? null : +o.partMax.toFixed(3), M7_partLimit: o.partLimit,
           M8_changesPerMin: +(o.changes / MIN).toFixed(1), M8_medianBout: +med(o.runs).toFixed(2),
-          M8_bigSwitchPct: o.setSwitch ? Math.round(100 * o.bigSwitch / o.setSwitch) : 0, M8_switchMedian: +(med(o.switchDiffs)).toFixed(2),
+          M8_bigSwitchPct: o.setSwitch ? Math.round(100 * o.bigSwitch / o.setSwitch) : 0, M8_switchMedian: +(med(o.switchDiffs)).toFixed(2), M8_big: o.bigList ?? [],
           moving: Math.round(100 * o.moving / N),
           flipsPerMin: +(o.flips / MIN).toFixed(1),
           top: Object.entries(o.states).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k} ${Math.round(100 * v / tot)}%`),
@@ -313,13 +325,21 @@ const test = async ({ page }, check) => {
   for (const s of r) for (const [sp, v] of Object.entries(s.per)) check(Object.keys(v.states).length >= 3, `種子 ${s.seed} 的 ${sp} 只做了 ${Object.keys(v.states).join('、')}`);
 
   // 門檻（PR-N2）：移動做好以後這三個每一隻、每個種子都要過（規格 §7.1，門檻沒動）。
-  // M1（瞬間起步）、M9（不同步）只報告：M1 剩下的大多是習性自己搬位置（PR-N4／N5 重寫），
-  // M9 的「最大值 < 0.3」在休息變長以後，連完全不相干的兩隻都可能超過（見 M9 的 nullMax），要使用者決定怎麼改
+  // M1（瞬間起步）只報告：剩下的大多是習性自己搬位置，使用者決定在 PR-N4／N5 重寫習性時一起達成 0
   for (const s of r) for (const [sp, v] of Object.entries(s.per)) {
     if (v.M2_slide != null) check(v.M2_slide >= 0.85 && v.M2_slide <= 1.15, `M2 腳打滑：種子 ${s.seed} 的 ${sp} 是 ${v.M2_slide}（要 0.85–1.15）`);
     if (v.M3_pausedWalks != null) check(v.M3_pausedWalks >= 60, `M3 走走停停：種子 ${s.seed} 的 ${sp} 只有 ${v.M3_pausedWalks}%（要 ≥ 60%）`);
     if (v.M4_turnPose != null) check(v.M4_turnPose === 100, `M4 轉身：種子 ${s.seed} 的 ${sp} 只有 ${v.M4_turnPose}%（要 100%）`);
+    // 門檻（PR-N3，規格 §7.1 的 M7、M8，門檻沒動）：整張圖只准翻面或轉 90° 的倍數、不縮放；沒有原圖以外的顏色；部位不超過上限；換動作那一幀像素變化 ≤ 25%
+    check(v.M7_rotFrames === 0 && v.M7_scaleFrames === 0, `M7 整張圖被轉（不是 90° 倍數）${v.M7_rotFrames} 幀、被縮放 ${v.M7_scaleFrames} 幀：種子 ${s.seed} 的 ${sp}`);
+    check(v.M7_newColors === 0, `M7 原圖沒有的顏色：種子 ${s.seed} 的 ${sp} 有 ${v.M7_newColors} 種`);
+    check(v.M7_partMax != null && v.M7_partMax <= v.M7_partLimit + 1e-9, `M7 部位角度：種子 ${s.seed} 的 ${sp} 轉到 ${v.M7_partMax}（上限 ${v.M7_partLimit}）`);
+    check(v.M8_bigSwitchPct === 0, `M8 換動作那一幀像素變化超過 25%：種子 ${s.seed} 的 ${sp} 有 ${v.M8_bigSwitchPct}% 的切換`);
+    check(v.M8_changesPerMin <= 6, `M8 狀態切換：種子 ${s.seed} 的 ${sp} 每分鐘 ${v.M8_changesPerMin} 次（要 ≤ 6）`);
   }
+  // M9（不同步，使用者同意的門檻修改）：規格原本是「66 對取最大值 < 0.3」，但休息變長以後，連不同種子的兩隻（一定不相干）最大值也有 0.2–0.4，
+  // 量不出同步。改成：實際量到的最大值 ≤ 對照組（不同種子的兩隻）的最大值＝不比純巧合更同步
+  for (const s of r) check(s.M9_corr.max <= s.M9_null.max, `M9 不同步：種子 ${s.seed} 最大 ${s.M9_corr.max}（${s.M9_corr.maxPair}）比對照組的最大 ${s.M9_null.max} 還高`);
 
   // 摘要：每個量尺，12 隻的中位數和最差的那隻；3 個種子分開列
   const med = a => { const s = a.filter(x => x != null).sort((x, y) => x - y); return s.length ? s[s.length >> 1] : null; };
@@ -333,7 +353,7 @@ const test = async ({ page }, check) => {
       M3: { median: med(col('M3_pausedWalks')), worst: worst('M3_pausedWalks', false) },
       M4: { median: med(col('M4_turnPose')), worst: worst('M4_turnPose', false) },
       M6: s.M6_jsd,
-      M7: { rot: worst('M7_rot'), scale: worst('M7_scale') },
+      M7: { rot: worst('M7_rot'), scale: worst('M7_scale'), newColors: worst('M7_newColors'), partMax: worst('M7_partMax'), frames: worst('M7_frames') },
       M8: { changesMedian: med(col('M8_changesPerMin')), changesWorst: worst('M8_changesPerMin'), boutMedian: med(col('M8_medianBout')), bigSwitchWorst: worst('M8_bigSwitchPct') },
       M9: { ...s.M9_corr, nullMax: s.M9_null?.max },
     };
