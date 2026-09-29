@@ -298,7 +298,12 @@ export class Pet {
   }
 
   // 走出螢幕（出門）、走回來的路上：開心就好（愛心、表情照樣有），不要停下來
-  happy() { if (this.state !== 'depart' && this.state !== 'tripReturn') this.set('happy', 0.6); }
+  // 坐著等你的（在果實旁邊等、看日落：director.js 安排的）也一樣：冒個 ♪ 就好，不要站起來（站起來就不等了）
+  happy() {
+    if (this.state === 'depart' || this.state === 'tripReturn') return;
+    if (this.state === 'sit' && (this.reserved || this.sunsetSit)) { this.showEmote('♪', 1.2); return; }
+    this.set('happy', 0.6);
+  }
 
   pickUp(px, py) {
     const r = this.rect();
