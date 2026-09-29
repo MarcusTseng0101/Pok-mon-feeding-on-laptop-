@@ -1,6 +1,6 @@
 // 寶可夢圖片：向 main process 要 PNG（有快取），裁掉透明邊、建立命中遮罩與剪影。
 import { makeCanvas, alphaMask, tint } from './pixel.js';
-import { buildRig, quantize, ANG_STEP } from './rig.js';
+import { buildRig, quantize, ANG_STEP, LIMITS, PART_MAX } from './rig.js';
 import { fallbackSprite } from './art.js';
 import { speciesOfKey } from '../../core/forms.js';
 
@@ -166,6 +166,13 @@ const REST_SWING = 0.3; // 休息時帶動的擺幅打幾折（規格 F9） // �
 const BUILD_PER_SEC = 30; // 同一隻一秒最多新做幾張圖，超過就先用上一張（規格 F13） // 猜的，可調整
 const PARTS = new Set(['arm', 'armSw', 'ear', 'earSw', 'tail', 'tailSw']);
 const HYST = 0.2; // 量化的遲滯（級） // 猜的，可調整
+// 每個參數的級數範圍（跟 rig.js 的 quantize 一樣）
+const ANG_LV = Math.round(PART_MAX / ANG_STEP);
+const LEVEL_RANGE = {
+  lean: [-LIMITS.lean, LIMITS.lean], crouch: [-LIMITS.crouchUp, LIMITS.crouchDown], headPitch: [-LIMITS.pitch, LIMITS.pitch], breath: [0, 1],
+  lLx: [-3, 3], lLy: [-2, 2], lRx: [-3, 3], lRy: [-2, 2],
+  arm: [-ANG_LV, ANG_LV], armSw: [-ANG_LV, ANG_LV], ear: [-ANG_LV, ANG_LV], earSw: [-ANG_LV, ANG_LV], tail: [-ANG_LV, ANG_LV], tailSw: [-ANG_LV, ANG_LV],
+};
 const flat = t => ({ ...t, lLx: t.legL?.[0] ?? 0, lLy: t.legL?.[1] ?? 0, lRx: t.legR?.[0] ?? 0, lRy: t.legR?.[1] ?? 0 });
 
 export class PuppetView extends AnimView {
@@ -206,6 +213,7 @@ export class PuppetView extends AnimView {
     for (const k of KEYS) {
       const step = PARTS.has(k) ? ANG_STEP : 1, cur = this.x[k] / step, w = was?.[k];
       lv[k] = w == null ? Math.round(cur) : Math.abs(cur - w) > 0.5 + HYST ? w + Math.max(-1, Math.min(1, Math.round(cur) - w)) : w;
+      const [lo, hi] = LEVEL_RANGE[k]; lv[k] = Math.max(lo, Math.min(hi, lv[k])); // 跟 quantize 一樣的範圍：不然算頭的位置時會跟畫出來的對不上（以前偶爾頭一次動 2 格）
     }
     // 頭的位置＝身體下沉＋低頭−吸氣：三個一起換一級，頭會一次動 3 格。頭一幀也最多動 1 格（先讓身體動，低頭、呼吸晚一幀）
     if (was) {

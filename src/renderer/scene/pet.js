@@ -22,7 +22,7 @@ import { traitsOf } from '../../core/mind.js';
 import { CURSOR_ACTIONS, cursorOptions, wantsToPounce, startPounce, besideCursor } from './cursor.js';
 import { LIFE_ACTIONS, lifeOptions, boostLife } from './lifeacts.js';
 import { actWeight, nextBout, focusBout } from '../../core/ethogram.js';
-import { step, coast, turnTime, wanderPath, pauseTick, RUN_STRIDE } from './locomotion.js';
+import { step, coast, turnTime, wanderPath, pauseTick, gait, topSpeed, RUN_STRIDE } from './locomotion.js';
 
 const GRAVITY = 900; // 美術像素／秒²
 const DROP = 14; // 放開時離地的高度（美術像素）
@@ -51,6 +51,8 @@ const ANIM_SET = {
   happy: 'happy', hop: 'happy', greet: 'happy', dance: 'happy', cheer: 'happy', twirl: 'happy', bounce: 'happy', hug: 'happy', hugging: 'happy', flashypose: 'happy', keyfound: 'happy',
 };
 const RUNS = new Set(['run', 'chase', 'flee', 'chaseCursor', 'pounce', 'oni', 'tag']);
+const HEAD_ROOM = 14; // 頭上留幾格（美術像素）：嚇一跳往上跳 10 格也碰不到螢幕上緣，不用瞬間把整隻往下推（PR-N4a，規格 M1；以前 6） // 猜的，可調整
+const EDGE_SOFT = 3; // 自己走、滑到螢幕邊可以超出幾格（美術像素），照減速度停下 // 猜的，可調整
 const KEEP_ARRIVE = new Set(['walk', 'run', 'trip']); // 換到這些狀態時留著 onArrive（還在往那裡走）
 // 這些狀態本來就是要快速翻來翻去（轉圈、跳舞、搖頭）：面向直接翻，不做轉身
 const INSTANT_FLIP = new Set(['spin', 'dance', 'refuse', 'roll', 'appear', 'held', 'fall', 'evolving']);
@@ -161,7 +163,7 @@ export class Pet {
     if (this.perch) { const pb = perchBounds(this); if (pb) return pb; }
     const a = this.asset, S = this.S, st = this.stage;
     const half = (a.w * S) / 2;
-    return { x0: half, x1: st.W - half, y0: (a.h + this.alt + 6) * S, y1: st.H - 3 * S };
+    return { x0: half, x1: st.W - half, y0: (a.h + this.alt + HEAD_ROOM) * S, y1: st.H - 3 * S };
   }
   clamp() {
     const b = this.bounds();
@@ -298,7 +300,12 @@ export class Pet {
   }
 
   // 走出螢幕（出門）、走回來的路上：開心就好（愛心、表情照樣有），不要停下來
-  happy() { if (this.state !== 'depart' && this.state !== 'tripReturn') this.set('happy', 0.6); }
+  // 坐著等你的（在果實旁邊等、看日落：director.js 安排的）也一樣：冒個 ♪ 就好，不要站起來（站起來就不等了）
+  happy() {
+    if (this.state === 'depart' || this.state === 'tripReturn') return;
+    if (this.state === 'sit' && (this.reserved || this.sunsetSit)) { this.showEmote('♪', 1.2); return; }
+    this.set('happy', 0.6);
+  }
 
   pickUp(px, py) {
     const r = this.rect();
@@ -446,10 +453,17 @@ export class Pet {
         break;
       }
       case 'roll': {
-        const b = this.bounds();
-        const ramp = Math.max(0, Math.min(1, this.stateT / 0.2, (this.dur - this.stateT) / 0.2)); // 前後 0.2 秒加速、減速（猜的，可調整）
-        this.x += this.rollDir * 60 * S * ramp * dt;
-        if (this.x <= b.x0 || this.x >= b.x1) this.rollDir *= -1;
+        // 打滾：跟走路一樣有加速度上限（PR-N4a，規格 M1：以前直接改位置，碰到邊瞬間反向）；快到邊先減速再彈回來，快結束時慢下來
+        const b = this.bounds(), lv = (this.lv ??= { x: 0, y: 0 });
+        const acc = topSpeed(this, RUN_SPEED * S, WALK_SPEED) / gait(this).acc;
+        const room = this.rollDir > 0 ? b.x1 - this.x : this.x - b.x0;
+        if (room < (lv.x * lv.x) / (2 * acc) + 4 * S && Math.sign(lv.x) === this.rollDir) this.rollDir *= -1; // 照現在的速度煞車要多遠：來不及就提早轉向
+        const want = Math.min(60 * S, Math.sqrt(2 * acc * Math.max(0, room)), acc * Math.max(0, this.dur - this.stateT));
+        const dv = this.rollDir * want - lv.x;
+        lv.x += Math.sign(dv) * Math.min(Math.abs(dv), acc * dt);
+        lv.y -= Math.sign(lv.y) * Math.min(Math.abs(lv.y), acc * dt); // 前一段留下的上下速度（例如跑步接打滾）慢慢停，不是瞬間歸零
+        this.x += lv.x * dt; this.gy += lv.y * dt;
+        this.moved = true; // 這一幀自己動過了（locomotion 的 coast 不要再滑一次）
         if (done) { this.set('idle', 1); if (Math.random() < 0.5) this.showEmote('♪', 1); }
         break;
       }
@@ -534,7 +548,11 @@ export class Pet {
     // 走出螢幕（出門）、從螢幕外走進來（回家）的時候本來就在螢幕外：不要夾回來，不然會卡在邊上
     const offscreen = (this.state === 'depart' && this.departure?.phase === 'out') || this.state === 'tripReturn';
     if (this.state !== 'held' && !offscreen) {
-      const b = this.bounds(), lv = this.lv ?? {};
+      const b0 = this.bounds(), lv = this.lv ?? {};
+      // 軟邊（PR-N4a，規格 M1）：自己走、滑過去的可以超出一點點（EDGE_SOFT 格），照減速度停下，不會撞牆一樣瞬間停住；
+      // 再超出去（或被丟出去）才夾回來
+      const soft = this.state === 'fall' ? 0 : EDGE_SOFT * S;
+      const b = { x0: b0.x0 - soft, x1: b0.x1 + soft, y0: b0.y0 - soft, y1: b0.y1 + soft };
       // 走到邊上被擋住：那個方向的走路速度也歸零（不然會一直往邊上滑、看起來是瞬間停住）
       if (this.x < b.x0) { this.x = b.x0; this.vx = Math.abs(this.vx) * 0.5; if (lv.x < 0) lv.x = 0; }
       if (this.x > b.x1) { this.x = b.x1; this.vx = -Math.abs(this.vx) * 0.5; if (lv.x > 0) lv.x = 0; }
@@ -678,7 +696,7 @@ export class Pet {
       run: d => { this.target = this.randomPoint(80, 260); this.set('run', d); },
       spin: () => this.set('spin', 0.9),
       dance: d => this.set('dance', d),
-      roll: () => { this.rollDir = this.facing; this.set('roll', 1); },
+      roll: () => { const b = this.bounds(); this.rollDir = this.x - b.x0 > b.x1 - this.x ? -1 : 1; this.facing = this.rollDir; this.set('roll', 1); }, // 往空間大的那邊滾
       play: () => {
         const o = others[Math.floor(Math.random() * others.length)];
         this.partner = o; o.partner = this;

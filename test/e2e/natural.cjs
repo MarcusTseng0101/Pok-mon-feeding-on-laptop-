@@ -100,7 +100,7 @@ const test = async ({ page }, check) => {
         Object.assign(p.mon, { fullness: 150, enjoyment: 150 });
         p.mon.mind = null; p.mon.memory = [];
         p.x = stage.W * (0.1 + 0.8 * ((i + 0.5) / pets.length)); p.gy = stage.H * (0.5 + 0.3 * rng());
-        p.vx = p.vy = p.vz = p.z = 0; p.partner = null; p.group = null; p.onArrive = null; p.reserved = null; p.perch = null;
+        p.vx = p.vy = p.vz = p.z = 0; p.lv = { x: 0, y: 0 }; /* 移動速度也清掉：以前上一個種子留下的速度讓第一幀就在滑（被算成瞬間起步） */ p.partner = null; p.group = null; p.onArrive = null; p.reserved = null; p.perch = null;
         p.set('idle', 0.5 + rng());
       });
       const rec = pets.map(p => ({
@@ -109,7 +109,7 @@ const test = async ({ page }, check) => {
         wdist: 0, wcyc: 0, bumps: 0, stride: p.view?.anim?.info?.stride || 2, lastV: 0, lastF: p.viewFacing ?? p.facing, jumpStates: {}, lastSet: p.animSet(), lastCanvas: null, setSwitch: 0, bigSwitch: 0, switchDiffs: [], mv: [], soc: [], frames: new Set(),
       }));
       for (let i = 0; i < N; i++) {
-        const before = pets.map(p => ({ x: p.x, y: p.gy, a: p.animT }));
+        const before = pets.map(p => ({ x: p.x, y: p.gy, a: p.animT, st: p.state, kv: Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 }));
         const stopped = stage.stopT > 0; // 這一幀開始時在「頓一下」（stage.update 會把 dt 乘 0.12）
         director.update?.(dt);
         stage.update(dt);
@@ -120,12 +120,14 @@ const test = async ({ page }, check) => {
           o.mv.push(mv ? 1 : 0); o.soc.push(SOCIAL(p) || p.bumpT > 0 || Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 || stopped || stage.stopT > 0 ? 1 : 0); // M9：社交、互相擠到、被撞、「頓一下」（全舞台一起放慢）的時間扣掉：兩隻之間的互動或全部一起的，不是各自決定要動
           if (mv) o.moving++;
           // M1：一幀之內的速度變化超過加速度上限（被拎、掉落、放招、瞬移、被推或被撞到的那幾幀不算）
-          const knocked = Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 || p.hopT > 0; // 被打到、被撞飛
+          const knocked = b.kv || Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 || p.hopT > 0; // 被打到、被撞飛（這一幀開始時還有擊退速度也算：擊退在這一幀裡衰減到 0，這一幀還是被推了）
           const hitStop = stage.stopT > 0 || stopped; // 招式打中時整個舞台放慢一下（「頓一下」）：大家一起慢，不是牠自己瞬間減速
-          const jump = !EXEMPT.has(p.state) && !knocked && !hitStop && Math.abs(v - o.lastV) > jumpLimit(p);
+          const exempt = EXEMPT.has(p.state) || EXEMPT.has(b.st) || knocked || hitStop; // b.st：這一幀開始時的狀態（放招在這一幀結束、最後搬了位置，也算放招）
+          // 上一幀是排除的（頓一下時 dt × 0.12、放招、被拎、被打到）：這一幀的速度不跟它比（PR-N4a 修量法：以前頓完的下一幀會被算成「瞬間起步」，26 → 3 剛好是 × 0.12）
+          const jump = !exempt && !o.lastExempt && Math.abs(v - o.lastV) > jumpLimit(p);
           if (jump && p.bumpT > 0) o.bumps++; // 被別隻擠了一下（physics.js 推開重疊）：另外算，跟被打到一樣不算在 M1
           else if (jump) { o.jumps++; o.jumpStates[p.state] = (o.jumpStates[p.state] ?? 0) + 1; }
-          o.lastV = v;
+          o.lastV = v; o.lastExempt = exempt;
           // M4：畫出來的面向翻過去之前，有沒有做至少 0.12 秒的轉身（轉圈、跳舞、搖頭這種本來就要快速翻的不算）
           const vf = p.viewFacing ?? p.facing;
           // 轉圈這種本來就直接翻的（同一幀結束的也算：instantFlipAt）不算
@@ -141,7 +143,9 @@ const test = async ({ page }, check) => {
           if (p.state === 'walk' && (p.explore ?? true)) {
             o.walk ??= { t: 0, still: 0, paused: false };
             o.walk.t += dt;
-            if (!mv) o.walk.still += dt; else { if (o.walk.still >= 0.3 && o.walk.still <= 2) o.walk.paused = true; o.walk.still = 0; }
+            // 停著＝自己沒有在走（lastStepDist：這一幀自己走了幾格，跟 M2 一樣）。被別隻擠、被推（例如旁邊在集合遊行）位置會變，但不是牠在走（PR-N4a 修量法；舊版沒有這個欄位就看位置）
+            const selfMv = p.lastStepDist != null ? p.lastStepDist / dt > 2 : mv;
+            if (!selfMv) o.walk.still += dt; else { if (o.walk.still >= 0.3 && o.walk.still <= 2) o.walk.paused = true; o.walk.still = 0; }
           } else if (o.walk) {
             // 散步停在一個 0.3–2 秒的停頓裡被叫走（遊行、被找去玩）：那一次停頓也算（以前要等「又開始走」才算，會漏掉）
             if (o.walk.still >= 0.3 && o.walk.still <= 2) o.walk.paused = true;
@@ -363,7 +367,7 @@ const test = async ({ page }, check) => {
   for (const s of r) for (const [sp, v] of Object.entries(s.per)) check(Object.keys(v.states).length >= 3, `種子 ${s.seed} 的 ${sp} 只做了 ${Object.keys(v.states).join('、')}`);
 
   // 門檻（PR-N2）：移動做好以後這三個每一隻、每個種子都要過（規格 §7.1，門檻沒動）。
-  // M1（瞬間起步）只報告：剩下的大多是習性自己搬位置，使用者決定在 PR-N4／N5 重寫習性時一起達成 0
+  // M1（瞬間起步）只報告：移動的部分 PR-N4a 修完了，剩下的是舊習性自己加速到跑步的 3 倍（烈箭鷹的俯衝），PR-N4b 重寫習性時加上「＝ 0」的門檻
   for (const s of r) for (const [sp, v] of Object.entries(s.per)) {
     if (v.M2_slide != null) check(v.M2_slide >= 0.85 && v.M2_slide <= 1.15, `M2 腳打滑：種子 ${s.seed} 的 ${sp} 是 ${v.M2_slide}（要 0.85–1.15）`);
     if (v.M3_pausedWalks != null) check(v.M3_pausedWalks >= 60, `M3 走走停停：種子 ${s.seed} 的 ${sp} 只有 ${v.M3_pausedWalks}%（要 ≥ 60%）`);
