@@ -122,7 +122,8 @@ const test = async ({ page }, check) => {
           // M1：一幀之內的速度變化超過加速度上限（被拎、掉落、放招、瞬移、被推或被撞到的那幾幀不算）
           const knocked = Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 || p.hopT > 0; // 被打到、被撞飛
           const hitStop = stage.stopT > 0 || stopped; // 招式打中時整個舞台放慢一下（「頓一下」）：大家一起慢，不是牠自己瞬間減速
-          const jump = !EXEMPT.has(p.state) && !knocked && !hitStop && Math.abs(v - o.lastV) > jumpLimit(p);
+          const teleport = p.state === 'habit' && p.habit?.teleport; // 瞬移型習性（規格 M1 的排除；habits.js 標 teleport）
+          const jump = !EXEMPT.has(p.state) && !teleport && !knocked && !hitStop && Math.abs(v - o.lastV) > jumpLimit(p);
           if (jump && p.bumpT > 0) o.bumps++; // 被別隻擠了一下（physics.js 推開重疊）：另外算，跟被打到一樣不算在 M1
           else if (jump) { o.jumps++; o.jumpStates[p.state] = (o.jumpStates[p.state] ?? 0) + 1; }
           o.lastV = v;

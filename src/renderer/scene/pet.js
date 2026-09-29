@@ -51,6 +51,7 @@ const ANIM_SET = {
   happy: 'happy', hop: 'happy', greet: 'happy', dance: 'happy', cheer: 'happy', twirl: 'happy', bounce: 'happy', hug: 'happy', hugging: 'happy', flashypose: 'happy', keyfound: 'happy',
 };
 const RUNS = new Set(['run', 'chase', 'flee', 'chaseCursor', 'pounce', 'oni', 'tag']);
+const FILLER_MAX = 5; // 這麼短以內的 idle 算「做完一件事的過場」（各處寫的是 1–4.5 秒；測試、導演要牠停著的都是 10 秒以上） // 猜的，可調整
 const KEEP_ARRIVE = new Set(['walk', 'run', 'trip']); // 換到這些狀態時留著 onArrive（還在往那裡走）
 // 這些狀態本來就是要快速翻來翻去（轉圈、跳舞、搖頭）：面向直接翻，不做轉身
 const INSTANT_FLIP = new Set(['spin', 'dance', 'refuse', 'roll', 'appear', 'held', 'fall', 'evolving']);
@@ -135,7 +136,7 @@ export class Pet {
   }
   animSet() {
     if (this.flinchT > 0) return 'hurt';
-    const s = ANIM_SET[this.state];
+    const s = ANIM_SET[this.state] ?? this.act?.animSet?.(this); // 習性可以指定播哪一組（habits.js 的 set）
     if (s) return s;
     const lp = this.lastPos, moving = lp && Math.hypot(this.x - lp.x, this.gy - lp.y) > 0.25 * this.S;
     return moving ? (RUNS.has(this.state) ? 'run' : 'walk') : 'idle';
@@ -152,6 +153,11 @@ export class Pet {
     // 不是在往某個地方走了（被叫去看東西、被拎起來、嚇一跳…）：「走到了要做什麼」也不要了，不然會留著舊的（規格 F10）。
     // 跌倒（trip）例外：站起來會繼續走過去
     if (!KEEP_ARRIVE.has(state)) this.onArrive = null;
+    // 做完一件事時各處會塞一段 1–3 秒的 idle 過場，一件事就變成換兩次狀態（規格 M8：每分鐘換太多次）。
+    // 不是「下一件事」選出來的休息、又很短的 idle＝過場：這一幀 update 結束時直接挑下一件事（呼叫的人接著換了別的狀態就照它的）。
+    // 長的（測試、導演要牠停著）、nextBout 選的休息（restIdle）照舊
+    this.fillerIdle = state === 'idle' && !this.restIdle && dur <= FILLER_MAX;
+    this.restIdle = false;
     // 跌倒或頭暈時，感情好的夥伴可能會跑來安慰
     if ((state === 'trip' || state === 'dizzy') && was !== state && !this.leaving && !this.guest) maybeComfort(this);
   }
@@ -555,6 +561,8 @@ export class Pet {
       if (headY < 0) this.gy = Math.min(b.y1, this.gy - headY);
     }
     if (this.leaving) this.alpha = Math.max(0, this.alpha - dt * 3);
+    // 換到過場的 idle（這一幀、或上一幀在別的地方被換的）：直接挑下一件事（見 set()）
+    if (this.fillerIdle && this.state === 'idle' && !this.guest && !this.leaving) { this.fillerIdle = false; this.decide(); }
   }
 
   // 每一幀、所有夥伴都 update 完以後（stage.update 呼叫）：
@@ -572,7 +580,8 @@ export class Pet {
     if (view?.puppet) {
       const total = view.anim.sets[setName]?.total ?? 1;
       this.puppetXf = toPuppet(this.pose(), view.anim.info.H, this.viewFacing);
-      view.drive(dt, setName, this.animT / total, this.puppetXf, RESTING.has(this.state));
+      const k = this.dur > 0 ? Math.min(1, this.stateT / this.dur) : 0;
+      view.drive(dt, setName, this.animT / total, this.puppetXf, RESTING.has(this.state), this.act?.puppet?.(this, k)); // 習性直接指定的身體姿勢
     }
   }
 
@@ -634,6 +643,7 @@ export class Pet {
     if (this.perch) { this.choose(tag(perchedChoices(this), 'explore')); return; } // 站在視窗上：只做安靜的事或跳下來
     if (st.env.focus) { // 專注中：安靜地陪你
       const b = focusBout(Math.random);
+      this.restIdle = true; // 專注時選的就是休息
       this.set(FOCUS_STATE[b.name], b.dur);
       afterChoice(this, [b.name, 1, null, 'rest']);
       return;
@@ -663,7 +673,7 @@ export class Pet {
     const acts = {
       // 散步：微彎的路線、走走停停（scene/locomotion.js）
       walk: () => { this.path = wanderPath(this); this.target = this.path.shift(); this.explore = true; this.movingT = 0; this.pauseT = 0; this.nextPause = null; this.set('walk'); },
-      idle: d => this.set('idle', d),
+      idle: d => { this.restIdle = true; this.set('idle', d); },
       look: d => { this.set('look', d); if (Math.random() < 0.5) this.showEmote('?', 1.2); },
       sit: d => this.set('sit', d),
       stretch: d => { this.set('stretch', d); if (Math.random() < 0.5) this.showEmote('…', 1); },
@@ -675,10 +685,10 @@ export class Pet {
         this.onArrive = () => {
           if (this.floats) { this.set('look', 1.6); this.showEmote('♪', 1); return; }
           this.target = this.randomPoint(10, 30);
-          this.set('forage', rp(2.5, 3.5));
+          this.set('forage', rp(4, 8)); // 找吃的一段（PR-N4 拉長；以前 2.5–3.5 秒）
         };
       },
-      shiver: () => this.set('shiver', 0.6),
+      shiver: d => this.set('shiver', d),
       follow: d => this.set('follow', d),
       run: d => { this.target = this.randomPoint(80, 260); this.set('run', d); },
       spin: () => this.set('spin', 0.9),
@@ -715,7 +725,7 @@ export class Pet {
     // 下一段做什麼、做多久：物種生活表（時間分配 × 心智的需求 × 屬性對環境的反應）
     const bout = nextBout(this.mon.species, { ...ctx, mind: mindWeights(this), offers: offers.map(([name, w, , cat]) => ({ name, w, cat })) }, Math.random);
     const c = bout && offers.find(o => o[0] === bout.name && o[1] > 0);
-    if (!c) { this.set('idle', rp(2, 4)); return; }
+    if (!c) { this.restIdle = true; this.set('idle', rp(2, 4)); return; }
     this.bout = bout; // 測試、之後的移動（PR-N2）用：這一段屬於哪一類
     c[2](bout.dur);
     afterChoice(this, c);

@@ -229,7 +229,8 @@ function frame(src, a, parts, pose) {
     for (const p of parts) {
       if (!kinds.includes(p.kind)) continue;
       // 越長的部位轉越少（尖端移動的距離差不多），不然長樹枝、大翅膀一甩就扯開
-      const ang = (p.raise * (pose[p.kind] ?? 0) + p.alt * (pose[p.kind + 'Sw'] ?? 0)) * Math.min(1, LONG / p.reach);
+      // 舉起來＋左右擺加起來最多 PART_MAX（規格 F9：部位角度有上限）
+      const ang = Math.max(-PART_MAX, Math.min(PART_MAX, p.raise * (pose[p.kind] ?? 0) + p.alt * (pose[p.kind + 'Sw'] ?? 0))) * Math.min(1, LONG / p.reach);
       const r = p.at(ang);
       const [mx, my] = p.host === 'head' ? head : [0, body];
       const jy = Math.floor(p.pivot.y) + my + PAD;
@@ -350,7 +351,7 @@ export function buildRig(srcCanvas, { floats = false } = {}) {
     if (!build) return null;
     const c = frame(base, a, parts, toFrame(q));
     stats.built++;
-    for (const p of parts) stats.maxPart = Math.max(stats.maxPart, Math.abs(p.raise * q[p.kind] + p.alt * q[p.kind + 'Sw']) * Math.min(1, LONG / p.reach));
+    for (const p of parts) stats.maxPart = Math.max(stats.maxPart, Math.min(PART_MAX, Math.abs(p.raise * q[p.kind] + p.alt * q[p.kind + 'Sw'])) * Math.min(1, LONG / p.reach));
     cache.set(q.key, c);
     if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
     return c;

@@ -170,7 +170,7 @@ export const ACTS = {
   chill: { cls: 'rest', w: c => (has(c, 'ice') ? 4 : 0), dur: 2.5 },
   // 探索
   walk: { cls: 'explore', w: 30, dur: [1.5, 3.5, 8] }, // 走路多長由距離決定，這裡只是估計（算時間分配用）
-  look: { cls: 'explore', w: 10, dur: [1.6, 2, 3] },
+  look: { cls: 'explore', w: 10, dur: [2.5, 4, 8] }, // 停下來東張西望：動物掃視一次常常好幾秒（PR-N4 拉長，規格 M8）
   dig: { cls: 'explore', w: c => (!c.floats && (has(c, 'ground') || c.digger) ? 4 : 0), dur: 3 },
   slime: { cls: 'explore', w: c => (has(c, 'dragon') && !c.floats ? 4 : 0), dur: 8 },
   soar: { cls: 'explore', w: c => (c.floats ? (night(c) && SPECIES[c.id]?.diel === 'night' ? 6 : 3) : 0), dur: [2.8, 3.3, 4] },
@@ -179,11 +179,11 @@ export const ACTS = {
   perch: { cls: 'explore', w: c => (c.floats ? 24 : 16), dur: [2, 3, 5] },
   // 找吃的：肚子不餓也會找（真實動物的時間分配本來就有覓食），餓了更想找
   hungry: { cls: 'forage', w: c => ((c.fullness ?? 100) < 100 ? 5 : 2), dur: [4, 5, 7] },
-  forage: { cls: 'forage', w: c => (!c.floats && has(c, 'bug', 'normal', 'ground', 'grass') ? 4 : 0), dur: [2.5, 3, 4] },
+  forage: { cls: 'forage', w: c => (!c.floats && has(c, 'bug', 'normal', 'ground', 'grass') ? 4 : 0), dur: [4, 6, 12] }, // 找吃的一段（PR-N4 拉長）
   beg: { cls: 'forage', w: c => ((c.fullness ?? 100) < 30 ? 4 : 0), dur: 2 },
   sniff: { cls: 'forage', w: c => (c.lure ? ((c.fullness ?? 100) < 80 ? 12 : 4) : 0), dur: 4 },
   // 玩
-  run: { cls: 'play', w: c => ((c.enjoyment ?? 0) > 120 || (c.hearts ?? 0) >= 2 ? 4 : 1), dur: [2.5, 3.2, 4.5] },
+  run: { cls: 'play', w: c => ((c.enjoyment ?? 0) > 120 || (c.hearts ?? 0) >= 2 ? 4 : 1), dur: [3, 4.5, 7] },
   spin: { cls: 'play', w: c => ((c.hearts ?? 0) >= 2 ? 3 : 0), dur: 0.9 },
   dance: { cls: 'play', w: c => (c.music && (c.hearts ?? 0) >= 1 ? 4 : 0), dur: [3, 4, 6] },
   roll: { cls: 'play', w: c => (!c.floats && (c.hearts ?? 0) >= 1 ? 3 : 0), dur: 1 },
@@ -200,8 +200,8 @@ export const ACTS = {
   // 社交
   play: { cls: 'social', w: c => ((c.others ?? 0) > 0 && (c.hearts ?? 0) >= 1 ? 6 : 0), dur: [4, 5, 6] }, // 找一隻追著玩
   // 理毛、整理身體：伸懶腰（動物伸懶腰會停在最伸展的姿勢一下）、抖一抖（見上面 GROOM_ACTS：現在算在休息裡）
-  stretch: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 4, dur: [1.2, 2.5, 4] },
-  shiver: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 1, dur: 0.6 },
+  stretch: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 4, dur: [2, 3, 5] },
+  shiver: { cls: GROOM_ACTS ? 'groom' : 'rest', w: 1, dur: [1.2, 1.6, 2.5] }, // 抖一抖（像狗甩毛）
 };
 // ---------- 步態（PR-N2；scene/locomotion.js 用）----------
 // 外型 → 怎麼移動。kind：biped 兩腳、quad 四腳、hop 一跳一跳、crawl 爬（一伸一縮）、float 飄、fly 拍翅膀
@@ -228,7 +228,7 @@ export const gaitOf = id => GAIT[SPECIES[id]?.body] ?? GAIT.upright;
 // 休息的地點：動物大多回窩（巢、洞）休息，不是走到哪睡到哪。回秘密基地休息（心智類別 base）在「休息」裡的權重乘上多少（猜的，可調整）
 const DEN = 3;
 const CAT_CLASS = { rest: 'rest', base: 'rest', explore: 'explore', need: 'forage', play: 'play', cursor: 'play', train: 'play', social: 'social', habit: 'habit', trip: 'explore' };
-const CLASS_DUR = { rest: [2, 6, 40], explore: [1.5, 4, 10], forage: [2, 4, 8], play: [1, 2.5, 6], social: [2, 4, 8], groom: [0.6, 1.2, 2], habit: [2, 4, 8] };
+const CLASS_DUR = { rest: [2, 6, 40], explore: [2, 5, 12], forage: [3, 6, 12], play: [1.5, 3.5, 8], social: [3, 6, 12], groom: [1.5, 3, 5], habit: [4, 6, 10] }; // PR-N4：一段拉長（規格 M8），習性照 habits.js 的新長度
 
 // 不在 ACTS 裡、但不能照心智類別分的：坐到你的游標旁邊、跟著你走＝想待在你身邊（跟你的社交），不是「玩」
 // （N1 把它們算在「玩」，「玩」很少的物種就幾乎不會來找你，cursor.cjs 量到只剩原本的 1/5）
