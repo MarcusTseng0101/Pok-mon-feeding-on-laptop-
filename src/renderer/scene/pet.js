@@ -165,7 +165,9 @@ export class Pet {
     // 不是「下一件事」選出來的休息、又很短的 idle＝過場：這一幀 update 結束時直接挑下一件事（呼叫的人接著換了別的狀態就照它的）。
     // 長的（測試、導演要牠停著）、nextBout 選的休息（restIdle）照舊
     this.fillerIdle = state === 'idle' && !this.restIdle && dur <= FILLER_MAX;
-    if (this.boutRep && state !== 'idle' && state !== this.boutRep.name) this.boutRep = null; // 被叫去做別的：這一段玩完了
+    // 被叫去做別的：這一段玩完了。停下來的 idle 只有過場的會接著重複；長的（測試、導演要牠停著）也算被叫走
+    // （PR-N5 找到的 PR-N4 舊 bug：以前任何 idle 都留著，停著以後再放一次招，放完又自己重複練，招式一直放不完）
+    if (this.boutRep && !this.fillerIdle && state !== this.boutRep.name) this.boutRep = null;
     if (this.restBout && state !== this.restBout.state) this.restBout = null; // 休息結束了（或被叫走）
     this.restIdle = false;
     // 散步的路線只屬於 decide() 開始的那一段散步：別的地方換狀態（被找去玩、導演叫牠去角落）就不要了。

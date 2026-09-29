@@ -16,6 +16,9 @@ run('movefx', async ({ page, shot }, check) => {
     director.nextSpawnAt = Infinity; director.updateEnv = () => {};
     Object.assign(stage.env, { sleepy: false, userActive: false, hour: 14, focus: null });
     const [a, b] = [...stage.pets.values()];
+    // 只量這一招：放完不要自己挑下一件事。PR-N5 起自己練招式會一段裡連續練好幾次，挑到的話 moveCtx 一直有東西，會被當成「放不完」
+    // （以前挑到練招只多放一招，剛好在 200 幀內放完，所以沒被發現）
+    for (const p of [a, b]) p.decide = function () { this.set('idle', 999); };
     const place = () => {
       stage.fx.parts = []; stage.stopT = 0; stage.shakeT = 0;
       for (const p of [a, b]) { p.set('idle', 999); p.moveCtx = null; p.kvx = p.kvy = 0; p.z = 0; }

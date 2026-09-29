@@ -185,7 +185,7 @@ export const ACTS = {
   sunbathe: { cls: 'rest', w: c => (has(c, 'grass', 'fire') && day(c) ? 6 : 0), dur: [12, 25, 90] },
   chill: { cls: 'rest', w: c => (has(c, 'ice') ? 4 : 0), dur: 2.5 },
   // 探索
-  walk: { cls: 'explore', w: 30, dur: [4, 8, 20] }, // 一段散步多長（PR-N5：pet.js 會走滿這個長度；以前 [1.5, 3.5, 8] 只是估計，實際走完 2–3 段路線平均 7 秒，比估的長，散步被挑得太常；猜的，可調整）
+  walk: { cls: 'explore', w: 30, dur: [3, 6, 16] }, // 一段散步多長（PR-N5：pet.js 會走滿這個長度；以前 [1.5, 3.5, 8] 只是估計，實際走完 2–3 段路線平均 7 秒，比估的長，散步被挑得太常；猜的，可調整）
   look: { cls: 'explore', w: 10, dur: [3, 5, 10] }, // 停下來東張西望：動物掃視一次常常好幾秒（PR-N4 拉長，規格 M8；PR-N5 再拉長，以前 [2.5, 4, 8]）
   dig: { cls: 'explore', w: c => (!c.floats && (has(c, 'ground') || c.digger) ? 4 : 0), dur: 3 },
   slime: { cls: 'explore', w: c => (has(c, 'dragon') && !c.floats ? 4 : 0), dur: 8 },
