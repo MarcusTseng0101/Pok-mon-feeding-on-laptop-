@@ -9,7 +9,7 @@ import * as art from '../gfx/art.js';
 import { hearts } from '../../core/amie.js';
 import { spriteKey } from '../../core/forms.js';
 import { ACTIONS, soloOptions, socialOptions, boutCtx, WALK_SPEED, RUN_SPEED } from './behaviors.js';
-import { HABIT_ACTIONS, habitOptions } from './habits.js';
+import { HABIT_ACTIONS, habitOptions, habitMean } from './habits.js';
 import { MOVE_ACTIONS, moveOptions } from './moves.js';
 import { SOCIAL_ACTIONS, groupOptions, maybeComfort } from './social.js';
 import { integrateKnock } from './physics.js';
@@ -62,6 +62,9 @@ const INSTANT_FLIP = new Set(['spin', 'dance', 'refuse', 'roll', 'appear', 'held
 const ANIM_SPEED = { walk: 1.5, approach: 1.5, walkTogether: 1.5, run: 2, chase: 2, flee: 2, chaseCursor: 2, pounce: 1.6, dance: 1.6, held: 1.4, sit: 0.7, sleep: 0.3, dizzy: 0.5, shiver: 2.5 };
 // 休息中（跟隨的擺幅打折，規格 F9）
 const RESTING = new Set(['idle', 'sit', 'sleep', 'nap', 'inside', 'cursorSit', 'watch', 'chill', 'wait', 'sunbathe', 'read']);
+// 休息中被嚇到只彈一下、不打斷的狀態（睡著的、在帳篷裡的不算：會醒）；反應多短以內才這樣（PR-N5）
+const REACT_KEEP = new Set(['idle', 'sit', 'cursorSit', 'watch', 'chill', 'wait', 'sunbathe', 'read']);
+const REACT_MAX = 1; // 猜的，可調整
 
 // ---------- 集中轉換器（規格 PR-N3、§4.3、F7）----------
 // 行為、習性、招式的 pose() 還是寫整張圖的 { sx, sy, rot, ox, pivot }（140 處不用改），畫之前在這裡翻成像素木偶的參數：
@@ -156,6 +159,9 @@ export class Pet {
     // 互動結束的「開心」（0.6 秒，遊行、合照、切磋、追完、吃完…）：彈一下、舉手（cheerT），不另外切一個狀態，
     // 接著直接挑下一件事（使用者決定的 M8 做法：以前每次互動結束都多換一次狀態）
     if (state === 'happy' && dur <= CHEER_MAX && !this.guest) { this.cheerT = dur; this.hopT = Math.max(this.hopT ?? 0, 0.25); state = 'idle'; dur = 1; }
+    // 休息中被別隻嚇到、冷到（吼叫、超音波、放招逗牠…1 秒以內的反應）：彈一下（表情是呼叫的人放的），接著休息，不另外切一個狀態。
+    // 跟上面的開心一樣（PR-N5，規格 M8：以前每次都打斷休息、嚇完再挑下一件事，休息多的物種被旁邊吵到，換狀態的次數超過上限）。睡著的照舊會醒
+    if ((state === 'startle' || state === 'shiver') && dur <= REACT_MAX && REACT_KEEP.has(this.state) && !this.guest) { this.hopT = Math.max(this.hopT ?? 0, 0.25); return; }
     const was = this.state;
     this.state = state; this.stateT = 0; this.dur = dur;
     // 不是在往某個地方走了（被叫去看東西、被拎起來、嚇一跳…）：「走到了要做什麼」也不要了，不然會留著舊的（規格 F10）。
@@ -165,7 +171,9 @@ export class Pet {
     // 不是「下一件事」選出來的休息、又很短的 idle＝過場：這一幀 update 結束時直接挑下一件事（呼叫的人接著換了別的狀態就照它的）。
     // 長的（測試、導演要牠停著）、nextBout 選的休息（restIdle）照舊
     this.fillerIdle = state === 'idle' && !this.restIdle && dur <= FILLER_MAX;
-    if (this.boutRep && state !== 'idle' && state !== this.boutRep.name) this.boutRep = null; // 被叫去做別的：這一段玩完了
+    // 被叫去做別的：這一段玩完了。停下來的 idle 只有過場的會接著重複；長的（測試、導演要牠停著）也算被叫走
+    // （PR-N5 找到的 PR-N4 舊 bug：以前任何 idle 都留著，停著以後再放一次招，放完又自己重複練，招式一直放不完）
+    if (this.boutRep && !this.fillerIdle && state !== this.boutRep.name) this.boutRep = null;
     if (this.restBout && state !== this.restBout.state) this.restBout = null; // 休息結束了（或被叫走）
     this.restIdle = false;
     // 散步的路線只屬於 decide() 開始的那一段散步：別的地方換狀態（被找去玩、導演叫牠去角落）就不要了。
@@ -431,6 +439,7 @@ export class Pet {
         if (this.moveTo(this.target.x, this.target.y, speed, dt)) {
           if (this.state === 'run' && this.stateT < this.dur) { this.target = this.randomPoint(60, 200); break; } // 暴衝：一直換方向
           if (this.state === 'walk' && this.explore && this.path?.length) { this.target = this.path.shift(); break; } // 散步：下一段
+          if (this.state === 'walk' && this.explore && this.t < (this.walkUntil ?? 0)) { this.path = wanderPath(this); this.target = this.path.shift(); break; } // 這一段散步還沒走滿：換個方向繼續走
           const arrive = this.onArrive;
           this.onArrive = null;
           this.set('idle', 1.5 + Math.random() * 3);
@@ -709,20 +718,22 @@ export class Pet {
     const ctx = { ...boutCtx(this), others: others.length };
     const acts = {
       // 散步：微彎的路線、走走停停（scene/locomotion.js）
-      walk: () => { this.path = wanderPath(this); this.target = this.path.shift(); this.explore = true; this.movingT = 0; this.pauseT = 0; this.nextPause = null; this.exploreStart = true; this.set('walk'); },
+      // 一段散步走滿 nextBout 給的長度（PR-N5，規格 M8）：路線走完、時間還沒到就再接一段路線（以前走完 2–3 段就停，比生活表估的長度短，散步被挑得太常）
+      walk: d => { this.path = wanderPath(this); this.target = this.path.shift(); this.explore = true; this.walkUntil = this.t + (d ?? 0); this.movingT = 0; this.pauseT = 0; this.nextPause = null; this.exploreStart = true; this.set('walk'); this.walkLimit = Math.max(15, (d ?? 0) + 8); },
       idle: d => { this.restIdle = true; this.set('idle', d); },
       look: d => { this.set('look', d); if (Math.random() < 0.5) this.showEmote('?', 1.2); },
       sit: d => this.set('sit', d),
       stretch: d => { this.set('stretch', d); if (Math.random() < 0.5) this.showEmote('…', 1); },
       // 肚子餓：跟你討泡芙，或自己去附近找找有沒有樹果
       beg: () => { this.showEmote(art.puff('sweet-basic'), 2); this.set('idle', 2); },
-      hungry: () => {
+      hungry: d => {
         this.target = this.randomPoint(40, 160);
         this.set('walk');
+        const t0 = this.t;
         this.onArrive = () => {
           if (this.floats) { this.set('look', 1.6); this.showEmote('♪', 1); return; }
           this.target = this.randomPoint(10, 30);
-          this.set('forage', rp(4, 8)); // 找吃的一段（PR-N4 拉長；以前 2.5–3.5 秒）
+          this.set('forage', Math.max(4, (d ?? 6) - (this.t - t0))); // 找吃的一段：走過去加上找，滿 nextBout 給的長度（PR-N5；PR-N4 是 4–8 秒，以前 2.5–3.5 秒）
         };
       },
       shiver: d => this.set('shiver', d),
@@ -760,12 +771,13 @@ export class Pet {
     const life = st.game?.lifeAt?.(this.uid);
     const offers = life ? boostLife(choices, life) : choices;
     // 下一段做什麼、做多久：物種生活表（時間分配 × 心智的需求 × 屬性對環境的反應）
-    const bout = nextBout(this.mon.species, { ...ctx, mind: mindWeights(this), offers: offers.map(([name, w, , cat]) => ({ name, w, cat })) }, Math.random);
+    const bout = nextBout(this.mon.species, { ...ctx, mind: mindWeights(this), offers: offers.map(([name, w, , cat]) => ({ name, w, cat, mean: cat === 'habit' ? habitMean(this, name) : undefined })) }, Math.random); // 習性自己的平均長度（PR-N5）
     const c = bout && offers.find(o => o[0] === bout.name && o[1] > 0);
     if (!c) { this.restIdle = true; this.set('idle', rp(2, 4)); return; }
     this.bout = bout; // 測試、之後的移動（PR-N2）用：這一段屬於哪一類
     this.restBout = null;
-    const rep = BOUT_ACTS[c[0]]?.rep;
+    // 沒有對象的習性也一樣：一段做滿 nextBout 給的長度，做完一次、時間還沒到就再做一次（PR-N5，規格 M8；結束時變成別的狀態的習性不會重複，見 set()）
+    const rep = BOUT_ACTS[c[0]]?.rep ?? (c[3] === 'habit' && habitMean(this, c[0]) != null ? 1 : null);
     if (rep) { c[2](rep); this.boutRep = { name: this.state, start: c[2], rep, until: this.t + bout.dur }; } // 重複做到這一段滿
     else c[2](bout.dur);
     if (bout.kind === 'rest' && this.state !== 'walk') this.restBout = { state: this.state, until: this.t + (this.dur || bout.dur) * REST_GUARD }; // 走去休息的地方的路上不算

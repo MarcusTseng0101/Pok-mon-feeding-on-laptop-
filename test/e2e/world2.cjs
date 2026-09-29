@@ -33,7 +33,8 @@ async function test({ page, shot: rawShot }, check) {
     for (const p of stage.pets.values()) { p.perch = null; p.perchJump = null; p.reserved = false; p.huddling = false; p.sunsetSit = false; p.partner = null; p.group = null; p.onArrive = null; p.x = (300 + i * 180) * stage.dpr; p.gy = 420 * stage.dpr; p.z = 0; p.set('idle', 0.5); i++; }
     await new Promise(r => setTimeout(r, 400));
   });
-  const idleAll = () => page.evaluate(() => { for (const p of window.__kalos.stage.pets.values()) if (!['idle', 'walk', 'sit', 'look'].includes(p.state)) { p.partner = null; p.group = null; p.set('idle', 0.5); } });
+  // 大家閒著：idle 30（PR-N4b 起 5 秒以內的 idle 是過場，同一幀就挑下一件事；PR-N5 習性一段裡重複做、比較長，常常全部都在忙，沒有閒著的可以被叫去玩）
+  const idleAll = () => page.evaluate(() => { for (const p of window.__kalos.stage.pets.values()) if (!['idle', 'walk', 'sit', 'look'].includes(p.state)) { p.partner = null; p.group = null; p.set('idle', 30); } });
 
   // ---------- 1a) 日落，沒有視窗：螢幕下緣排排坐，面向左 ----------
   await settle();

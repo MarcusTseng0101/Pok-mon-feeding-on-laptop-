@@ -42,7 +42,8 @@ async function test({ page, shot }, check) {
   check(tired.mood === 'tired' && tired.limit === 0 && tired.calm && tired.noApproach, `很累的效果不對：${JSON.stringify(tired)}`);
   check(/很累/.test(tired.row ?? ''), `選過以後沒顯示今天的心情：${JSON.stringify(tired)}`);
   // 之後的通知不要被額度擋住（這裡要測的是心情、里程碑本身；額度在 attention.cjs 測）
-  await page.evaluate(() => { window.__kalos.game.state.settings.interruptions = 'unlimited'; for (const p of window.__kalos.stage.pets.values()) p.set('idle', 3); });
+  // 大家先閒著（idle 30：PR-N4b 起 5 秒以內的 idle 是過場，同一幀就挑下一件事，可能三隻都去做習性、找人玩，沒有閒著的可以跳舞）
+  await page.evaluate(() => { window.__kalos.game.state.settings.interruptions = 'unlimited'; for (const p of window.__kalos.stage.pets.values()) p.set('idle', 30); });
 
   // 2) 改成「很開心」：大家跳舞
   await page.click('.menu [data-moodact="edit"]');

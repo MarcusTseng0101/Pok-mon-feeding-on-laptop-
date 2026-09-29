@@ -121,9 +121,9 @@ test('nextBout：同一個種子同樣的結果；沒有選項回傳 null；需�
     return f;
   };
   assert.ok(share({ need: 3 }) > share({ need: 0.2 }) * 3, '餓了（need 倍率高）要更常找吃的');
-  // 長度：休息多數短、少數很長
-  const rng = createRng(5);
-  const d = Array.from({ length: 2000 }, () => E.nextBout(650, { hour: 12, offers: [{ name: 'sit', w: 1, cat: 'rest' }] }, rng).dur).sort((a, b) => a - b);
+  // 長度：休息多數短、少數很長（表本身的分布；PR-N5 起長度會再乘上這一種的節奏 tempoAt，先除掉再比，數字沒動）
+  const rng = createRng(5), tempo = E.tempoAt(650, 12);
+  const d = Array.from({ length: 2000 }, () => E.nextBout(650, { hour: 12, offers: [{ name: 'sit', w: 1, cat: 'rest' }] }, rng).dur / tempo).sort((a, b) => a - b);
   assert.ok(d[1000] < 30 && d[1980] > 60, `坐著的長度中位數 ${d[1000].toFixed(1)}、99% ${d[1980].toFixed(1)}`);
 });
 
@@ -178,6 +178,20 @@ test('M8 每分鐘換狀態的上限：照模板的休息比例，休息越多�
   // 休息多的（傳說、獅子）比休息少的（坐騎山羊：草食）低
   assert.ok(E.switchMaxAt(716, 14) < E.switchMaxAt(673, 14));
   assert.ok(E.switchMaxAt(668, 14) < E.switchMaxAt(673, 14));
+});
+
+test('M8 一段多長的節奏：跟上限同一個模板，休息越多一段越長（PR-N5）', () => {
+  for (const id of Object.keys(E.SPECIES).map(Number)) {
+    const t = E.tempoAt(id, 14);
+    assert.ok(t >= 1 && t <= 3.5, `${id}：${t}`);
+  }
+  assert.ok(E.tempoAt(716, 14) > E.tempoAt(673, 14));
+  // 自己的動作（ACTS）照節奏拉長；別的檔案的選項（沒有 mean）不拉長，有 mean 的（習性）也拉長
+  const rng = createRng(3), one = offers => E.nextBout(716, { hour: 14, offers }, rng).dur;
+  assert.ok(Math.abs(one([{ name: 'chill', w: 1, cat: 'rest' }]) - 2.5 * E.tempoAt(716, 14)) < 1e-9);
+  const plain = one([{ name: 'someSocial', w: 1, cat: 'social' }]), habit = Array.from({ length: 400 }, () => one([{ name: 'x', w: 1, cat: 'habit', mean: 3 }]));
+  assert.ok(plain >= 3 && plain <= 12, `社交的長度照 CLASS_DUR：${plain}`);
+  assert.ok(Math.max(...habit) > 12, '有 mean 的習性一段也照節奏拉長');
 });
 
 test('範圍外的介面：learn 先回傳原表', () => {
