@@ -1,6 +1,6 @@
 // 寶可夢圖片：向 main process 要 PNG（有快取），裁掉透明邊、建立命中遮罩與剪影。
 import { makeCanvas, alphaMask, tint } from './pixel.js';
-import { buildRig } from './rig.js';
+import { buildRig, quantize, ANG_STEP } from './rig.js';
 import { fallbackSprite } from './art.js';
 import { speciesOfKey } from '../../core/forms.js';
 
@@ -31,6 +31,16 @@ function crop(img) {
   const out = makeCanvas(x1 - x0 + 1, y1 - y0 + 1);
   out.getContext('2d').drawImage(c, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
   return out;
+}
+
+// 跟 makeAsset 一樣，但點擊用的遮罩第一次用到才算（木偶的姿勢圖很多張，大部分不會被點）
+function lazyAsset(canvas) {
+  return {
+    canvas, w: canvas.width, h: canvas.height, fallback: false, _mask: null, _white: null, _dark: null,
+    get mask() { return (this._mask ??= alphaMask(this.canvas)); },
+    get white() { return (this._white ??= tint(this.canvas, '#ffffff')); },
+    get dark() { return (this._dark ??= tint(this.canvas, '#28203a')); },
+  };
 }
 
 export function makeAsset(canvas, fallback = false) {
@@ -94,15 +104,18 @@ export class SpriteBank {
     if (!anim) {
       const rig = buildRig(still.canvas, { floats: this.dex.floats?.(speciesOfKey(id)) ?? false });
       // 每一組動作第一次用到才做（睡覺、出招那些很多隻一輩子都用不到幾次）
+      // 每一組的畫面要看的時候才做（木偶畫法只拿 sets 當「現在是哪一組」的標籤，用不到固定的畫面）
       const sets = {};
       for (const name of Object.keys(rig.sets)) {
-        let wrapped = null;
-        Object.defineProperty(sets, name, {
-          enumerable: true,
-          get: () => (wrapped ??= (s => ({ ...s, frames: s.frames.map(c => makeAsset(c)) }))(rig.sets[name])),
-        });
+        const s = rig.sets[name];
+        let frames = null;
+        sets[name] = { name, durs: s.durs, total: s.total, get frames() { return (frames ??= s.frames.map(c => makeAsset(c))); } };
       }
-      anim = { sets, w: rig.w, h: rig.h, info: rig.info };
+      // 參數姿勢（規格 PR-N3）：量化後的參數 → 做好的圖（rig.js 快取）→ 包成 asset（遮罩、剪影第一次用到才算）
+      const assets = new WeakMap();
+      const wrap = c => { let x = assets.get(c); if (!x) { x = lazyAsset(c); assets.set(c, x); } return x; };
+      const pose = (q, opts) => { const c = rig.pose(q, opts); return c && wrap(c); };
+      anim = { sets, w: rig.w, h: rig.h, info: rig.info, pose, target: rig.target, stats: rig.stats };
       RIGS.set(still, anim);
     }
     return anim;
@@ -139,6 +152,85 @@ export class AnimView {
   get mask() { return this.frame.mask; }
   get white() { return this.frame.white; }
   get dark() { return this.frame.dark; }
+}
+
+// ---------- 像素木偶的參數姿勢（規格 PR-N3、§4.3）----------
+// 手上的參數是連續的，每一個用臨界阻尼彈簧追目標（不同參數不同快慢），畫之前才量化（gfx/rig.js 的 quantize）。
+// 所以換動作時姿勢是慢慢過去的，不會「喀」一下跳格（規格 F8）。
+// 彈簧大約 2/ω 秒追到：腳 0.05 秒（要跟著步伐）、身體 0.09 秒、手 0.11、耳朵 0.14、尾巴 0.2（部位慢半拍＝跟隨，規格 0.08–0.2 秒）
+const OMEGA = { lean: 22, crouch: 22, headPitch: 20, breath: 16, lLx: 40, lLy: 40, lRx: 40, lRy: 40, arm: 18, armSw: 18, ear: 14, earSw: 14, tail: 10, tailSw: 10 }; // 猜的，可調整
+const KEYS = Object.keys(OMEGA);
+const PART_SPEED = 8; // 部位最快一秒轉幾弧度（規格 F9：不要一直甩） // 猜的，可調整
+const FOLLOW = 0.015; // 身體前後晃的速度（格／秒）帶動尾巴、耳朵往反方向擺多少（弧度） // 猜的，可調整
+const REST_SWING = 0.3; // 休息時帶動的擺幅打幾折（規格 F9） // 猜的，可調整
+const BUILD_PER_SEC = 30; // 同一隻一秒最多新做幾張圖，超過就先用上一張（規格 F13） // 猜的，可調整
+const PARTS = new Set(['arm', 'armSw', 'ear', 'earSw', 'tail', 'tailSw']);
+const HYST = 0.2; // 量化的遲滯（級） // 猜的，可調整
+const flat = t => ({ ...t, lLx: t.legL?.[0] ?? 0, lLy: t.legL?.[1] ?? 0, lRx: t.legR?.[0] ?? 0, lRy: t.legR?.[1] ?? 0 });
+
+export class PuppetView extends AnimView {
+  constructor(anim) {
+    super(anim);
+    this.x = null; // 現在的參數（連續）
+    this.v = {}; // 每個參數的速度
+    this.cur = null; // 現在畫的那一張
+    this.budget = BUILD_PER_SEC;
+    this.puppet = true;
+  }
+  // 每一幀：set＝哪一組動作、ph＝這一組的步相（0–1）、extra＝整張圖的姿勢翻成的 lean／crouch（scene/pet.js 的 toPuppet）、rest＝在休息
+  drive(dt, setName, ph, extra = {}, rest = false) {
+    const name = this.anim.sets[setName] ? setName : 'idle';
+    this.set = this.anim.sets[name];
+    const tg = flat(this.anim.target(name, ph));
+    tg.lean = (tg.lean ?? 0) + (extra.lean ?? 0);
+    tg.crouch = (tg.crouch ?? 0) + (extra.crouch ?? 0);
+    const x = this.x, v = this.v;
+    if (!x) { this.x = Object.fromEntries(KEYS.map(k => [k, tg[k] ?? 0])); for (const k of KEYS) v[k] = 0; }
+    else if (dt > 0) {
+      // 跟隨：身體往前晃，尾巴、耳朵往後甩一下（休息時小一點）
+      const follow = -FOLLOW * (v.lean ?? 0) * (rest ? REST_SWING : 1);
+      for (const k of KEYS) {
+        let goal = tg[k] ?? 0;
+        if (k === 'tailSw' || k === 'earSw') goal += follow;
+        // 臨界阻尼彈簧的精確解（dt 大一點也不會爆）
+        const w = OMEGA[k], e = x[k] - goal, d = Math.exp(-w * dt), m = v[k] + w * e;
+        let nx = goal + (e + m * dt) * d, nv = (v[k] - w * m * dt) * d;
+        if (PARTS.has(k)) { const lim = PART_SPEED * dt; if (Math.abs(nx - x[k]) > lim) { nx = x[k] + Math.sign(nx - x[k]) * lim; nv = Math.sign(nv) * Math.min(Math.abs(nv), PART_SPEED); } }
+        x[k] = nx; v[k] = nv;
+      }
+    }
+    this.budget = Math.min(BUILD_PER_SEC, this.budget + dt * BUILD_PER_SEC);
+    // 量化加遲滯：過了分界再多 HYST 級才換，彈簧在分界附近抖的時候不會一直換圖（少做很多張，規格 F13）。
+    // 每一幀每個參數最多換 1 級（1 格、1 個角度級）：畫出來的姿勢永遠不會跳格（規格 F8、M8）
+    const was = this.level, lv = {}, p = {};
+    for (const k of KEYS) {
+      const step = PARTS.has(k) ? ANG_STEP : 1, cur = this.x[k] / step, w = was?.[k];
+      lv[k] = w == null ? Math.round(cur) : Math.abs(cur - w) > 0.5 + HYST ? w + Math.max(-1, Math.min(1, Math.round(cur) - w)) : w;
+    }
+    // 頭的位置＝身體下沉＋低頭−吸氣：三個一起換一級，頭會一次動 3 格。頭一幀也最多動 1 格（先讓身體動，低頭、呼吸晚一幀）
+    if (was) {
+      const head = l => l.crouch + l.headPitch - l.breath;
+      if (Math.abs(head(lv) - head(was)) > 1) lv.headPitch = was.headPitch;
+      if (Math.abs(head(lv) - head(was)) > 1) lv.breath = was.breath;
+    }
+    for (const k of KEYS) p[k] = lv[k] * (PARTS.has(k) ? ANG_STEP : 1);
+    const before = this.anim.stats.built;
+    const q = quantize({ ...p, legL: [p.lLx, p.lLy], legR: [p.lRx, p.lRy] });
+    const f = this.anim.pose(q, { build: this.budget >= 1 || !this.cur });
+    if (this.anim.stats.built > before) this.budget -= 1;
+    // 這一幀做不出新圖（超過預算）：還是畫上一張，級數也留在上一張（下一次才不會一次跳兩級）
+    if (f) { this.cur = f; this.key = q.key; this.level = lv; } // key：畫出來那一張的量化參數（測試用）
+    return this;
+  }
+  get frame() { return this.cur ?? super.frame; }
+}
+
+// 夥伴用的：回傳它自己的 PuppetView（姿勢由 scene/pet.js 每一幀 drive）
+export function puppetAsset(owner, sprites, key, shiny) {
+  const anim = sprites.peekAnim?.(key, shiny);
+  if (!anim) return sprites.peek(key, shiny);
+  if (owner.view?.anim !== anim) owner.view = new PuppetView(anim);
+  return owner.view;
 }
 
 // 給有自己時間（t）的東西用：回傳它自己的 AnimView

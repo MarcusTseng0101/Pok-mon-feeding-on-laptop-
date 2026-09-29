@@ -195,11 +195,15 @@ function makePart(part, pix, W) {
 // head [dx, dy]（dx 會讓脖子錯開、看起來像兩層臉，動作裡都用 0，要往前靠 lean）、body dy、legL/legR [dx, dy]：整數像素位移（負的是往上／往前）
 // lean：最上面那一列左右錯開幾格（負的往前＝往左，腳那一段不動）
 // arm/tail/ear：那一種部位「舉起來」轉幾弧度（負的是垂下去）；armSw/tailSw/earSw：左右兩隻反方向擺
+let SCRATCH = null;
 function frame(src, a, parts, pose) {
   const { head = [0, 0], body = 0, legL = [0, 0], legR = [0, 0], lean = 0 } = pose;
   const { W, H, neckY, hipY, legSplit } = a;
-  // 1. 頭、身體、腳（突出去的部位已經從 src 挖掉）
-  const c = makeCanvas(W + PAD * 2, H + PAD), g = c.getContext('2d');
+  // 1. 頭、身體、腳（突出去的部位已經從 src 挖掉）；畫在共用的草稿上（每次都新開一張 canvas 很慢，參數姿勢一秒要做好幾張）
+  const c = (SCRATCH ??= makeCanvas(1, 1));
+  if (c.width !== W + PAD * 2 || c.height !== H + PAD) { c.width = W + PAD * 2; c.height = H + PAD; }
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, c.width, c.height);
   g.imageSmoothingEnabled = false;
   const put = (sx, sy, sw, sh, dx, dy) => { if (sw > 0 && sh > 0) g.drawImage(src, sx, sy, sw, sh, dx + PAD, dy + PAD, sw, sh); };
   // 腳（左、右各自抬）；身體往上抬比腳多的時候，用腳最上面那一列把縫補起來
@@ -233,76 +237,95 @@ function frame(src, a, parts, pose) {
     }
   };
   drawParts(['tail']);
-  if (lean) { for (let y = 0; y < c.height; y++) o.drawImage(c, 0, y, c.width, 1, shift(y), y, c.width, 1); }
-  else o.drawImage(c, 0, 0);
+  if (lean) {
+    // 錯開一樣格數的相鄰幾列一起畫
+    for (let y = 0; y < c.height;) {
+      const s = shift(y);
+      let y1 = y + 1;
+      while (y1 < c.height && shift(y1) === s) y1++;
+      o.drawImage(c, 0, y, c.width, y1 - y, s, y, c.width, y1 - y);
+      y = y1;
+    }
+  } else o.drawImage(c, 0, 0);
   drawParts(['arm', 'ear']);
   return out;
 }
 
-// ---------- 動作（每一組是一串姿勢；秒數都是猜的，可調整）----------
+// ---------- 動作（規格 PR-N3：參數姿勢）----------
+// 每一組動作是一個「步相 → 參數」的函數（ph：0–1 一輪），不是一串固定的畫面：
+//   scene/pet.js 每一幀照這個函數算出目標，用彈簧追過去（姿勢不跳格），畫之前才量化成整數像素、角度分級，再用 pose() 做圖。
+//   舊的 sets（固定幾格）也是從同一個函數取樣出來的，給還在用的地方（野生寶可夢、總表、測試）。
+// 參數：lean 上身錯開幾格（負的往前）、crouch 身體下沉幾列（負的往上彈）、headPitch 頭再往下幾格（負的抬頭）、
+//   breath 呼吸（0–1，吸飽時頭往上 1 格）、legL/legR [dx, dy] 左右腳、arm/tail/ear 部位舉起幾弧度、armSw/tailSw/earSw 左右反方向擺
 const TAU = Math.PI * 2;
-const range = (n, f) => Array.from({ length: n }, (_, i) => f(i, (i / n) * TAU));
 // 走路時一隻腳前後各跨幾格：腳越長跨越大，2–3 格（再大，自動找到的「腳」是葉子、裙擺的會扯開；
 // 只跨 1 格的話，要走得跟以前一樣快，腳得一秒換 8 輪以上，看起來像在抖；猜的，可調整）。
 // 一步身體往前 2 × STEP 格（腳從前面 +STEP 踩到後面 −STEP），info.stride 給 scene/locomotion.js 算速度、照距離播動畫
 export const stepOf = a => (a.hasLegs ? Math.max(2, Math.min(3, Math.round((a.H - a.hipY) / 4))) : 0);
-function poseSets(a, floats) {
+const bump = (ph, at, w) => { let d = Math.abs(ph - at); d = Math.min(d, 1 - d); return d < w ? 0.5 + 0.5 * Math.cos((d / w) * Math.PI) : 0; };
+// 每一組：[步相 → 參數, 舊的取樣格數, 每格秒數]（一輪的秒數＝格數 × 每格秒數；秒數都是猜的，可調整）
+function poseFns(a, floats) {
   const legs = a.hasLegs && !floats;
   const A = Math.max(1, stepOf(a));
+  // 兩腳輪流：c＝腳往前的程度（1＝左腳在最前面）；往前擺的那隻腳抬起來
+  const stride = ph => { const c = Math.cos(ph * TAU); return { legL: [-A * c, -Math.max(0, c)], legR: [A * c, -Math.max(0, -c)], c, up: Math.abs(Math.sin(ph * TAU)) }; };
   return {
-    // 待機：呼吸（頭慢慢上下）、尾巴慢慢晃、手輕輕動、偶爾抖一下耳朵
-    idle: [range(8, (i, ph) => ({
-      head: [0, i >= 2 && i <= 5 ? -1 : 0], tailSw: 0.12 * Math.sin(ph), arm: 0.06 * Math.sin(ph),
-      earSw: i === 6 ? 0.25 : 0, lean: i === 4 ? -1 : 0,
-    })), 0.2],
-    // 走路：左右腳輪流抬、手反方向擺、尾巴跟著甩、身體往前傾一點；會飄的整隻輕輕跳、翅膀一起拍
-    walk: legs ? [[
-      { legL: [-A, -1], legR: [A, 0], armSw: 0.3, tailSw: 0.15, lean: -1 },
-      { body: -1, head: [0, -1], lean: -1, ear: 0.08 },
-      { legL: [A, 0], legR: [-A, -1], armSw: -0.3, tailSw: -0.15, lean: -1 },
-      { body: -1, head: [0, -1], lean: -1, ear: 0.08 },
-    ], 0.13] : [[
-      { arm: 0.3, tail: 0.1 },
-      { body: -1, legL: [0, -1], legR: [0, -1], head: [0, -1], arm: -0.15, lean: -1 },
-      { body: -1, legL: [0, -1], legR: [0, -1], head: [0, -1], arm: -0.3, tail: -0.1, lean: -1 },
-      { head: [0, -1], arm: 0.05 },
-    ], 0.13],
+    // 待機：呼吸（頭慢慢上下）、尾巴慢慢晃、手輕輕動、偶爾抖一下耳朵、身體前後晃一下
+    idle: [ph => ({
+      breath: 0.5 - 0.5 * Math.cos(ph * TAU) + 0.1, tailSw: 0.12 * Math.sin(ph * TAU), arm: 0.06 * Math.sin(ph * TAU),
+      earSw: 0.25 * bump(ph, 0.75, 0.08), lean: -bump(ph, 0.5, 0.1),
+    }), 8, 0.2],
+    // 走路：左右腳輪流抬、手反方向擺、尾巴跟著甩、身體往前傾一點、兩步之間身體彈起來；會飄的整隻輕輕跳、翅膀一起拍
+    walk: [legs ? ph => { const s = stride(ph); return { legL: s.legL, legR: s.legR, crouch: -s.up, armSw: 0.3 * s.c, tailSw: 0.15 * s.c, lean: -1, ear: 0.08 * s.up }; }
+      : ph => { const u = 0.5 - 0.5 * Math.cos((ph - 0.125) * TAU), c = Math.cos(ph * TAU); return { crouch: -u, legL: [0, -u], legR: [0, -u], breath: 0.5 + 0.5 * u, arm: 0.3 * c, tail: 0.1 * c, lean: -u }; }, 4, 0.13],
     // 跑：傾得更前面、身體彈更高、手和尾巴甩更大（腳跨的跟走路一樣：跑快是步頻變快，不是跨更大）
-    run: [[
-      { legL: [-A, -1], legR: [A, 0], body: -1, head: [0, -1], armSw: 0.5, tailSw: 0.3, arm: floats ? 0.4 : 0, lean: -2, ear: -0.2 },
-      { body: -2, head: [0, -2], lean: -2, ear: -0.25, arm: floats ? -0.3 : 0 },
-      { legL: [A, 0], legR: [-A, -1], body: -1, head: [0, -1], armSw: -0.5, tailSw: -0.3, arm: floats ? 0.4 : 0, lean: -2, ear: -0.2 },
-      { body: -2, head: [0, -2], lean: -2, ear: -0.25, arm: floats ? -0.3 : 0 },
-    ], 0.08],
+    run: [ph => { const s = legs ? stride(ph) : { legL: [0, 0], legR: [0, 0], c: Math.cos(ph * TAU), up: Math.abs(Math.sin(ph * TAU)) };
+      return { legL: s.legL, legR: s.legR, crouch: -1 - s.up, armSw: 0.5 * s.c, tailSw: 0.3 * s.c, arm: floats ? 0.4 * s.c - 0.3 * s.up : 0, lean: -2, ear: -0.2 - 0.05 * s.up }; }, 4, 0.08],
     // 開心：身體彈、兩手舉高、尾巴大力甩、左右扭
-    happy: [range(6, (i, ph) => ({
-      body: -Math.round(1 + Math.sin(ph)), head: [0, -Math.round(1 + Math.sin(ph)) - 1],
-      arm: 0.3 + 0.35 * Math.sin(ph), tailSw: 0.4 * Math.sin(ph * 2), earSw: 0.2 * Math.sin(ph * 2), lean: Math.round(2 * Math.sin(ph)),
-    })), 0.1],
-    // 睡覺：頭垂下、身體沉下去一點點、手和耳朵垂著，慢慢起伏
-    sleep: [range(4, i => ({ head: [0, i % 2 ? 2 : 1], body: i % 2 ? 1 : 0, arm: -0.3, tail: -0.2, ear: -0.25 })), 0.6],
+    happy: [ph => { const s = Math.sin(ph * TAU); return { crouch: -(1 + s), headPitch: -1, arm: 0.3 + 0.35 * s, tailSw: 0.4 * Math.sin(ph * 2 * TAU), earSw: 0.2 * Math.sin(ph * 2 * TAU), lean: 2 * s }; }, 6, 0.1],
+    // 睡覺：頭垂下、身體沉下去一點點、手和耳朵垂著，慢慢起伏（一輪兩次呼吸）
+    sleep: [ph => ({ crouch: 0.5 - 0.5 * Math.cos(ph * 2 * TAU), headPitch: 1, arm: -0.3, tail: -0.2, ear: -0.25 }), 4, 0.6],
     // 吃：頭往前下點、身體往前
-    eat: [[
-      { head: [0, 2], lean: -1, ear: 0.1 }, { head: [0, 1], lean: -1 },
-      { head: [0, 2], lean: -1, ear: 0.1, tailSw: 0.15 }, { head: [0, 0], tailSw: -0.15 },
-    ], 0.15],
+    eat: [ph => ({ headPitch: 1 + Math.cos(ph * 2 * TAU), lean: -1 + bump(ph, 0.75, 0.2), ear: 0.1 * bump(ph, 0, 0.2) + 0.1 * bump(ph, 0.5, 0.2), tailSw: 0.15 * Math.sin(ph * TAU) }), 4, 0.15],
     // 被打到：往後仰、手甩開、耳朵往後
-    hurt: [range(3, i => ({ lean: 3 - i, head: [0, 0], arm: 0.5 - i * 0.1, tail: 0.3, ear: -0.3 })), 0.08],
+    hurt: [ph => ({ lean: 3 - 3 * ph, arm: 0.5 - 0.3 * ph, tail: 0.3, ear: -0.3 }), 3, 0.08],
     // 出招：往後蓄力 → 往前撲、手揮下去
-    attack: [[
-      { lean: 2, head: [0, 0], arm: 0.6, ear: -0.2, tailSw: 0.2 },
-      { lean: 2, head: [0, -1], arm: 0.8, ear: -0.3, tailSw: 0.3 },
-      { lean: -3, head: [0, 0], body: -1, arm: -0.4, ear: -0.1, tailSw: -0.3 },
-      { lean: -2, head: [0, 0], arm: -0.2, tailSw: -0.1 },
-    ], 0.1],
+    attack: [ph => (ph < 0.5
+      ? { lean: 2, headPitch: -2 * ph, arm: 0.6 + 0.4 * ph, ear: -0.2 - 0.2 * ph, tailSw: 0.2 + 0.2 * ph }
+      : { lean: ph < 0.75 ? -3 : -2, crouch: ph < 0.75 ? -1 : 0, arm: ph < 0.75 ? -0.4 : -0.2, ear: -0.1, tailSw: ph < 0.75 ? -0.3 : -0.1 }), 4, 0.1],
     // 被拎起來：腳垂下來、手垂著晃、整隻輕輕盪
-    dangle: [range(4, (i, ph) => ({ legL: [0, 1], legR: [0, 1], arm: -0.4, armSw: 0.15 * Math.sin(ph), tail: -0.3, tailSw: 0.1 * Math.sin(ph), ear: -0.15, lean: Math.round(Math.sin(ph)) })), 0.2],
+    dangle: [ph => { const s = Math.sin(ph * TAU); return { legL: [0, 1], legR: [0, 1], arm: -0.4, armSw: 0.15 * s, tail: -0.3, tailSw: 0.1 * s, ear: -0.15, lean: s }; }, 4, 0.2],
   };
 }
 
 export const SETS = ['idle', 'walk', 'run', 'happy', 'sleep', 'eat', 'hurt', 'attack', 'dangle'];
 
-// 回傳 { sets: { idle, walk, run, … }, w, h, info }；每一組第一次用到才做（frames 是一般的 canvas，外面再包成 asset）
+// ---------- 量化（畫之前才做；同一組量化後的參數只做一次圖）----------
+export const ANG_STEP = Math.PI / 48; // 角度分級：每級約 3.75°（12 級＝45°） // 猜的，可調整
+export const PART_MAX = 0.9; // 部位最多轉幾弧度（規格 F9：不要甩成麵條） // 猜的，可調整
+export const LIMITS = { lean: 4, crouchUp: 2, crouchDown: 3, pitch: 2 }; // lean −4…+4、crouch −2…+3、headPitch −2…+2（規格 §4.3）
+export const CACHE_MAX = 256; // 每張圖最多快取幾張姿勢（LRU） // 猜的，可調整
+export const ANG_KEYS = ['arm', 'armSw', 'tail', 'tailSw', 'ear', 'earSw'];
+const clampI = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v || 0)));
+// 連續的參數 → 整數像素＋分級角度（也是快取的 key）
+export function quantize(q) {
+  const out = {
+    lean: clampI(q.lean, -LIMITS.lean, LIMITS.lean), crouch: clampI(q.crouch, -LIMITS.crouchUp, LIMITS.crouchDown),
+    headPitch: clampI(q.headPitch, -LIMITS.pitch, LIMITS.pitch), breath: clampI(q.breath, 0, 1),
+    legL: [clampI(q.legL?.[0], -3, 3), clampI(q.legL?.[1], -2, 2)], legR: [clampI(q.legR?.[0], -3, 3), clampI(q.legR?.[1], -2, 2)],
+  };
+  for (const k of ANG_KEYS) out[k] = Math.max(-PART_MAX, Math.min(PART_MAX, Math.round((q[k] || 0) / ANG_STEP) * ANG_STEP));
+  out.key = [out.lean, out.crouch, out.headPitch, out.breath, ...out.legL, ...out.legR, ...ANG_KEYS.map(k => Math.round(out[k] / ANG_STEP))].join(',');
+  return out;
+}
+// 量化後的參數 → frame() 要的位移：頭跟著身體沉、再往下 headPitch 格、吸氣時往上 1 格（頭最多往上 PAD 格，不然會被切掉）
+function toFrame(q) {
+  const head = Math.max(-PAD, q.crouch + q.headPitch - q.breath);
+  return { ...q, body: q.crouch, head: [0, head] };
+}
+
+// 回傳 { sets: { idle, walk, run, … }, pose(params), target(set, ph), w, h, info }；
+// sets 每一組第一次用到才做（frames 是一般的 canvas，外面再包成 asset）
 export function buildRig(srcCanvas, { floats = false } = {}) {
   const a = analyze(srcCanvas);
   const { W, H } = a;
@@ -317,21 +340,31 @@ export function buildRig(srcCanvas, { floats = false } = {}) {
     if (Math.hypot((i % W) + 0.5 - p.pivot.x, ((i / W) | 0) + 0.5 - p.pivot.y) > JOINT) hole.data[i * 4 + 3] = 0;
   }
   bg.putImageData(hole, 0, 0);
-  const defs = poseSets(a, floats), sets = {};
+  const fns = poseFns(a, floats), sets = {};
+  // 參數姿勢：量化 → 快取（LRU，最多 CACHE_MAX 張）→ 沒有才做
+  const cache = new Map(), stats = { built: 0, maxPart: 0 };
+  const pose = (params, { build = true } = {}) => {
+    const q = params.key ? params : quantize(params);
+    const hit = cache.get(q.key);
+    if (hit) { cache.delete(q.key); cache.set(q.key, hit); return hit; }
+    if (!build) return null;
+    const c = frame(base, a, parts, toFrame(q));
+    stats.built++;
+    for (const p of parts) stats.maxPart = Math.max(stats.maxPart, Math.abs(p.raise * q[p.kind] + p.alt * q[p.kind + 'Sw']) * Math.min(1, LONG / p.reach));
+    cache.set(q.key, c);
+    if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+    return c;
+  };
+  // 舊的固定幾格：從同一個函數取樣（一輪平均切成 n 格）
   for (const name of SETS) {
-    let built = null;
-    Object.defineProperty(sets, name, {
-      enumerable: true,
-      get() {
-        if (!built) {
-          const [poses, dur] = defs[name];
-          const frames = poses.map(p => frame(base, a, parts, p));
-          built = { frames, durs: poses.map(() => dur), total: dur * poses.length };
-        }
-        return built;
-      },
-    });
+    const [fn, n, dur] = fns[name];
+    let frames = null;
+    sets[name] = {
+      durs: Array(n).fill(dur), total: dur * n,
+      get frames() { return (frames ??= Array.from({ length: n }, (_, i) => frame(base, a, parts, toFrame(quantize(fn(i / n)))))); },
+    };
   }
+  const target = (name, ph) => (fns[name] ?? fns.idle)[0](((ph % 1) + 1) % 1);
   const info = { W, H, neckY: a.neckY, hipY: a.hipY, hasLegs: a.hasLegs, legSplit: a.legSplit, pad: PAD, stride: 2 * stepOf(a), parts: a.parts.map(p => ({ kind: p.kind, n: p.n, pivot: p.pivot })) };
-  return { sets, w: W + PAD * 2, h: H + PAD, info };
+  return { sets, pose, target, stats, cache, w: W + PAD * 2, h: H + PAD, info };
 }

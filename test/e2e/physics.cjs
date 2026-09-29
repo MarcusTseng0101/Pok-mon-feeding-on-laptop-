@@ -57,7 +57,9 @@ run('physics', async ({ page }, check) => {
         const x = pets[i], y = pets[j];
         if (stage.pets.get(x.uid) !== x || stage.pets.get(y.uid) !== y) continue; // 已經不在桌面上
         if (x.floats || y.floats || x.state === 'held') continue;
-        const exempt = x.partner === y || y.partner === x || x.hidden || y.hidden || ['habit', 'dig'].includes(x.state) || ['habit', 'dig'].includes(y.state) || !sameHeight(x, y);
+        // inside：在帳篷裡（看不見、點不到），物理本來就不算碰撞（physics.js 的 ghostly，跟 perch.cjs 一樣）。
+        // 這個測試用真的時鐘：晚上大家回基地、有的鑽進帳篷睡，以前在晚上跑就會失敗
+        const exempt = x.partner === y || y.partner === x || x.hidden || y.hidden || ['habit', 'dig', 'inside'].includes(x.state) || ['habit', 'dig', 'inside'].includes(y.state) || !sameHeight(x, y);
         if (!exempt && nd(x, y) < 0.6) deep++;
       }
     }

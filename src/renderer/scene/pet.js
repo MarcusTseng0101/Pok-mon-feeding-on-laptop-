@@ -4,7 +4,7 @@
 // 位置：(x, gy) = 腳底在桌面平面上的位置（裝置像素）；z = 離地高度（美術像素）；alt = 會飄的寶可夢的飄浮高度。
 // 美術像素 × stage.S = 裝置像素。
 import { blit } from '../gfx/pixel.js';
-import { liveAsset } from '../gfx/sprites.js';
+import { puppetAsset } from '../gfx/sprites.js';
 import * as art from '../gfx/art.js';
 import { hearts } from '../../core/amie.js';
 import { spriteKey } from '../../core/forms.js';
@@ -55,6 +55,26 @@ const KEEP_ARRIVE = new Set(['walk', 'run', 'trip']); // 換到這些狀態時�
 // 這些狀態本來就是要快速翻來翻去（轉圈、跳舞、搖頭）：面向直接翻，不做轉身
 const INSTANT_FLIP = new Set(['spin', 'dance', 'refuse', 'roll', 'appear', 'held', 'fall', 'evolving']);
 const ANIM_SPEED = { walk: 1.5, approach: 1.5, walkTogether: 1.5, run: 2, chase: 2, flee: 2, chaseCursor: 2, pounce: 1.6, dance: 1.6, held: 1.4, sit: 0.7, sleep: 0.3, dizzy: 0.5, shiver: 2.5 };
+// 休息中（跟隨的擺幅打折，規格 F9）
+const RESTING = new Set(['idle', 'sit', 'sleep', 'nap', 'inside', 'cursorSit', 'watch', 'chill', 'wait', 'sunbathe', 'read']);
+
+// ---------- 集中轉換器（規格 PR-N3、§4.3、F7）----------
+// 行為、習性、招式的 pose() 還是寫整張圖的 { sx, sy, rot, ox, pivot }（140 處不用改），畫之前在這裡翻成像素木偶的參數：
+//   小角度的 rot → 上身錯開 lean 格（身高 × 0.5）；sy < 1 → 身體往下沉 crouch 列、sy > 1 → 伸長（crouch 負的）；sx → 不管（寬度不變）
+//   只有 rot 接近 90° 的倍數（跌倒、翻滾、倒立）才整張圖轉，而且只轉 90° 的倍數（quarter）。所以像素永遠是方的、不會出現原圖沒有的顏色
+// h：圖的高度（美術像素）；face：畫出來的面向（翻面時 lean 的左右跟著反過來）
+const QUARTER = Math.PI / 2;
+const SNAP = 0.3; // 離 90° 的倍數多近（弧度，約 17°）才整張轉 // 猜的，可調整
+const LEAN_K = 0.5, CROUCH_K = 0.5; // rot、sy 換成幾格 // 猜的，可調整（規格：lean = round(rot × 身高 × 0.5)）
+export function toPuppet(p, h, face = -1) {
+  const rot = p.rot || 0, q = Math.round(rot / QUARTER), rest = rot - q * QUARTER;
+  const quarter = q !== 0 && Math.abs(rest) <= SNAP ? ((q % 4) + 4) % 4 : 0;
+  const tilt = quarter ? rest : rot; // 沒有整張轉的時候，整個角度都變成往那邊傾
+  // 螢幕上 rot > 0 是頭往右；圖本身面向左，負的 lean 是往前（往左）：沒翻面時同號，翻面時反號
+  const lean = Math.max(-4, Math.min(4, Math.sin(Math.max(-QUARTER, Math.min(QUARTER, tilt))) * h * LEAN_K)) * (face > 0 ? -1 : 1);
+  const crouch = (1 - (p.sy ?? 1)) * h * CROUCH_K;
+  return { lean, crouch, quarter, pivot: p.pivot ?? 'feet', ox: Math.round(p.ox || 0), rot: quarter * QUARTER, sx: 1, sy: 1 };
+}
 
 export class Pet {
   constructor(stage, mon, { x, gy, fromBall = false } = {}) {
@@ -111,7 +131,7 @@ export class Pet {
   // 播哪一組動作（gfx/rig.js）：被打到、被拎著、睡覺、吃、出招、開心各有自己的；
   // 其他的這一幀有在移動就播走路（跑的狀態播跑），不然播待機（呼吸）
   get asset() {
-    return liveAsset(this, this.stage.sprites, this.spriteKey, this.mon.shiny, this.animT, this.animSet());
+    return puppetAsset(this, this.stage.sprites, this.spriteKey, this.mon.shiny);
   }
   animSet() {
     if (this.flinchT > 0) return 'hurt';
@@ -226,7 +246,7 @@ export class Pet {
     if (this.turnT > 0) p.ox += this.facing; // 轉身的預備動作：往要轉過去的那一邊偏一格
     if (this.flinchT > 0) p.ox += Math.floor(this.flinchT * 30) % 2 ? 2 : -2;
     if (this.squashT > 0) { const s = this.squashT / 0.18; p.sx *= 1 + 0.22 * s; p.sy *= 1 - 0.2 * s; }
-    if (this.stage.env.tiny) { p.sx *= TINY; p.sy *= TINY; } // 有視窗全螢幕：躲在角落、變小（director.js）
+    // 有視窗全螢幕時變小（director.js）改在 draw() 用整數倍率畫，不放進這裡的縮放
     return p;
   }
 
@@ -542,6 +562,13 @@ export class Pet {
     this.lastStepDist = moved; // 測試用：這一幀是不是自己走的（natural.cjs 的 M2 只算自己走的）
     if (moved > 0 && stride && !this.floats && (setName === 'walk' || setName === 'run')) this.animT += (moved / (2 * stride * (setName === 'run' ? RUN_STRIDE : 1))) * anim.sets[setName].total;
     else this.animT += dt * (ANIM_SPEED[this.state] ?? 1);
+    // 像素木偶（規格 PR-N3）：這一組動作的步相＋整張圖的姿勢（toPuppet）→ 彈簧追過去 → 量化成這一幀的圖
+    const view = this.asset;
+    if (view?.puppet) {
+      const total = view.anim.sets[setName]?.total ?? 1;
+      this.puppetXf = toPuppet(this.pose(), view.anim.info.H, this.viewFacing);
+      view.drive(dt, setName, this.animT / total, this.puppetXf, RESTING.has(this.state));
+    }
   }
 
   // 被丟出去：在桌面上滑行，不會飄的會先掉到地上、彈一下
@@ -712,7 +739,6 @@ export class Pet {
       ctx.fillRect(Math.round(this.x - sw / 2 + S), Math.round(this.gy), sw - 2 * S, S);
     }
     const img = this.evolveView ?? a.canvas;
-    const pose = this.pose();
     if (sink > 0) {
       // 只畫地面以上的部分，身體往下沉
       ctx.save();
@@ -722,26 +748,31 @@ export class Pet {
       ctx.translate(0, Math.round(sink * a.h) * S);
     }
     const flipY = this.upsideDown || this.flipT > 0;
-    if (flipY || (pose.sx === 1 && pose.sy === 1 && pose.rot === 0)) {
-      blit(ctx, img, r.x + pose.ox * S, r.y, S, { flipX: this.viewFacing > 0, flipY, alpha });
-      if (sleepy) blit(ctx, a.dark, r.x, r.y, S, { flipX: this.viewFacing > 0, alpha: 0.18 * alpha });
+    // 傾斜、蹲低已經做進木偶的圖裡（settle 的 toPuppet）；這裡整張圖只會翻面、轉 90° 的倍數，只用整數倍率畫（規格 F7）
+    const xf = this.puppetXf ?? toPuppet(this.pose(), a.h, this.viewFacing); // settle() 這一幀已經算過就直接用
+    const ox = xf.ox * S;
+    const quarter = flipY ? 0 : xf.quarter;
+    const sc = this.stage.env.tiny ? Math.max(1, Math.round(S * TINY)) : S; // 有視窗全螢幕：躲在角落、變小（director.js）；小一點但還是整數倍率
+    if (!quarter && sc === S) {
+      blit(ctx, img, r.x + ox, r.y, S, { flipX: this.viewFacing > 0, flipY, alpha });
+      if (sleepy) blit(ctx, a.dark, r.x + ox, r.y, S, { flipX: this.viewFacing > 0, alpha: 0.18 * alpha });
     } else {
-      const w = a.w * S, h = a.h * S;
-      const feetX = Math.round(this.x + pose.ox * S), feetY = r.y + h;
+      const w = a.w * sc, h = a.h * sc;
+      const feetX = Math.round(this.x + ox), feetY = r.y + a.h * S;
+      const center = xf.pivot === 'center';
       ctx.save();
       ctx.globalAlpha = alpha;
-      if (pose.pivot === 'center') ctx.translate(feetX, feetY - h / 2);
-      else ctx.translate(feetX, feetY);
-      ctx.rotate(pose.rot);
-      ctx.scale(pose.sx * (this.viewFacing > 0 ? -1 : 1), pose.sy);
-      const oy = pose.pivot === 'center' ? -h / 2 : -h;
-      ctx.drawImage(img, -w / 2, oy, w, h);
-      if (sleepy) { ctx.globalAlpha = 0.18 * alpha; ctx.drawImage(a.dark, -w / 2, oy, w, h); }
+      ctx.translate(feetX, center ? feetY - Math.round(h / 2 / sc) * sc : feetY);
+      ctx.rotate(quarter * (Math.PI / 2));
+      ctx.scale(this.viewFacing > 0 ? -1 : 1, flipY ? -1 : 1);
+      const x0 = -Math.round(w / 2 / sc) * sc, oy = center ? -Math.round(h / 2 / sc) * sc : -h;
+      ctx.drawImage(img, x0, oy, w, h);
+      if (sleepy) { ctx.globalAlpha = 0.18 * alpha; ctx.drawImage(a.dark, x0, oy, w, h); }
       ctx.restore();
     }
     if (sink > 0) ctx.restore();
     // 被招式打到：白色閃爍
-    if (this.flinchT > 0 && Math.floor(this.flinchT * 20) % 2) blit(ctx, a.white, r.x + pose.ox * S, r.y, S, { flipX: this.viewFacing > 0, flipY, alpha: 0.6 * alpha });
+    if (this.flinchT > 0 && Math.floor(this.flinchT * 20) % 2) blit(ctx, a.white, r.x + ox, r.y, S, { flipX: this.viewFacing > 0, flipY, alpha: 0.6 * alpha });
     act?.drawOver?.(this, ctx);
     const carrying = this.stage.game?.tripStatus(this.uid) === 'back';
     if (!this.emote && carrying) drawCarried(this, ctx); // 旅行回來：頂著明信片

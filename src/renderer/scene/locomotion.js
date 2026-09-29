@@ -110,7 +110,8 @@ const LEGS = [2, 3]; // 幾段（猜的，可調整）
 const LEG_LEN = [30, 70]; // 一段幾個美術像素（猜的，可調整）
 const TURN_SD = 0.5; // 每段轉的角度（弧度）的標準差（猜的，可調整）
 const WALK_BEFORE_PAUSE = [0.8, 2]; // 走幾秒就停一下（猜的，可調整）
-const PAUSE = [0.5, 2.2]; // 停多久（秒；猜的，可調整）
+const PAUSE = [0.5, 1.8]; // 真的停住以後停多久（秒；規格 §3 的停頓是 0.3–2 秒，起步、煞車另外算；猜的，可調整）
+const STILL = 2; // 比這個慢（美術像素／秒）才算停住了，停頓才開始算（跟 natural.cjs 的「在動」同一條線）
 
 const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
 
@@ -137,7 +138,12 @@ export function wanderPath(pet) {
 // 散步中：要不要停下來看一看。回傳 true＝這一幀停著（不要叫 moveTo）。
 // 走了 WALK_BEFORE_PAUSE 秒（每次重新抽）就停一下：小動物走幾步就停，不是走很久才偶爾停
 export function pauseTick(pet, dt) {
-  if (pet.pauseT > 0) { pet.pauseT -= dt; return true; }
+  if (pet.pauseT > 0) {
+    // 還在煞車滑行（coast）就不算：以前停頓從開始煞車就算，大鳥煞車要半秒，真的站住只剩 0.2 秒；慢的一邊又會超過 2 秒
+    const lv = pet.lv, sliding = lv && Math.hypot(lv.x, lv.y) / pet.S > STILL;
+    if (!sliding) pet.pauseT -= dt;
+    return true;
+  }
   pet.movingT = (pet.movingT ?? 0) + dt;
   pet.nextPause ??= WALK_BEFORE_PAUSE[0] + Math.random() * (WALK_BEFORE_PAUSE[1] - WALK_BEFORE_PAUSE[0]);
   if (pet.movingT >= pet.nextPause) {
