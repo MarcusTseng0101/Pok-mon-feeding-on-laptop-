@@ -52,7 +52,8 @@ run('perch', async ({ page, shot }, check) => {
       for (let i = 0; i < pets.length; i++) for (let j = i + 1; j < pets.length; j++) {
         const a = pets[i], b = pets[j];
         if ((a.perch?.hwnd ?? null) !== (b.perch?.hwnd ?? null)) continue;
-        if (a.floats || b.floats || a.partner === b || b.partner === a || ['habit', 'dig', 'perchUp', 'fall', 'depart', 'tripReturn'].includes(a.state) || ['habit', 'dig', 'perchUp', 'fall', 'depart', 'tripReturn'].includes(b.state) || a.hidden || b.hidden) continue;
+        // inside：在帳篷裡（看不見、點不到），物理本來就不算碰撞（physics.js 的 ghostly）；白天也會進帳篷休息以後才會遇到
+        if (a.floats || b.floats || a.partner === b || b.partner === a || ['habit', 'dig', 'perchUp', 'fall', 'depart', 'tripReturn', 'inside'].includes(a.state) || ['habit', 'dig', 'perchUp', 'fall', 'depart', 'tripReturn', 'inside'].includes(b.state) || a.hidden || b.hidden) continue;
         if (nd(a, b) < 0.6) { deep++; (out.deepInfo ??= []).length < 6 && out.deepInfo.push([a.mon.species, a.state, Boolean(a.perch), b.mon.species, b.state, Boolean(b.perch), nd(a, b).toFixed(2), Math.round(a.x), Math.round(a.gy), Math.round(b.x), Math.round(b.gy), a.z.toFixed(1), b.z.toFixed(1)].join(' ')); }
       }
       // 站在上面的只在頂邊上走來走去（不讓牠自己跳下來），這段只測「會不會被推下去」

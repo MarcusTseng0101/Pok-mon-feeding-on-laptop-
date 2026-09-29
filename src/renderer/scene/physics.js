@@ -61,6 +61,7 @@ export function knockFrom(pet, x, y, power) {
 
 // 每一幀：套用擊退速度（Pet.update 呼叫）
 export function integrateKnock(pet, dt) {
+  if (pet.bumpT > 0) pet.bumpT = Math.max(0, pet.bumpT - dt);
   if (!pet.kvx && !pet.kvy) return;
   if (pet.state === 'held') { pet.kvx = pet.kvy = 0; return; }
   pet.x += pet.kvx * dt;
@@ -71,11 +72,12 @@ export function integrateKnock(pet, dt) {
   if (Math.hypot(pet.kvx, pet.kvy) < 4 * pet.S) pet.kvx = pet.kvy = 0;
 }
 
+const BUMP_MARK = 0.1; // 秒
 const DEEP = 0.6; // 橢圓空間的距離小於這個＝疊得很深（看得出穿模）
 const RELAX_PASSES = 3; // 一團擠在一起時：推開一對又被第三隻擠回去，多推幾輪只修位置
 
-// 兩隻腳印的橢圓空間距離：< 1 表示重疊
-function footDist(a, b, S) {
+// 兩隻腳印的橢圓空間距離：< 1 表示重疊（scene/locomotion.js 用來避開別隻）
+export function footDist(a, b, S) {
   const rx = (a.asset.w + b.asset.w) * FOOT * S;
   return Math.hypot((b.x - a.x) / rx, (b.gy - a.gy) / (rx * DEPTH));
 }
@@ -101,6 +103,7 @@ function pushApart(a, b, S) {
   const wa = { x: -nx * rx * push * (mb / sum), y: -ny * ry * push * (mb / sum) };
   const wb = { x: nx * rx * push * (ma / sum), y: ny * ry * push * (ma / sum) };
   const a0 = { x: a.x, y: a.gy }, b0 = { x: b.x, y: b.gy };
+  a.bumpT = b.bumpT = BUMP_MARK; // 剛被擠了一下（natural.cjs 量「瞬間起步」時不算這幾幀，跟被打到一樣）
   a.x += wa.x; a.gy += wa.y;
   b.x += wb.x; b.gy += wb.y;
   a.clamp(); b.clamp(); // 被擠到螢幕邊邊就停在邊上
@@ -116,6 +119,8 @@ function pushApart(a, b, S) {
 }
 
 const collides = (a, b) => sameLayer(a, b) && !together(a, b) && heightOverlap(a, b);
+// 兩隻會不會撞到（scene/locomotion.js 走路繞開用）
+export const collidesWith = (a, b) => !ghostly(a) && !ghostly(b) && collides(a, b);
 
 // 每一幀：把重疊的推開；跑太快撞在一起會彈開、被丟出去的會把別隻撞飛
 export function resolveCollisions(stage, dt) {

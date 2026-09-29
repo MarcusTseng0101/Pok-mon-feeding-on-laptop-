@@ -21,10 +21,8 @@ export const RUN_SPEED = 72;
 const T = art.TYPE_COLORS;
 const has = (pet, ...types) => pet.types.some(t => types.includes(t));
 const rnd = (a, b) => a + Math.random() * (b - a);
-const NOCTURNAL_IDS = new Set([714, 715]); // 嗡蝠、音波龍
 const DIGGERS = new Set([659, 660]); // 掘掘兔、掘地兔
 
-export function isNocturnal(pet) { return NOCTURNAL_IDS.has(pet.mon.species) || has(pet, 'ghost', 'dark'); }
 export function isNight(env) { const h = env.hour ?? 12; return h >= 20 || h < 6; }
 export function isDay(env) { const h = env.hour ?? 12; return h >= 7 && h < 17; }
 

@@ -296,6 +296,9 @@ export class Stage {
     this.lastHoverPet = this.hoverPet;
     for (const p of this.pets.values()) p.update(dt);
     for (const g of this.guests) g.update(dt);
+    // 全部 update 完才滑行、推動畫（有的群體動作由帶頭的推著大家走，要等大家都推完；scene/pet.js 的 settle）
+    for (const p of this.pets.values()) p.settle?.(dt);
+    for (const g of this.guests) g.settle?.(dt);
     this.guests = this.guests.filter(g => !g.gone);
     resolveCollisions(this, dt); // 夥伴之間不會互相穿過去
     this.spot?.update(dt);
