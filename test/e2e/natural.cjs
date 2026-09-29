@@ -109,7 +109,7 @@ const test = async ({ page }, check) => {
         wdist: 0, wcyc: 0, bumps: 0, stride: p.view?.anim?.info?.stride || 2, lastV: 0, lastF: p.viewFacing ?? p.facing, jumpStates: {}, lastSet: p.animSet(), lastCanvas: null, setSwitch: 0, bigSwitch: 0, switchDiffs: [], mv: [], soc: [], frames: new Set(),
       }));
       for (let i = 0; i < N; i++) {
-        const before = pets.map(p => ({ x: p.x, y: p.gy, a: p.animT, kv: Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 }));
+        const before = pets.map(p => ({ x: p.x, y: p.gy, a: p.animT, st: p.state, kv: Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 }));
         const stopped = stage.stopT > 0; // 這一幀開始時在「頓一下」（stage.update 會把 dt 乘 0.12）
         director.update?.(dt);
         stage.update(dt);
@@ -123,7 +123,7 @@ const test = async ({ page }, check) => {
           const knocked = b.kv || Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 || p.hopT > 0; // 被打到、被撞飛（這一幀開始時還有擊退速度也算：擊退在這一幀裡衰減到 0，這一幀還是被推了）
           const hitStop = stage.stopT > 0 || stopped; // 招式打中時整個舞台放慢一下（「頓一下」）：大家一起慢，不是牠自己瞬間減速
           const teleport = p.state === 'habit' && p.habit?.teleport; // 瞬移型習性（規格 M1 的排除；habits.js 標 teleport）
-          const exempt = EXEMPT.has(p.state) || teleport || knocked || hitStop;
+          const exempt = EXEMPT.has(p.state) || EXEMPT.has(b.st) || teleport || knocked || hitStop; // b.st：這一幀開始時的狀態（放招在這一幀結束、最後搬了位置，也算放招）
           // 上一幀是排除的（頓一下時 dt × 0.12、放招、被拎、被打到）：這一幀的速度不跟它比（PR-N4 修量法：以前頓完的下一幀會被算成「瞬間起步」，26 → 3 剛好是 × 0.12）
           const jump = !exempt && !o.lastExempt && Math.abs(v - o.lastV) > jumpLimit(p);
           if (jump && p.bumpT > 0) o.bumps++; // 被別隻擠了一下（physics.js 推開重疊）：另外算，跟被打到一樣不算在 M1
@@ -292,7 +292,8 @@ const test = async ({ page }, check) => {
   // 準備狀況（讓牠正在走、正在坐）用 evaluate；打斷本身一定是真的滑鼠
   const clean = () => page.evaluate(() => [...window.__kalos.stage.pets.values()].map(p => {
     const bad = [];
-    if (['held', 'fall', 'move'].includes(p.state)) bad.push(`還在 ${p.state}`);
+    // 卡在拎起、掉落、放招裡出不來（4 秒以上）；放下以後自己又去練招（PR-N4 起做完一件事會直接接下一件）是新的一段，不算
+    if (['held', 'fall', 'move'].includes(p.state) && p.stateT > 4) bad.push(`還在 ${p.state}（${p.stateT.toFixed(1)} 秒）`);
     if (p.partner && p.partner.partner !== p && !p.group) bad.push(`partner 是單方面的（${p.state} → ${p.partner.mon.species} ${p.partner.state}）`);
     if (p.onArrive && !['walk', 'trip', 'run', 'approach'].includes(p.state)) bad.push(`不在走路卻留著 onArrive（${p.state}）`);
     if (p.reserved && ['idle', 'sit', 'nap', 'look'].includes(p.state)) bad.push('閒著卻被 reserved');

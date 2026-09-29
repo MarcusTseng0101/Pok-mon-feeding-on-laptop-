@@ -291,8 +291,10 @@ export class Pet {
   // 可以被其他夥伴找去玩／被打斷的狀態
   // reserved：正在過去陪你（晚睡時走到游標旁邊），別隻不能在半路找牠玩
   // 閒著、可以被找去玩：正要去看日落、正在看日落的不算（director.js 安排的）
-  // 正在休息（nextBout 選的休息）的前 80%：不會被找去玩（動物休息時不會一直被拉起來；使用者決定的 M8 做法）
-  get free() { return ['idle', 'walk', 'sit', 'look', 'stretch'].includes(this.state) && !(this.restBout?.state === this.state && this.t < this.restBout.until) && !this.leaving && !this.reserved && !this.sunsetSit && !(this.state === 'sit' && this.t < (this.gazeWestUntil ?? 0)); }
+  // 正在休息（nextBout 選的休息）的前 80%：別隻不會找牠去玩（動物休息時不會一直被拉起來；使用者決定的 M8 做法）。
+  // 只擋「別隻挑誰一起玩」；導演的反應（有人探頭轉頭看、日落、下雨）照舊，休息的動物聽到動靜也會抬頭
+  get restingNow() { return Boolean(this.restBout?.state === this.state && this.t < this.restBout.until); }
+  get free() { return ['idle', 'walk', 'sit', 'look', 'stretch'].includes(this.state) && !this.leaving && !this.reserved && !this.sunsetSit && !(this.state === 'sit' && this.t < (this.gazeWestUntil ?? 0)); }
 
   // ---------- 反應 ----------
   onStroke(result) {
@@ -394,7 +396,7 @@ export class Pet {
 
     switch (this.state) {
       case 'appear':
-        if (this.stateT > 0.45) this.set(this.guest ? 'battle' : 'idle', 1.5);
+        if (this.stateT > 0.45) { this.restIdle = true; this.set(this.guest ? 'battle' : 'idle', 1.5); } // 剛從球裡出來：先站一下（不是過場）
         break;
       case 'idle':
         if (near && st.env.userActive) {
@@ -476,8 +478,9 @@ export class Pet {
         if (room < (lv.x * lv.x) / (2 * acc) + 4 * S && Math.sign(lv.x) === this.rollDir) this.rollDir *= -1; // 照現在的速度煞車要多遠：來不及就提早轉向
         const want = Math.min(60 * S, Math.sqrt(2 * acc * Math.max(0, room)), acc * Math.max(0, this.dur - this.stateT));
         const dv = this.rollDir * want - lv.x;
-        lv.x += Math.sign(dv) * Math.min(Math.abs(dv), acc * dt); lv.y = 0;
-        this.x += lv.x * dt;
+        lv.x += Math.sign(dv) * Math.min(Math.abs(dv), acc * dt);
+        lv.y -= Math.sign(lv.y) * Math.min(Math.abs(lv.y), acc * dt); // 前一段留下的上下速度（例如跑步接打滾）慢慢停，不是瞬間歸零
+        this.x += lv.x * dt; this.gy += lv.y * dt;
         this.moved = true; // 這一幀自己動過了（locomotion 的 coast 不要再滑一次）
         if (done) { this.set('idle', 1); if (Math.random() < 0.5) this.showEmote('♪', 1); }
         break;
@@ -678,7 +681,7 @@ export class Pet {
       return;
     }
     // 站在視窗上、正在往上跳的不算（不會被拉去玩）
-    const others = [...st.pets.values()].filter(o => o !== this && o.free && !o.partner && !o.perch && o.state !== 'perchUp');
+    const others = [...st.pets.values()].filter(o => o !== this && o.free && !o.restingNow && !o.partner && !o.perch && o.state !== 'perchUp');
     if (st.env.sleepy) {
       // 晚上：先回秘密基地（床空著就上床，不然去基地跟大家擠在一起）。
       // 睡著了要到早上才會醒，所以一定要先回到家再睡
