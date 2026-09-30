@@ -452,11 +452,11 @@ export function buildSkeleton(srcCanvas, spec) {
     };
     for (const k of ['arm', 'armSw', 'tail', 'tailSw', 'ear', 'earSw']) q[k] = Math.max(-PART_MAX, Math.min(PART_MAX, Math.round((p[k] || 0) / ANG_STEP) * ANG_STEP));
     q.key = [q.lean, q.crouch, q.headPitch, q.breath, ...q.legL, ...q.legR, q.gait, q.gaitAmt, ...['arm', 'armSw', 'tail', 'tailSw', 'ear', 'earSw'].map(k => Math.round(q[k] / ANG_STEP))].join(',');
-    // 尾巴、耳朵每一節慢半拍的擺動（PuppetView 給的，弧度）：一樣量化成角度級，接在 key 後面（同一組參數永遠畫出同一張圖）；沒給的 key 跟以前一樣
+    // 尾巴、耳朵每一節慢半拍的擺動（PuppetView 給的，弧度）：一樣量化成角度級，接在 key 後面（同一組參數永遠畫出同一張圖；尾巴、耳朵各 LAG_SEGS 個，長度固定）；沒給的 key 跟以前一樣
     if (p.lag) {
       q.lag = {};
       for (const k of ['tail', 'ear']) q.lag[k] = (p.lag[k] ?? []).slice(0, LAG_SEGS).map(v => Math.max(-PART_MAX, Math.min(PART_MAX, Math.round((v || 0) / ANG_STEP) * ANG_STEP)));
-      q.key += '|' + ['tail', 'ear'].map(k => q.lag[k].map(v => Math.round(v / ANG_STEP)).join(',')).join('|');
+      q.key += ',' + ['tail', 'ear'].flatMap(k => q.lag[k].map(v => Math.round(v / ANG_STEP))).join(','); // 用逗號接（測試照逗號拆成數字，量每一節每幀最多變 1 級）
     }
     return q;
   };
