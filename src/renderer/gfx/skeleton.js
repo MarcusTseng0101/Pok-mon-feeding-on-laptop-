@@ -47,24 +47,86 @@ function scale2x(src, w, h) {
 const rot = ([x, y], a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
 const angOf = ([x, y]) => Math.atan2(y, x);
 
+// 點到多邊形的邊最近多遠
+const polyDist = (poly, x, y) => { let d = Infinity; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) d = Math.min(d, segDist(x, y, poly[j], poly[i])); return d; };
+const MARGIN = 1.5; // 外框外面幾格內、跟這條手腳連著的像素也算它（標框差一格，外框線不會留在原地變成一條散落的點） // 猜的，可調整
+const N8 = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+
 // 把每一格像素分給誰：limbs 的外框優先（照 skeletons.js 的順序，先標的先拿），再來是頭，剩下的是身體
+//   分給這條手腳的哪一段：照「沿著這條手腳的像素走過去的距離」最近的那一段（Meta AnimatedDrawings 的做法），
+//   不是直線距離——直線距離會把折起來的腳（大腿貼著小腿）分錯，動起來散成點。走不到的（框裡跟骨頭不連著的小塊）才用直線距離
 export function assign(spec, alpha, W, H) {
   const owner = new Int16Array(W * H).fill(-2); // -2 透明、-1 身體、0… 第幾段（segs 的索引）
   const segs = [];
   spec.limbs.forEach((l, li) => { for (let k = 0; k + 1 < l.pts.length; k++) segs.push({ limb: li, k, a: l.pts[k], b: l.pts[k + 1] }); });
   const headSeg = spec.head ? segs.push({ limb: -1, k: 0, a: spec.head.pivot, b: spec.head.pivot }) - 1 : -1;
+  const limbOf = new Int16Array(W * H).fill(-1); // 這格屬於第幾條手腳
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x;
     if (alpha[i] <= 40) continue;
     owner[i] = -1;
     const cx = x + 0.5, cy = y + 0.5;
     const li = spec.limbs.findIndex(l => inPoly(l.poly, cx, cy));
-    if (li >= 0) {
-      let best = Infinity, bi = -1;
-      segs.forEach((s, si) => { if (s.limb === li) { const d = segDist(cx, cy, s.a, s.b); if (d < best) { best = d; bi = si; } } });
-      owner[i] = bi;
-    } else if (spec.head && inPoly(spec.head.poly, cx, cy)) owner[i] = headSeg;
+    if (li >= 0) limbOf[i] = li;
+    else if (spec.head && inPoly(spec.head.poly, cx, cy)) owner[i] = headSeg;
   }
+  // 外框邊緣外 MARGIN 格內的身體像素：跟這條手腳的像素連著、而且已經過了根部（沿第一段的方向超過 SEAM 格；根部附近留給蒙皮接縫）就算這條手腳
+  spec.limbs.forEach((l, li) => {
+    const [a, b] = [l.pts[0], l.pts[1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const take = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (owner[i] !== -1 || limbOf[i] >= 0) continue;
+      const cx = x + 0.5, cy = y + 0.5;
+      if (polyDist(l.poly, cx, cy) > MARGIN) continue;
+      if (((cx - a[0]) * (b[0] - a[0]) + (cy - a[1]) * (b[1] - a[1])) / L <= SEAM) continue;
+      if (N8.some(([dx, dy]) => { const X = x + dx, Y = y + dy; return X >= 0 && Y >= 0 && X < W && Y < H && limbOf[Y * W + X] === li; })) take.push(i);
+    }
+    for (const i of take) limbOf[i] = li;
+  });
+  // 每條手腳：從每一段骨頭經過的格子同時出發，沿著這條手腳自己的像素往外走（8 方向），先走到的那一段拿這格；同時走到的比直線距離
+  const dist = new Float32Array(W * H).fill(Infinity);
+  spec.limbs.forEach((l, li) => {
+    const mine = s => s.limb === li;
+    let front = [];
+    segs.forEach((s, si) => {
+      if (!mine(s)) return;
+      const n = Math.max(1, Math.ceil(Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]) * 4));
+      for (let t = 0; t <= n; t++) {
+        const x = Math.floor(s.a[0] + (s.b[0] - s.a[0]) * t / n), y = Math.floor(s.a[1] + (s.b[1] - s.a[1]) * t / n);
+        if (x < 0 || y < 0 || x >= W || y >= H) continue;
+        const i = y * W + x;
+        if (limbOf[i] !== li) continue;
+        const d = segDist(x + 0.5, y + 0.5, s.a, s.b);
+        if (dist[i] > 0 || d < segDist(x + 0.5, y + 0.5, segs[owner[i]].a, segs[owner[i]].b)) { if (dist[i] > 0) front.push(i); dist[i] = 0; owner[i] = si; }
+      }
+    });
+    for (let step = 1; front.length; step++) {
+      const next = [];
+      for (const i of front) {
+        const x = i % W, y = (i / W) | 0;
+        for (const [dx, dy] of N8) {
+          const X = x + dx, Y = y + dy;
+          if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
+          const j = Y * W + X;
+          if (limbOf[j] !== li) continue;
+          if (dist[j] === Infinity) { dist[j] = step; owner[j] = owner[i]; next.push(j); }
+          else if (dist[j] === step && owner[j] !== owner[i]) {
+            const s1 = segs[owner[i]], s0 = segs[owner[j]];
+            if (segDist(X + 0.5, Y + 0.5, s1.a, s1.b) < segDist(X + 0.5, Y + 0.5, s0.a, s0.b)) owner[j] = owner[i];
+          }
+        }
+      }
+      front = next;
+    }
+    // 走不到的：直線距離最近的那一段
+    for (let i = 0; i < W * H; i++) if (limbOf[i] === li && dist[i] === Infinity) {
+      const cx = (i % W) + 0.5, cy = ((i / W) | 0) + 0.5;
+      let best = Infinity, bi = -1;
+      segs.forEach((s, si) => { if (mine(s)) { const d = segDist(cx, cy, s.a, s.b); if (d < best) { best = d; bi = si; } } });
+      owner[i] = bi;
+    }
+  });
   return { owner, segs, headSeg };
 }
 
