@@ -121,7 +121,8 @@ export function assign(spec, alpha, W, H, pix = null) {
     for (let step = 1; front.length; step++) {
       const next = [];
       for (const i of front) {
-        if (pix && step > 1 && isDark(pix[i])) continue; // 外框線：走到這裡停（骨頭正好壓在外框線上的起點例外）
+        // 外框線：走到這裡停（骨頭正好壓在外框線上的起點例外）。l.dark（本身就是深色的部位：黑色的鑰匙）不停，不然整條都被當成外框線
+        if (pix && step > 1 && isDark(pix[i]) && !l.dark) continue;
         const x = i % W, y = (i / W) | 0;
         for (const [dx, dy] of N4) {
           const X = x + dx, Y = y + dy;
@@ -334,7 +335,9 @@ export function buildSkeleton(srcCanvas, spec) {
     const famp = spec.fly ? (spec.flapAmp ?? 0.4) * Math.min(1, amt) * (spec.glide && gph >= 0.5 ? 0.15 : 1) : 0;
     const flapAt = ph => { ph = ((ph % 1) + 1) % 1; if (ph < FLAP_DOWN) { const u = ph / FLAP_DOWN; return u * u * (3 - 2 * u); } const u = (ph - FLAP_DOWN) / (1 - FLAP_DOWN); return 1 - u * u * (3 - 2 * u); }; // 0＝畫的樣子、1＝拍到最下面
     const flyBob = spec.fly && fph < FLAP_DOWN ? -Math.round(famp / (spec.flapAmp ?? 0.4) * FLY_BOB * Math.sin((Math.PI * fph) / FLAP_DOWN)) : 0;
-    const by = (q.crouch ?? 0) + bob + hopUp - Math.round(skipY) + headless + flyBob;
+    // 懸浮的（spec.hover 格：劍、寶石、鑰匙圈這種沒有腳也沒有翅膀的）：照步相慢慢上下浮，待機也在浮
+    const hovY = spec.hover ? -Math.round(spec.hover * Math.sin(2 * Math.PI * gph)) : 0;
+    const by = (q.crouch ?? 0) + bob + hopUp - Math.round(skipY) + headless + flyBob + hovY;
     // 左右換重心：身體往踩著地、撐著重量的那隻腳偏；近的腳踩地的正中間偏最多（c：1＝整個壓在近的腳上、−1＝遠的腳）
     const c = walker ? Math.cos(2 * Math.PI * (gph - nearPh - duty / 2)) : 0;
     const bx = spec.sway ? Math.round(amt * spec.sway * c) * swayDir : 0; // spec.sway 格（正面的圖才看得到）
@@ -477,8 +480,8 @@ export function buildSkeleton(srcCanvas, spec) {
     attack: ph => (ph < 0.5 ? { lean: 2, crouch: 1, arm: 0.6 + 0.4 * ph } : { lean: ph < 0.75 ? -3 : -2, arm: ph < 0.75 ? -0.4 : -0.2 }),
     dangle: ph => { const s = Math.sin(ph * TAU); return { legL: [0, 2], legR: [0, 2], arm: -0.4, armSw: 0.15 * s, tail: -0.3, tailSw: 0.1 * s, lean: s }; }, // 跟 rig.js 一樣尾巴、身體跟著晃（沒有手的也有在動）
   };
-  // 飛的（一直飄在空中）：待機也在拍翅（懸停，幅度一半）；滑翔的只小幅晃（1/4）。睡覺、吃東西那些照舊不拍
-  if (spec.fly) { const idle = fns.idle; fns.idle = ph => ({ ...idle(ph), gait: ph, gaitAmt: spec.glide ? 0.25 : 0.5 }); }
+  // 飛的、懸浮的（一直飄在空中）：待機也在拍翅（懸浮的：上下浮）（懸停，幅度一半）；滑翔的只小幅晃（1/4）。睡覺、吃東西那些照舊不拍
+  if (spec.fly || spec.hover) { const idle = fns.idle; fns.idle = ph => ({ ...idle(ph), gait: ph, gaitAmt: spec.glide ? 0.25 : 0.5 }); } // 懸浮的一樣：待機也在浮
   const SETS = Object.keys(fns);
   const quantize = p => {
     const I = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v || 0)));
