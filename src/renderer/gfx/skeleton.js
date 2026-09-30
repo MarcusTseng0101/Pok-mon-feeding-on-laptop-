@@ -51,11 +51,16 @@ const angOf = ([x, y]) => Math.atan2(y, x);
 const polyDist = (poly, x, y) => { let d = Infinity; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) d = Math.min(d, segDist(x, y, poly[j], poly[i])); return d; };
 const MARGIN = 1.5; // 外框外面幾格內、跟這條手腳連著的像素也算它（標框差一格，外框線不會留在原地變成一條散落的點） // 猜的，可調整
 const N8 = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+const N4 = N8.slice(0, 4); // 往外走只走上下左右：像素畫的外框線是斜著一格一格接的，走斜的會從兩格外框線中間鑽過去
 
 // 把每一格像素分給誰：limbs 的外框優先（照 skeletons.js 的順序，先標的先拿），再來是頭，剩下的是身體
 //   分給這條手腳的哪一段：照「沿著這條手腳的像素走過去的距離」最近的那一段（Meta AnimatedDrawings 的做法），
 //   不是直線距離——直線距離會把折起來的腳（大腿貼著小腿）分錯，動起來散成點。走不到的（框裡跟骨頭不連著的小塊）才用直線距離
-export function assign(spec, alpha, W, H) {
+//   pix（可以不給）：原圖的顏色。給了的話，畫家畫的深色外框線就是手腳的邊：從骨頭往外走，走到外框線停（外框線本身算手腳）。
+//   框裡越過外框線才到得了、又跟身體連著的像素（例：大腿上端外框線另一邊的肚子）還給身體——不然腳一擺，大腿的外框線會轉進肚子中間
+const DARK = 150; // R+G+B 小於這個算外框線（寶可夢的圖外框都接近黑色） // 猜的，可調整
+const isDark = c => (c & 255) + ((c >>> 8) & 255) + ((c >>> 16) & 255) < DARK;
+export function assign(spec, alpha, W, H, pix = null) {
   const owner = new Int16Array(W * H).fill(-2); // -2 透明、-1 身體、0… 第幾段（segs 的索引）
   const segs = [];
   spec.limbs.forEach((l, li) => { for (let k = 0; k + 1 < l.pts.length; k++) segs.push({ limb: li, k, a: l.pts[k], b: l.pts[k + 1] }); });
@@ -104,8 +109,9 @@ export function assign(spec, alpha, W, H) {
     for (let step = 1; front.length; step++) {
       const next = [];
       for (const i of front) {
+        if (pix && step > 1 && isDark(pix[i])) continue; // 外框線：走到這裡停（骨頭正好壓在外框線上的起點例外）
         const x = i % W, y = (i / W) | 0;
-        for (const [dx, dy] of N8) {
+        for (const [dx, dy] of N4) {
           const X = x + dx, Y = y + dy;
           if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
           const j = Y * W + X;
@@ -119,7 +125,26 @@ export function assign(spec, alpha, W, H) {
       }
       front = next;
     }
-    // 走不到的：直線距離最近的那一段
+    // 走不到、但跟身體連著的（外框線另一邊）：還給身體
+    if (pix) {
+      let fr = [];
+      for (let i = 0; i < W * H; i++) {
+        if (limbOf[i] !== li || dist[i] !== Infinity) continue;
+        const x = i % W, y = (i / W) | 0;
+        if (N8.some(([dx, dy]) => { const X = x + dx, Y = y + dy; return X >= 0 && Y >= 0 && X < W && Y < H && owner[Y * W + X] === -1 && limbOf[Y * W + X] < 0; })) fr.push(i);
+      }
+      while (fr.length) {
+        const next = [];
+        for (const i of fr) {
+          if (limbOf[i] !== li) continue;
+          limbOf[i] = -1; owner[i] = -1;
+          const x = i % W, y = (i / W) | 0;
+          for (const [dx, dy] of N4) { const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const j = Y * W + X; if (limbOf[j] === li && dist[j] === Infinity) next.push(j); }
+        }
+        fr = next;
+      }
+    }
+    // 還是走不到的（框裡跟骨頭、身體都不連著的小塊）：直線距離最近的那一段
     for (let i = 0; i < W * H; i++) if (limbOf[i] === li && dist[i] === Infinity) {
       const cx = (i % W) + 0.5, cy = ((i / W) | 0) + 0.5;
       let best = Infinity, bi = -1;
@@ -137,7 +162,7 @@ export function buildSkeleton(srcCanvas, spec) {
   const pix = new Uint32Array(img.data.slice().buffer);
   const alpha = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) alpha[i] = img.data[i * 4 + 3];
-  const { owner, segs, headSeg } = assign(spec, alpha, W, H);
+  const { owner, segs, headSeg } = assign(spec, alpha, W, H, pix);
   const nb = segs.length + 1, BODY = segs.length; // 骨頭：segs 的每一段（含頭）＋身體
   const parentOf = si => { const s = segs[si]; if (s.limb >= 0 && s.k > 0) return si - 1; return BODY; };
   const childOf = si => { const s = segs[si]; const n = segs[si + 1]; return n && s.limb >= 0 && n.limb === s.limb && n.k === s.k + 1 ? si + 1 : -1; };
@@ -165,6 +190,26 @@ export function buildSkeleton(srcCanvas, spec) {
     if (u < rP) { b2[i] = P; w2[i] = 0.5 * Math.min(1, 1 - u / rP); continue; }
     const C = childOf(o);
     if (C >= 0) { const v = L - u, rC = blendR(o, C); if (v < rC) { b2[i] = C; w2[i] = 0.5 * (1 - v / rC); } }
+  }
+  // 手腳底下補身體（underlay）：畫在前面的手腳，第一段（大腿、上臂）上端本來疊在身體上，手腳一移開那裡就空了。
+  // 照黑白版畫家的做法（把被擋住的地方補畫出來），用規則補：從身體（不是外框線的）像素往手腳裡面延伸 FILL 格，顏色照最近的身體像素。
+  // 補的像素跟著身體動、畫在身體後面（手腳在的時候被手腳蓋住，移開才看得到）。不會有原圖沒有的顏色
+  const FILL = 3; // 往手腳裡面補幾格 // 猜的，可調整
+  const under = new Uint32Array(W * H);
+  {
+    const ok = i => { const o = owner[i]; if (o < 0 || o === headSeg) return false; const s = segs[o]; return s.k === 0 && spec.limbs[s.limb].layer === 'front'; };
+    let front = [];
+    for (let i = 0; i < W * H; i++) {
+      if (owner[i] !== -1 && owner[i] !== headSeg) continue;
+      if (isDark(pix[i])) continue;
+      const x = i % W, y = (i / W) | 0;
+      for (const [dx, dy] of N8) { const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const j = Y * W + X; if (ok(j) && !under[j]) { under[j] = pix[i]; front.push(j); } }
+    }
+    for (let d = 1; d < FILL && front.length; d++) {
+      const next = [];
+      for (const i of front) { const x = i % W, y = (i / W) | 0; for (const [dx, dy] of N8) { const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const j = Y * W + X; if (ok(j) && !under[j]) { under[j] = under[i]; next.push(j); } } }
+      front = next;
+    }
   }
   // 畫的時候用放大 4 倍的原圖（Scale2x 兩次：只複製原本的格子，斜邊比較順），每一小格算新位置、落到最近的格子
   const big = scale2x(scale2x(pix, W, H), W * 2, H * 2), BW = W * 4;
@@ -293,6 +338,17 @@ export function buildSkeleton(srcCanvas, spec) {
       if (dx < 0 || dy < 0 || dx >= OW || dy >= OH) continue;
       const k = dy * OW + dx, z = layer[b1[i]], d = (qx + PAD - dx - 0.5) ** 2 + (qy + PAD - dy - 0.5) ** 2;
       if (z > zb[k] || (z === zb[k] && d < db[k])) { zb[k] = z; db[k] = d; dst[k] = col; }
+    }
+    // 手腳底下補的身體：跟著身體，層在身體後面、後面的手腳前面
+    const tb = xf[BODY], ZU = 0.9;
+    for (let i = 0; i < W * H; i++) {
+      if (!under[i]) continue;
+      const px = (i % W) + 0.5, py = ((i / W) | 0) + 0.5;
+      const qx = tb.J[0] + tb.c * (px - tb.a[0]) - tb.s * (py - tb.a[1]), qy = tb.J[1] + tb.s * (px - tb.a[0]) + tb.c * (py - tb.a[1]);
+      const dx = Math.floor(qx) + PAD, dy = Math.floor(qy) + PAD;
+      if (dx < 0 || dy < 0 || dx >= OW || dy >= OH) continue;
+      const k = dy * OW + dx;
+      if (ZU > zb[k]) { zb[k] = ZU; dst[k] = under[i]; }
     }
     o.putImageData(id, 0, 0);
     return out;
