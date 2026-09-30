@@ -9,14 +9,16 @@
 //   4. 腳用反向運動（兩段 IK）：先決定腳踝在哪（踩在地上的那一點），膝蓋自己彎。身體往前走、往下蹲，腳都留在原地
 //   5. 步態照真實動物：兩腳交替（人、蛙、鳥）、四腳側對步（貓、獅子：後左 → 前左 → 後右 → 前右）
 // 參數跟 rig.js 一樣（lean、crouch、headPitch、breath、legL/legR、arm/tail/ear…），另外多兩個：
-//   gait 步相（0–1，走路、跑步這一輪走到哪）、gaitAmt 走路的程度（0＝站著、1＝全速走：停下來時腳慢慢收回來）
+//   gait 步相（0–1，走路、跑步這一輪走到哪）、gaitAmt 走路的程度（0＝站著、1＝走、RUN_AMT＝跑：步子大 1.5 倍；停下來時腳慢慢收回來）
 import { makeCanvas } from './pixel.js';
-import { ANG_STEP, PART_MAX, LIMITS } from './rig.js';
+import { ANG_STEP, PART_MAX, LIMITS, PAD as RIG_PAD } from './rig.js';
 
 const PAD = 10; // 四周（下面除外）留幾格：大步跨出去的腳、舉高的手不會被切掉 // 猜的，可調整
 const SEAM = 2.5; // 身體上靠近手腳根部幾格內，跟著手腳動一點（根部不會裂開） // 猜的，可調整
 export const GAIT_STEPS = 16; // 一輪走路切幾張（量化） // 猜的，可調整
 export const GAIT_AMT_STEPS = 4; // 走路的程度分幾級 // 猜的，可調整
+// 跑的時候一步是走路的幾倍（跟 scene/locomotion.js 的 RUN_STRIDE 一樣：pet.js 照「走了多遠 ÷ (2 × stride × RUN_STRIDE)」推跑步的步相，腳才不會滑）
+export const RUN_AMT = 1.5;
 const SHOULDER_MAX = 0.35; // 肩膀最多轉幾弧度（約 20°），再多由手肘彎 // 猜的，可調整
 
 const inPoly = (poly, x, y) => {
@@ -400,13 +402,13 @@ export function buildSkeleton(srcCanvas, spec) {
   const fns = {
     idle: ph => ({ breath: 0.5 - 0.5 * Math.cos(ph * TAU) + 0.1, tailSw: 0.12 * Math.sin(ph * TAU), arm: 0.06 * Math.sin(ph * TAU) }),
     walk: ph => ({ gait: ph, gaitAmt: 1, lean: -1, tailSw: 0.15 * Math.cos(ph * TAU) }),
-    run: ph => ({ gait: ph, gaitAmt: 1, lean: -2, crouch: 1, tailSw: 0.3 * Math.cos(ph * TAU), ear: -0.2 }),
+    run: ph => ({ gait: ph, gaitAmt: RUN_AMT, lean: -2, crouch: 1, tailSw: 0.3 * Math.cos(ph * TAU), ear: -0.2 }),
     happy: ph => { const s = Math.sin(ph * TAU); return { crouch: -Math.max(0, s) * 2 + 1, headPitch: -1, arm: 0.3 + 0.35 * s, tailSw: 0.4 * Math.sin(ph * 2 * TAU) }; },
     sleep: ph => ({ crouch: 1 + 0.5 - 0.5 * Math.cos(ph * 2 * TAU), headPitch: 1, arm: -0.3, tail: -0.2, ear: -0.25 }),
     eat: ph => ({ headPitch: 1 + Math.cos(ph * 2 * TAU), lean: -1, crouch: 1 }),
     hurt: ph => ({ lean: 3 - 3 * ph, arm: 0.5 - 0.3 * ph, tail: 0.3, ear: -0.3 }),
     attack: ph => (ph < 0.5 ? { lean: 2, crouch: 1, arm: 0.6 + 0.4 * ph } : { lean: ph < 0.75 ? -3 : -2, arm: ph < 0.75 ? -0.4 : -0.2 }),
-    dangle: ph => { const s = Math.sin(ph * TAU); return { legL: [0, 2], legR: [0, 2], arm: -0.4, armSw: 0.15 * s, tail: -0.3 }; },
+    dangle: ph => { const s = Math.sin(ph * TAU); return { legL: [0, 2], legR: [0, 2], arm: -0.4, armSw: 0.15 * s, tail: -0.3, tailSw: 0.1 * s, lean: s }; }, // 跟 rig.js 一樣尾巴、身體跟著晃（沒有手的也有在動）
   };
   const SETS = Object.keys(fns);
   const quantize = p => {
@@ -415,7 +417,7 @@ export function buildSkeleton(srcCanvas, spec) {
       lean: I(p.lean, -LIMITS.lean, LIMITS.lean), crouch: I(p.crouch, -LIMITS.crouchUp, LIMITS.crouchDown), headPitch: I(p.headPitch, -LIMITS.pitch, LIMITS.pitch), breath: I(p.breath, 0, 1),
       legL: [I(p.legL?.[0], -3, 3), I(p.legL?.[1], -3, 3)], legR: [I(p.legR?.[0], -3, 3), I(p.legR?.[1], -3, 3)],
       gait: p.gait == null ? 0 : ((Math.round(p.gait * GAIT_STEPS) % GAIT_STEPS) + GAIT_STEPS) % GAIT_STEPS,
-      gaitAmt: I((p.gaitAmt ?? 0) * GAIT_AMT_STEPS, 0, GAIT_AMT_STEPS),
+      gaitAmt: I((p.gaitAmt ?? 0) * GAIT_AMT_STEPS, 0, GAIT_AMT_STEPS * RUN_AMT),
     };
     for (const k of ['arm', 'armSw', 'tail', 'tailSw', 'ear', 'earSw']) q[k] = Math.max(-PART_MAX, Math.min(PART_MAX, Math.round((p[k] || 0) / ANG_STEP) * ANG_STEP));
     q.key = [q.lean, q.crouch, q.headPitch, q.breath, ...q.legL, ...q.legR, q.gait, q.gaitAmt, ...['arm', 'armSw', 'tail', 'tailSw', 'ear', 'earSw'].map(k => Math.round(q[k] / ANG_STEP))].join(',');
@@ -442,6 +444,8 @@ export function buildSkeleton(srcCanvas, spec) {
   }
   const target = (name, ph) => (fns[name] ?? fns.idle)(((ph % 1) + 1) % 1);
   // 一輪身體往前走多遠：每隻腳踩地的時候往後 2A 格、占 duty 輪 → 一輪 2A ÷ duty（stride 給 locomotion.js 用：一輪＝2 × stride）
-  const info = { W, H, hasLegs: legs.length > 0, pad: PAD, stride: legs.length ? A / duty : 0, skeleton: true, neckY: spec.head?.pivot[1] ?? 0, hipY: H, legSplit: W / 2, parts: [] };
+  // trim：比自動木偶（rig.js）多留的邊。scene/pet.js 算位置（頭、對話框、影子）時扣掉，跟自動木偶的物種一樣大
+  // cyclic：quantize 的 key 裡哪幾個是繞圈的（[第幾個, 幾級]）：步相 gait 15 → 0 只是往前一格（測試量「姿勢跳格」時照繞圈算）
+  const info = { W, H, hasLegs: legs.length > 0, pad: PAD, trim: PAD - RIG_PAD, cyclic: [[8, GAIT_STEPS]], stride: legs.length ? A / duty : 0, skeleton: true, neckY: spec.head?.pivot[1] ?? 0, hipY: H, legSplit: W / 2, parts: [] };
   return { sets, pose, target, quantize, stats, cache, w: W + PAD * 2, h: H + PAD, info, owner, segs, limbs, SETS };
 }
