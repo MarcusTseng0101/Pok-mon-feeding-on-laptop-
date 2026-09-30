@@ -212,7 +212,7 @@ export const ACTS = {
   teleport: { cls: 'play', w: c => (has(c, 'psychic') ? 3 : 0), dur: [2, 3, 6], rep: 0.9 },
   shine: { cls: 'play', w: c => (has(c, 'steel', 'rock') ? 3 : 0), dur: [3, 5, 10], rep: 1.6 },
   train: { cls: 'play', w: c => (has(c, 'fighting') ? 6 : 0), dur: [4, 7, 14], rep: 2.1 },
-  practice: { cls: 'play', w: 0, dur: [4, 7, 14], rep: 1.5 }, // 自己練招式（權重由 scene/moves.js 給）：一段裡練好幾次，不是練一下就換別的事（PR-N5，規格 M8）
+  practice: { cls: 'play', w: 0, dur: [4, 7, 14], rep: 1.5 }, // 自己練招式（權重由 scene/moves.js 給）：一段只練一次、剩下的時間安靜待著（scene/pet.js 的 once；以前一段裡連放好幾招，使用者說像在打空氣）
   twirl: { cls: 'play', w: c => (has(c, 'fairy') ? 4 : 0), dur: [3, 5, 10], rep: 1.2 },
   // 社交
   play: { cls: 'social', w: c => ((c.others ?? 0) > 0 && (c.hearts ?? 0) >= 1 ? 6 : 0), dur: [4, 5, 6] }, // 找一隻追著玩

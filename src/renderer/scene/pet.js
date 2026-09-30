@@ -56,6 +56,7 @@ const REST_GUARD = 0.8; // 休息的前多少不會被找去玩 // 猜的，可�
 const HEAD_ROOM = 14; // 頭上留幾格（美術像素）：嚇一跳往上跳 10 格＋開心彈一下 4 格也碰不到螢幕上緣，不用瞬間把整隻往下推（PR-N4a，規格 M1；以前 6） // 猜的，可調整
 const EDGE_SOFT = 3; // 自己走、滑到螢幕邊可以超出幾格（美術像素），照減速度停下 // 猜的，可調整
 const FILLER_MAX = 5; // 這麼短以內的 idle 算「做完一件事的過場」（各處寫的是 1–4.5 秒；測試、導演要牠停著的都是 10 秒以上） // 猜的，可調整
+const QUIET_MIN = 1; // 只做一次的（練招式、沒有對象的習性）做完以後，剩下幾秒以上才安靜待著，太短就直接挑下一件事 // 猜的，可調整
 const KEEP_ARRIVE = new Set(['walk', 'run', 'trip']); // 換到這些狀態時留著 onArrive（還在往那裡走）
 // 這些狀態本來就是要快速翻來翻去（轉圈、跳舞、搖頭）：面向直接翻，不做轉身
 const INSTANT_FLIP = new Set(['spin', 'dance', 'refuse', 'roll', 'appear', 'held', 'fall', 'evolving']);
@@ -606,10 +607,14 @@ export class Pet {
     // 換到過場的 idle（這一幀、或上一幀在別的地方被換的）：直接挑下一件事（見 set()）
     if (this.fillerIdle && this.state === 'idle' && !this.guest && !this.leaving) {
       this.fillerIdle = false;
-      // 一段裡重複做的小動作（ACTS 的 rep）：這一段還沒滿就再做一次，滿了才挑下一件事
+      // 一段裡重複做的小動作（ACTS 的 rep）：這一段還沒滿就再做一次，滿了才挑下一件事。
+      // 只做一次的（once：練招式、沒有對象的習性）：剩下的時間安靜待著（待機：呼吸、尾巴晃），時間到了才挑下一件事；剩不到 QUIET_MIN 秒就直接挑
       const r = this.boutRep, env = this.stage.env;
-      if (r && this.t < r.until && !env.sleepy && !env.focus && !this.perch) r.start(r.rep);
-      else { this.boutRep = null; this.decide(); }
+      if (r && this.t < r.until && !env.sleepy && !env.focus && !this.perch) {
+        if (!r.once) r.start(r.rep);
+        else if (r.until - this.t >= QUIET_MIN) { this.restIdle = true; this.set('idle', r.until - this.t); } // 換成 idle 時 set() 會清掉 boutRep
+        else { this.boutRep = null; this.decide(); }
+      } else { this.boutRep = null; this.decide(); }
     }
   }
 
@@ -779,9 +784,12 @@ export class Pet {
     if (!c) { this.restIdle = true; this.set('idle', rp(2, 4)); return; }
     this.bout = bout; // 測試、之後的移動（PR-N2）用：這一段屬於哪一類
     this.restBout = null;
-    // 沒有對象的習性也一樣：一段做滿 nextBout 給的長度，做完一次、時間還沒到就再做一次（PR-N5，規格 M8；結束時變成別的狀態的習性不會重複，見 set()）
+    // 沒有對象的習性也一樣：一段做滿 nextBout 給的長度（PR-N5，規格 M8；結束時變成別的狀態的習性不會重複，見 set()）。
+    // 練招式、沒有對象的習性（once）：只做一次，這一段剩下的時間安靜待著（使用者：一段裡連放好幾招像在打空氣、同一個習性一直重複不自然）；
+    // 其他小動作（轉圈、噴水花…）照舊做完一次、時間還沒到就再做一次
     const rep = BOUT_ACTS[c[0]]?.rep ?? (c[3] === 'habit' && habitMean(this, c[0]) != null ? 1 : null);
-    if (rep) { c[2](rep); this.boutRep = { name: this.state, start: c[2], rep, until: this.t + bout.dur }; } // 重複做到這一段滿
+    const once = c[0] === 'practice' || (c[3] === 'habit' && !BOUT_ACTS[c[0]]);
+    if (rep) { c[2](rep); this.boutRep = { name: this.state, start: c[2], rep, until: this.t + bout.dur, once }; } // 做到這一段滿
     else c[2](bout.dur);
     if (bout.kind === 'rest' && this.state !== 'walk') this.restBout = { state: this.state, until: this.t + (this.dur || bout.dur) * REST_GUARD }; // 走去休息的地方的路上不算
     afterChoice(this, c);

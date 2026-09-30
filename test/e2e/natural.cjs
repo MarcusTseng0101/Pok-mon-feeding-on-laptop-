@@ -140,6 +140,14 @@ const test = async ({ page }, check) => {
           o.cls[c] = (o.cls[c] ?? 0) + dt;
           if (p.state !== o.runState) { o.changes++; o.runs.push(o.runT); o.runState = p.state; o.runT = 0; }
           o.runT += dt;
+          // 只做一次的（練招式、沒有對象的習性：scene/pet.js 的 boutRep.once）：同一段裡不准再重新開始（使用者：一段裡連放好幾招像在打空氣）
+          const br = p.boutRep;
+          // 重新開始可能發生在同一幀裡（做完 → 過場 idle → 馬上又開始），取樣看不到中間的 idle：改看「同一段、同一個狀態，做了多久（stateT）卻變短了」
+          if (br?.once && p.state === br.name) {
+            if (o.onceBr !== br) { o.onceBr = br; o.onceBouts = (o.onceBouts ?? 0) + 1; }
+            else if (o.onceLast === br.name && p.stateT < o.onceT) o.onceRepeat = (o.onceRepeat ?? 0) + 1;
+          }
+          o.onceLast = p.state; o.onceT = p.stateT;
           // M3：探索的散步（walk，而且是散步不是去某個地方：pet.explore；舊版沒有這個欄位就全部的 walk 都算）超過 3 秒的那一段，中間有沒有 0.3–2 秒的停頓
           if (p.state === 'walk' && (p.explore ?? true)) {
             o.walk ??= { t: 0, still: 0, paused: false };
@@ -206,6 +214,7 @@ const test = async ({ page }, check) => {
           M7_frames: o.frames.size, M7_newColors: o.newColors, M7_partMax: o.partMax == null ? null : +o.partMax.toFixed(3), M7_partLimit: o.partLimit,
           M8_changesPerMin: +(o.changes / MIN).toFixed(1), M8_max: etho.switchMaxAt?.(o.sp, stage.env.hour, {}, stage.dex.get(o.sp)?.types ?? []) ?? null, M8_medianBout: +med(o.runs).toFixed(2),
           M8_bigSwitchPct: o.setSwitch ? Math.round(100 * o.bigSwitch / o.setSwitch) : 0, M8_switchMedian: +(med(o.switchDiffs)).toFixed(2), M8_big: o.bigList ?? [],
+          once_bouts: o.onceBouts ?? 0, once_repeat: o.onceRepeat ?? 0,
           M8_maxStep: o.maxStep ?? null, M8_switchStep: o.switchStep ?? null, M8_steps: o.stepList ?? [],
           moving: Math.round(100 * o.moving / N),
           flipsPerMin: +(o.flips / MIN).toFixed(1),
@@ -383,8 +392,10 @@ const test = async ({ page }, check) => {
     check(v.M7_rotFrames === 0 && v.M7_scaleFrames === 0, `M7 整張圖被轉（不是 90° 倍數）${v.M7_rotFrames} 幀、被縮放 ${v.M7_scaleFrames} 幀：種子 ${s.seed} 的 ${sp}`);
     check(v.M7_newColors === 0, `M7 原圖沒有的顏色：種子 ${s.seed} 的 ${sp} 有 ${v.M7_newColors} 種`);
     check(v.M7_partMax != null && v.M7_partMax <= v.M7_partLimit + 1e-9, `M7 部位角度：種子 ${s.seed} 的 ${sp} 轉到 ${v.M7_partMax}（上限 ${v.M7_partLimit}）`);
+    check(!v.once_repeat, `只做一次的（練招式、沒有對象的習性）一段裡又重新開始 ${v.once_repeat} 次：種子 ${s.seed} 的 ${sp}`);
     check(v.M8_maxStep != null && v.M8_maxStep <= 1, `M8 姿勢跳格：種子 ${s.seed} 的 ${sp} 相鄰兩幀有參數一次變 ${v.M8_maxStep} 級：${v.M8_steps.join('；')}`);
   }
+  { const all = r.flatMap(s => Object.values(s.per)); console.log(`只做一次的（練招式、沒有對象的習性）：量到 ${all.reduce((a, v) => a + (v.once_bouts ?? 0), 0)} 段，又重新開始 ${all.reduce((a, v) => a + (v.once_repeat ?? 0), 0)} 次`); }
   // M8 的「每分鐘換狀態 ≤ 表的值」：使用者決定照模板給每一種自己的上限（core/ethogram.js 的 switchMaxAt），PR-N5 起每一隻都要過。
   // 用每一隻 3 個種子合起來（30 分鐘）的平均：同一隻 10 分鐘一段差很多（量過同一隻 1.9–7.7），一段 10 分鐘量的是運氣，不是牠的節奏。每個種子的也印出來
   for (const sp of Object.keys(r[0].per)) {
