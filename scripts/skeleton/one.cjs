@@ -1,5 +1,5 @@
 const path = require('path');
-const ROOT = path.resolve(__dirname, '../../..');
+const ROOT = path.resolve(__dirname, '../..');
 // Playwright：跟 test/e2e/lib.cjs 一樣的找法（PLAYWRIGHT_PATH、全域安裝）
 const { chromium } = (() => { for (const t of [process.env.PLAYWRIGHT_PATH, 'playwright', '/opt/node22/lib/node_modules/playwright'].filter(Boolean)) { try { return require(t); } catch { /* 下一個 */ } } throw new Error('找不到 Playwright（設定 PLAYWRIGHT_PATH）'); })();
 const OUTDIR = process.env.OUTDIR || require('os').tmpdir();
