@@ -55,7 +55,8 @@ run('puppet', async ({ page }, check) => {
         if (worst > 0.25) out.bad.push(`${id} ${s} 像素數差了 ${Math.round(worst * 100)}%`);
         if (sigs.size < 2) out.bad.push(`${id} ${s} 沒有在動`);
         if (s !== 'idle' && [...sigs].every(x => idleSigs.has(x))) out.bad.push(`${id} ${s} 跟待機一模一樣`);
-        if (s === 'idle' && fr.some(f => bottom(f) === 0)) out.bad.push(`${id} 待機時腳離開地面`);
+        // 飄著的（遊戲規則的 floats：會飛的、懸浮的）本來就不站在地上：骨架的會飛的待機也在拍翅、身體一上一下，不檢查這一條（骨架木偶第 4 批）
+        if (s === 'idle' && !stage.dex.floats(id) && fr.some(f => bottom(f) === 0)) out.bad.push(`${id} 待機時腳離開地面`);
       }
       out.species.push(row);
     }

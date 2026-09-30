@@ -24,6 +24,9 @@ export const LAG_SEGS = 3; // 尾巴、耳朵最多記幾節的延遲（第 2～
 export const LAG_S = 0.07; // 一節比前一節慢幾秒（規格：部位慢半拍 0.08–0.2 秒；3 節加起來約 0.2） // 猜的，可調整
 const HB_HOLD = 0.6; // 點頭：一步裡頭停著（hold）占多少，剩下是往前追（thrust）；鴿子走快時 hold 變短 // 猜的，可調整
 const SKIP_W = 0.35; // 蹦跳步：一步裡「跳」占多少（踏比跳久） // 猜的，可調整
+const FLAP_DOWN = 0.55; // 拍翅：往下拍占一下的多少（往下拍稍久，Animator Notebook） // 猜的，可調整
+const WING_LAG = 0.08; // 翅膀一節比前一節晚多少拍翅相位（翅膀尖比根部慢） // 猜的，可調整
+const FLY_BOB = 1; // 往下拍時身體被推上去幾格 // 猜的，可調整
 const CLOTH_LAG = 0.9; // 布（袍子下襬）一節比前一節晚多少相位（弧度）：根部先動、下襬後動 // 猜的，可調整
 
 const inPoly = (poly, x, y) => {
@@ -325,12 +328,20 @@ export function buildSkeleton(srcCanvas, spec) {
     // 沒有頭的（冰岩怪、波爾凱尼恩：臉很小、當身體的一部分）：呼吸、低頭改成整個身體往下沉（膝蓋彎一點），腳照樣踩地。
     // 不往上浮：這兩隻的腿本來就幾乎打直，身體往上腿會伸不到地、腳離地
     const headless = headSeg < 0 ? Math.max(0, q.headPitch ?? 0) + (q.breath ?? 0) : 0;
-    const by = (q.crouch ?? 0) + bob + hopUp - Math.round(skipY) + headless;
+    // 飛的（spec.fly）：步相當拍翅的相位，一輪拍 flapK 下（整除 16 張循環才接得起來）。往下拍占 FLAP_DOWN（稍久：往下拍才有推力和升力，Animator Notebook）。
+    // 滑翔的（spec.glide：烈箭鷹、伊裴爾塔爾）：一輪的後半只小幅晃（大鳥很少拍）。往下拍時身體被推上去
+    const fph = spec.fly ? ((gph * (spec.flapK ?? 2)) % 1 + 1) % 1 : 0;
+    const famp = spec.fly ? (spec.flapAmp ?? 0.4) * Math.min(1, amt) * (spec.glide && gph >= 0.5 ? 0.15 : 1) : 0;
+    const flapAt = ph => { ph = ((ph % 1) + 1) % 1; if (ph < FLAP_DOWN) { const u = ph / FLAP_DOWN; return u * u * (3 - 2 * u); } const u = (ph - FLAP_DOWN) / (1 - FLAP_DOWN); return 1 - u * u * (3 - 2 * u); }; // 0＝畫的樣子、1＝拍到最下面
+    const flyBob = spec.fly && fph < FLAP_DOWN ? -Math.round(famp / (spec.flapAmp ?? 0.4) * FLY_BOB * Math.sin((Math.PI * fph) / FLAP_DOWN)) : 0;
+    const by = (q.crouch ?? 0) + bob + hopUp - Math.round(skipY) + headless + flyBob;
     // 左右換重心：身體往踩著地、撐著重量的那隻腳偏；近的腳踩地的正中間偏最多（c：1＝整個壓在近的腳上、−1＝遠的腳）
     const c = walker ? Math.cos(2 * Math.PI * (gph - nearPh - duty / 2)) : 0;
     const bx = spec.sway ? Math.round(amt * spec.sway * c) * swayDir : 0; // spec.sway 格（正面的圖才看得到）
     // 搖擺（spec.waddle 弧度：企鵝、胖的、腳分很開的）：整個身體往撐地的腳那邊斜，頭跟著左右搖
-    const bAng = bodyAngle(q) + (spec.waddle ? amt * spec.waddle * c * swayDir : 0);
+    // 蝴蝶（spec.flutter 弧度）：身體的傾斜一直變、一抖一抖（AIP 2025：蝴蝶懸停時不停調整身體角度，路線看起來亂）
+    const flut = spec.flutter ? spec.flutter * Math.min(1, amt) * (Math.sin(2 * Math.PI * fph) + 0.5 * Math.sin(2 * Math.PI * (3 * gph + 0.3))) : 0;
+    const bAng = bodyAngle(q) + (spec.waddle ? amt * spec.waddle * c * swayDir : 0) + flut;
     const root = spec.root;
     // 身體上一點（原圖座標）→ 這一刻的位置
     const onBody = p => { const r = rot([p[0] - root[0], p[1] - root[1]], bAng); return [root[0] + r[0] + bx, root[1] + r[1] + by]; };
@@ -351,7 +362,17 @@ export function buildSkeleton(srcCanvas, spec) {
       const hx = l.kind === 'ear' && headSeg >= 0 ? xf[headSeg] : null;
       const onHead = p => { const r = rot([p[0] - hx.a[0], p[1] - hx.a[1]], hx.th); return [hx.J[0] + r[0], hx.J[1] + r[1]]; };
       let at = hx ? onHead(l.pts[0]) : onBody(l.pts[0]), angs;
-      if (l.kind === 'leg') {
+      if (l.kind === 'leg' && spec.fly) {
+        // 飛的：腳收著（照畫的樣子），跟著身體轉
+        angs = l.idx.map(() => bAng);
+      } else if (l.kind === 'wing') {
+        // 翅膀：繞肩膀往下拍、再收回來。第 j 節用晚 WING_LAG × j 的拍翅位置（翅膀尖比根部慢：往上收時翅膀摺起來）。
+        // 往下拍是哪個轉動方向：翅膀尖（根部 → 尖端的方向）往下的那邊；wingRest 'mid'（畫成平伸的）上下各一半，預設畫成往上張開的（從這裡往下拍）
+        const v = [l.pts[l.pts.length - 1][0] - l.pts[0][0], l.pts[l.pts.length - 1][1] - l.pts[0][1]], dn = Math.sign(v[0]) || 1;
+        const pos = j => { const p = flapAt(fph - WING_LAG * j); return l.wingRest === 'mid' ? 2 * p - 1 : p; };
+        let prev = 0;
+        angs = l.idx.map((_, j) => { const a = dn * famp * pos(j); const d = a - prev; prev = a; return d; });
+      } else if (l.kind === 'leg') {
         // 腳踝的目標：原本的位置＋步伐（踩在地上的時候不跟著身體動）；另外 legL/legR 是習性指定的抬腳
         const lph = legPhase(l, amt), [fx, fy0, pitch] = footAt(gph + lph, amt);
         // 蹦跳步跳起來的時候，撐地的那隻腳也離地
@@ -456,6 +477,8 @@ export function buildSkeleton(srcCanvas, spec) {
     attack: ph => (ph < 0.5 ? { lean: 2, crouch: 1, arm: 0.6 + 0.4 * ph } : { lean: ph < 0.75 ? -3 : -2, arm: ph < 0.75 ? -0.4 : -0.2 }),
     dangle: ph => { const s = Math.sin(ph * TAU); return { legL: [0, 2], legR: [0, 2], arm: -0.4, armSw: 0.15 * s, tail: -0.3, tailSw: 0.1 * s, lean: s }; }, // 跟 rig.js 一樣尾巴、身體跟著晃（沒有手的也有在動）
   };
+  // 飛的（一直飄在空中）：待機也在拍翅（懸停，幅度一半）；滑翔的只小幅晃（1/4）。睡覺、吃東西那些照舊不拍
+  if (spec.fly) { const idle = fns.idle; fns.idle = ph => ({ ...idle(ph), gait: ph, gaitAmt: spec.glide ? 0.25 : 0.5 }); }
   const SETS = Object.keys(fns);
   const quantize = p => {
     const I = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v || 0)));
