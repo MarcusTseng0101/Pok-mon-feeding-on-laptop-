@@ -275,9 +275,12 @@ export function buildSkeleton(srcCanvas, spec) {
   // 腳這一刻要在哪（相對於原圖的腳踝）：ph 這隻腳自己的步相
   const footAt = (ph, amt) => {
     ph = ((ph % 1) + 1) % 1;
+    // 跑的時候踩地比較短（spec.runDuty：蜥蜴兩腳跑時踩地只占 16–26%，Alexander 2004）。步幅跟著縮成 runDuty / duty 倍，
+    // 一輪身體走的距離（2 × 步幅 ÷ 踩地比例）不變，pet.js 照距離推步相時腳才不會滑
+    const run = spec.runDuty && amt > 1, d = run ? spec.runDuty : duty, Ae = run ? (A * spec.runDuty) / duty : A;
     let x, y, pitch = 0;
-    if (ph < duty) { const u = ph / duty; x = A - 2 * A * u; y = 0; } // 踩著：身體往前，腳相對往後
-    else { const u = (ph - duty) / (1 - duty), s = u * u * (3 - 2 * u); x = -A + 2 * A * s; y = -lift * Math.sin(Math.PI * u); pitch = 0.35 * Math.sin(Math.PI * u); } // 抬起來往前擺，腳尖先垂下
+    if (ph < d) { const u = ph / d; x = Ae - 2 * Ae * u; y = 0; } // 踩著：身體往前，腳相對往後
+    else { const u = (ph - d) / (1 - d), s = u * u * (3 - 2 * u); x = -Ae + 2 * Ae * s; y = -lift * Math.sin(Math.PI * u); pitch = 0.35 * Math.sin(Math.PI * u); } // 抬起來往前擺，腳尖先垂下
     return [face * x * amt, y * amt, pitch * amt];
   };
   // 每一隻腳的步相差：兩腳交替 0、0.5；四腳側對步 後左 0、前左 0.25、後右 0.5、前右 0.75；跳的兩腳一起
