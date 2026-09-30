@@ -35,7 +35,7 @@ test('骨架：沒有兩隻的步態組合完全一樣（FM1 每隻都一樣）'
   const seen = new Map();
   for (const [id, s] of Object.entries(SKELETONS)) {
     const legs = s.limbs.filter(l => l.kind === 'leg').map(l => [l.phase ?? 0, l.runPhase ?? null]);
-    const key = JSON.stringify([s.gait, s.duty ?? null, s.strideK ?? null, s.runDuty ?? null, s.waddle ?? 0, s.headBob ?? 0, s.nod ?? 0, legs]);
+    const key = JSON.stringify([s.gait, s.duty ?? null, s.strideK ?? null, s.runDuty ?? null, s.waddle ?? 0, s.headBob ?? 0, s.nod ?? 0, legs, s.fly ?? false, s.flapK ?? null, s.flapAmp ?? null, s.glide ?? false, s.flutter ?? 0]); // 飛的（第 4 批）比拍翅的欄位
     assert.ok(!seen.has(key), `${id} 跟 ${seen.get(key)} 的步態組合一模一樣`);
     seen.set(key, id);
   }
