@@ -11,6 +11,7 @@
 //   side：near 近的那一側、far 遠的那一側（習性的 legL 給近的、legR 給遠的；手左右反方向擺也看這個）
 //   phase：走路時這隻腳的步相差（0–1）；swing：手走路時前後擺多大（弧度，預設 0.2）
 // gait：biped 兩腳交替、quad 四腳、hop 跳；strideK 一步多大（腿長的倍數）、liftK 腳抬多高、duty 腳踩地的時間比例
+// sway：走路時身體往撐地的那隻腳偏幾格（正面的圖才需要；側面的圖左右換重心看不到）
 // 標的位置都是看圖估的，猜的，可調整（總表 docs/screens/skeleton-*.png 可以對照）
 export const SKELETONS = {
   // 甲賀忍蛙：蹲低的忍者姿勢，膝蓋朝外，一隻手垂到地上。走路像蛙人：身體壓低、大步跨、輕輕落地
@@ -38,7 +39,7 @@ export const SKELETONS = {
   },
   // 布里卡隆：很重的兩腳，一步一步踩下去、重心左右換；手臂張開，走路時跟著晃
   652: {
-    facing: -1, root: [45, 50], gait: 'biped', strideK: 0.25, liftK: 0.15, duty: 0.65,
+    facing: -1, root: [45, 50], gait: 'biped', strideK: 0.25, liftK: 0.15, duty: 0.65, sway: 1, // sway 猜的，可調整
     head: { pivot: [45, 34], poly: [[28, 8], [62, 8], [62, 36], [28, 36]] },
     limbs: [
       { kind: 'tail', side: 'far', layer: 'back', pts: [[66, 62], [72, 64], [78, 65]], poly: [[64, 58], [80, 61], [80, 68], [70, 68], [65, 66]] },

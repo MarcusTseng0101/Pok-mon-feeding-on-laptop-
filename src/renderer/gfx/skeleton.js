@@ -244,6 +244,11 @@ export function buildSkeleton(srcCanvas, spec) {
   };
   // 每一隻腳的步相差：兩腳交替 0、0.5；四腳側對步 後左 0、前左 0.25、後右 0.5、前右 0.75；跳的兩腳一起
   const offsetOf = l => l.phase ?? 0;
+  // 走路時身體起伏：最低到最高差幾格（腿長的 0.06 倍，至少 1 格）；最低在著地後一點點（下沉） // 猜的，可調整
+  const BOB = Math.max(1, Math.round(legLen * 0.06)), S_DOWN = 0.15;
+  const nearLeg = legs.find(l => l.side === 'near') ?? legs[0];
+  const nearPh = nearLeg ? offsetOf(nearLeg) : 0;
+  const swayDir = nearLeg ? Math.sign(nearLeg.pts[0][0] - spec.root[0]) || 1 : 1; // 近的那隻腳在身體的哪一邊
 
   // 兩段 IK：hip → 目標 t，長度 a、b，膝蓋往 bend 那側。回傳兩段的絕對角度
   const ik = (hip, t, a, b, bend) => {
@@ -260,17 +265,22 @@ export function buildSkeleton(srcCanvas, spec) {
   function frame(q) {
     const OW = W + PAD * 2, OH = H + PAD;
     const amt = (q.gaitAmt ?? 0) / GAIT_AMT_STEPS, gph = (q.gait ?? 0) / GAIT_STEPS;
-    // 身體：下沉 crouch 格；走路時兩腳交替、腳在身體正下方的時候身體最高（倒單擺），一步起伏一次
-    const bob = legs.length && spec.gait !== 'hop' ? -Math.round(amt * Math.max(0, Math.cos(4 * Math.PI * gph))) : 0;
+    // 身體：下沉 crouch 格；走路時一步起伏一次，照動畫的四個姿勢（The Animator's Survival Kit）：
+    //   著地（s＝0，前腳剛踩下）→ 下沉（最低，S_DOWN，重量壓到前腳上）→ 交錯（兩腳錯身）→ 抬起（最高，推地那一下）→ 下一步著地
+    //   s 是「這一步」走到哪（一輪兩步：近的腳著地 s＝0、遠的腳著地又是 0）
+    const s = ((2 * (gph - nearPh)) % 1 + 1) % 1;
+    const bob = legs.length && spec.gait !== 'hop' ? Math.round(amt * BOB * (0.5 + 0.5 * Math.cos(2 * Math.PI * (s - S_DOWN)))) : 0;
     const hopUp = spec.gait === 'hop' ? -Math.round(amt * lift * 1.5 * Math.max(0, Math.sin(2 * Math.PI * gph))) : 0;
     const by = (q.crouch ?? 0) + bob + hopUp;
+    // 左右換重心（正面的圖才看得到，spec.sway 格）：身體往踩著地、撐著重量的那隻腳偏；近的腳踩地的正中間偏最多
+    const bx = spec.sway && legs.length ? Math.round(amt * spec.sway * Math.cos(2 * Math.PI * (gph - nearPh - duty / 2))) * swayDir : 0;
     const bAng = bodyAngle(q);
     const root = spec.root;
     // 身體上一點（原圖座標）→ 這一刻的位置
-    const onBody = p => { const r = rot([p[0] - root[0], p[1] - root[1]], bAng); return [root[0] + r[0], root[1] + r[1] + by]; };
+    const onBody = p => { const r = rot([p[0] - root[0], p[1] - root[1]], bAng); return [root[0] + r[0] + bx, root[1] + r[1] + by]; };
     // 每一根骨頭這一刻的樣子：繞原圖的 a 轉 th，a 移到 J
     const xf = new Array(nb);
-    xf[BODY] = { a: root, th: bAng, J: [root[0], root[1] + by] };
+    xf[BODY] = { a: root, th: bAng, J: [root[0] + bx, root[1] + by] };
     if (headSeg >= 0) {
       const hp = spec.head.pivot, J = onBody(hp);
       J[1] += (q.headPitch ?? 0) - (q.breath ?? 0);
