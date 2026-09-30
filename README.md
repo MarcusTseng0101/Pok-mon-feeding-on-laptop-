@@ -38,7 +38,7 @@ node test/e2e/natural.cjs      # 「動得自然」的量尺 M1–M9：12 隻 ×
 node test/e2e/basecrowd.cjs    # 白天回基地休息不會擠成一團（一次疊在一起最多 3 秒）、有夥伴鑽進帳篷休息；BASECROWD_ROOT=<別的版本> 可以量舊版
 node test/e2e/mind.cjs         # 想法泡泡、夥伴資料頁的心智、聊天、一起散步、切磋的記憶
 node test/e2e/movefx.cjs       # 招式演出：62 招都放得完、大招周圍變暗、流星群 6 顆都落地、打中會頓一下震一下、減少震動的設定有效、打中只算一次、結束後姿勢回來
-node test/e2e/moveprint.cjs    # 每招都不一樣：畫面指紋（只看亮度）跟最像的另一招要差 ≥ 尺 × 2；產生接觸表 docs/screens/moves-<屬性>.png
+node test/e2e/moveprint.cjs    # 每招都不一樣：畫面指紋（只看亮度；被打的那隻不畫：被打的反應每招都一樣，骨架木偶起）跟最像的另一招要差 ≥ 尺 × 2；產生接觸表 docs/screens/moves-<屬性>.png
 node test/e2e/cursor.cjs       # 撲游標、追游標、坐在游標旁邊（永遠不蓋住游標、不攔截滑鼠）
 node test/e2e/peek.cjs         # 探頭：慢慢靠近會走進來、太快會嚇跑、頻率最多 1/3
 node test/e2e/trips.cjs        # 出門旅行：鬼抓人正常結束、走出去、紙條、走回來、收明信片、相簿
