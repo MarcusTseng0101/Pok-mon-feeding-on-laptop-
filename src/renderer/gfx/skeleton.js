@@ -20,6 +20,11 @@ export const GAIT_AMT_STEPS = 4; // 走路的程度分幾級 // 猜的，可調�
 // 跑的時候一步是走路的幾倍（跟 scene/locomotion.js 的 RUN_STRIDE 一樣：pet.js 照「走了多遠 ÷ (2 × stride × RUN_STRIDE)」推跑步的步相，腳才不會滑）
 export const RUN_AMT = 1.5;
 const SHOULDER_MAX = 0.35; // 肩膀最多轉幾弧度（約 20°），再多由手肘彎 // 猜的，可調整
+export const LAG_SEGS = 3; // 尾巴、耳朵最多記幾節的延遲（第 2～4 節；再後面的用最後一個） // 猜的，可調整
+export const LAG_S = 0.07; // 一節比前一節慢幾秒（規格：部位慢半拍 0.08–0.2 秒；3 節加起來約 0.2） // 猜的，可調整
+const HB_HOLD = 0.6; // 點頭：一步裡頭停著（hold）占多少，剩下是往前追（thrust）；鴿子走快時 hold 變短 // 猜的，可調整
+const SKIP_W = 0.35; // 蹦跳步：一步裡「跳」占多少（踏比跳久） // 猜的，可調整
+const CLOTH_LAG = 0.9; // 布（袍子下襬）一節比前一節晚多少相位（弧度）：根部先動、下襬後動 // 猜的，可調整
 
 const inPoly = (poly, x, y) => {
   let inside = false;
@@ -194,7 +199,9 @@ export function buildSkeleton(srcCanvas, spec) {
   for (let i = 0; i < W * H; i++) alpha[i] = img.data[i * 4 + 3];
   const { owner, segs, headSeg } = assign(spec, alpha, W, H, pix);
   const nb = segs.length + 1, BODY = segs.length; // 骨頭：segs 的每一段（含頭）＋身體
-  const parentOf = si => { const s = segs[si]; if (s.limb >= 0 && s.k > 0) return si - 1; return BODY; };
+  // 耳朵接在頭上（頭點頭、呼吸時耳朵跟著動，根部不會裂）；其他手腳、尾巴接在身體上
+  const onHeadLimb = li => spec.limbs[li]?.kind === 'ear' && headSeg >= 0;
+  const parentOf = si => { const s = segs[si]; if (s.limb >= 0 && s.k > 0) return si - 1; return s.limb >= 0 && onHeadLimb(s.limb) ? headSeg : BODY; };
   const childOf = si => { const s = segs[si]; const n = segs[si + 1]; return n && s.limb >= 0 && n.limb === s.limb && n.k === s.k + 1 ? si + 1 : -1; };
   const lenOf = s => Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]);
   // 關節附近多大一圈兩段一起動（蒙皮）：短的那一段的 0.4 倍，2–5 格（越大彎得越圓，太大整段都軟掉） // 猜的，可調整
@@ -263,6 +270,7 @@ export function buildSkeleton(srcCanvas, spec) {
   const A = Math.max(2, Math.round(legLen * (spec.strideK ?? 0.3)));
   const duty = spec.duty ?? (spec.gait === 'hop' ? 0.5 : legs.length >= 4 ? 0.65 : 0.6); // 腳踩在地上的時間占一輪的幾成（慢走 0.6–0.7） // 猜的，可調整
   const lift = Math.max(1, Math.round(legLen * (spec.liftK ?? 0.2))); // 腳抬多高 // 猜的，可調整
+  const skipH = Math.max(1, Math.round(legLen * (spec.skipK ?? 0.25))); // 蹦跳步跳多高（腿長的倍數） // 猜的，可調整
 
   // 腳這一刻要在哪（相對於原圖的腳踝）：ph 這隻腳自己的步相
   const footAt = (ph, amt) => {
@@ -299,12 +307,17 @@ export function buildSkeleton(srcCanvas, spec) {
     //   著地（s＝0，前腳剛踩下）→ 下沉（最低，S_DOWN，重量壓到前腳上）→ 交錯（兩腳錯身）→ 抬起（最高，推地那一下）→ 下一步著地
     //   s 是「這一步」走到哪（一輪兩步：近的腳著地 s＝0、遠的腳著地又是 0）
     const s = ((2 * (gph - nearPh)) % 1 + 1) % 1;
-    const bob = legs.length && spec.gait !== 'hop' ? Math.round(amt * BOB * (0.5 + 0.5 * Math.cos(2 * Math.PI * (s - S_DOWN)))) : 0;
+    const walker = legs.length || spec.robe; // 袍子蓋住腳的（spec.robe）：看不到腳，身體照樣一步一起伏
+    const bob = walker && spec.gait !== 'hop' ? Math.round(amt * BOB * (0.5 + 0.5 * Math.cos(2 * Math.PI * (s - S_DOWN)))) : 0;
     const hopUp = spec.gait === 'hop' ? -Math.round(amt * lift * 1.5 * Math.max(0, Math.sin(2 * Math.PI * gph))) : 0;
-    const by = (q.crouch ?? 0) + bob + hopUp;
-    // 左右換重心（正面的圖才看得到，spec.sway 格）：身體往踩著地、撐著重量的那隻腳偏；近的腳踩地的正中間偏最多
-    const bx = spec.sway && legs.length ? Math.round(amt * spec.sway * Math.cos(2 * Math.PI * (gph - nearPh - duty / 2))) * swayDir : 0;
-    const bAng = bodyAngle(q);
+    // 蹦跳步（spec.gait 'skip'：小孩 skipping、烏鴉）：每一步＝踏一下＋同一隻腳跳一下，踏比跳久；跳的時候身體和撐地的腳一起離地
+    const skipY = spec.gait === 'skip' && s > 1 - SKIP_W ? amt * skipH * Math.sin(Math.PI * (s - (1 - SKIP_W)) / SKIP_W) : 0;
+    const by = (q.crouch ?? 0) + bob + hopUp - Math.round(skipY);
+    // 左右換重心：身體往踩著地、撐著重量的那隻腳偏；近的腳踩地的正中間偏最多（c：1＝整個壓在近的腳上、−1＝遠的腳）
+    const c = walker ? Math.cos(2 * Math.PI * (gph - nearPh - duty / 2)) : 0;
+    const bx = spec.sway ? Math.round(amt * spec.sway * c) * swayDir : 0; // spec.sway 格（正面的圖才看得到）
+    // 搖擺（spec.waddle 弧度：企鵝、胖的、腳分很開的）：整個身體往撐地的腳那邊斜，頭跟著左右搖
+    const bAng = bodyAngle(q) + (spec.waddle ? amt * spec.waddle * c * swayDir : 0);
     const root = spec.root;
     // 身體上一點（原圖座標）→ 這一刻的位置
     const onBody = p => { const r = rot([p[0] - root[0], p[1] - root[1]], bAng); return [root[0] + r[0] + bx, root[1] + r[1] + by]; };
@@ -314,13 +327,20 @@ export function buildSkeleton(srcCanvas, spec) {
     if (headSeg >= 0) {
       const hp = spec.head.pivot, J = onBody(hp);
       J[1] += (q.headPitch ?? 0) - (q.breath ?? 0);
+      // 點頭（spec.headBob 格：鴿子、雞）：頭先停在空中（hold，身體往前走過去，所以頭相對身體往後），再很快往前追（thrust）
+      if (spec.headBob && amt) { const D = spec.headBob, r = s < HB_HOLD ? D / 2 - (D * s) / HB_HOLD : -D / 2 + (D * (s - HB_HOLD)) / (1 - HB_HOLD); J[0] += face * r * amt; }
       xf[headSeg] = { a: hp, th: bAng + (q.headPitch ?? 0) * 0.08 * -face, J };
     }
     for (const l of limbs) {
-      let at = onBody(l.pts[0]), angs;
+      // 耳朵：根部跟著頭（位置、角度都照頭的，頭點頭、呼吸時一起動）
+      const hx = l.kind === 'ear' && headSeg >= 0 ? xf[headSeg] : null;
+      const onHead = p => { const r = rot([p[0] - hx.a[0], p[1] - hx.a[1]], hx.th); return [hx.J[0] + r[0], hx.J[1] + r[1]]; };
+      let at = hx ? onHead(l.pts[0]) : onBody(l.pts[0]), angs;
       if (l.kind === 'leg') {
         // 腳踝的目標：原本的位置＋步伐（踩在地上的時候不跟著身體動）；另外 legL/legR 是習性指定的抬腳
-        const [fx, fy, pitch] = footAt(gph + offsetOf(l), amt);
+        const [fx, fy0, pitch] = footAt(gph + offsetOf(l), amt);
+        // 蹦跳步跳起來的時候，撐地的那隻腳也離地
+        const fy = skipY && ((gph + offsetOf(l)) % 1 + 1) % 1 < duty ? fy0 - skipY : fy0;
         const extra = l.side === 'far' ? q.legR : q.legL;
         const ank = l.pts[2] ?? l.pts[1];
         const tgt = [ank[0] + fx - (extra?.[0] ?? 0) * face, ank[1] + fy + (extra?.[1] ?? 0)];
@@ -328,23 +348,34 @@ export function buildSkeleton(srcCanvas, spec) {
         angs = [a1 - l.rest[0], a2 - l.rest[1]];
         if (l.idx.length > 2) angs.push(-face * pitch); // 腳掌：踩著時保持原本的角度（平貼地面），抬起來時腳尖垂
       } else {
-        // 手、尾巴、耳朵：整串一起彎（加上身體的角度）
-        const k = l.kind, raise = l.raise ?? (k === 'tail' ? -face : face);
+        // 手、尾巴、耳朵、布（袍子下襬、袖子）：整串一起彎（加上身體的角度）。布用尾巴的參數（被身體帶著甩）
+        const k = l.kind === 'cloth' ? 'tail' : l.kind, raise = l.raise ?? (k === 'tail' ? -face : face);
         const alt = l.side === 'far' ? -1 : 1;
-        const total = Math.max(-PART_MAX, Math.min(PART_MAX, raise * (q[k] ?? 0) + alt * (q[k + 'Sw'] ?? 0)));
+        const clamp = v => Math.max(-PART_MAX, Math.min(PART_MAX, v));
+        const total = clamp(raise * (q[k] ?? 0) + alt * (q[k + 'Sw'] ?? 0));
         const n = l.idx.length;
         // 手：肩膀轉 total、手肘往回彎一半（前臂最後轉 0.5 × total）。肩膀最多轉 SHOULDER_MAX，超過的改由手肘彎（前臂方向不變）：
         // 長的手整根從肩膀轉太大，肩膀四周的像素會扯裂（布里卡隆攻擊時）；真的手舉高時也是手肘彎得比肩膀多
         const sh = Math.max(-SHOULDER_MAX, Math.min(SHOULDER_MAX, total));
-        angs = l.idx.map((_, j) => (k === 'arm' ? (j === 0 ? sh : j === 1 ? 0.5 * total - sh : 0) : total / n)); // 尾巴、耳朵：每一節轉一樣多，加起來末端轉 total
+        if (k === 'arm') angs = l.idx.map((_, j) => (j === 0 ? sh : j === 1 ? 0.5 * total - sh : 0));
+        else {
+          // 尾巴、耳朵、布：一節跟著前一節、慢半拍（follow-the-leader）。第 j 節用「j × LAG 秒前」根部的擺動（gfx/sprites.js 的 PuppetView 記著，量化後放進 q.lag）；
+          // 沒有記錄的（固定畫面、野生的）每一節都用現在的，跟以前一樣。每一節轉 1/n，加起來末端轉 total
+          const lagged = q.lag?.[k] ?? [];
+          angs = l.idx.map((_, j) => clamp(raise * (q[k] ?? 0) + alt * (j === 0 ? q[k + 'Sw'] ?? 0 : lagged[Math.min(j, lagged.length) - 1] ?? q[k + 'Sw'] ?? 0)) / n);
+          // 布：走路時跟著腳一左一右往前鼓（袍子下面的腳在跨步），從根部往下襬慢半拍
+          if (l.kind === 'cloth' && amt) angs = angs.map((a, j) => a + (l.step ?? 0.15) * amt * Math.sin(2 * Math.PI * (gph + (l.phase ?? 0)) - CLOTH_LAG * j) * -face / n);
+        }
         if (k === 'arm' && amt) {
           // 走路時手跟對側的腳一起前後擺：手尖要往前（facing）移。垂直往下的手轉一點就是前後擺；橫著伸的手轉了只是上下，所以幾乎不擺
           const s = Math.cos(2 * Math.PI * (gph + (l.phase ?? 0))), v = [l.pts[l.pts.length - 1][0] - l.pts[0][0], l.pts[l.pts.length - 1][1] - l.pts[0][1]];
           const along = Math.hypot(...v) ? v[1] / Math.hypot(...v) : 0;
           angs[0] += -face * (l.swing ?? 0.2) * amt * s * along;
+          // 保持平衡的手（l.guard 弧度：剛學走的幼兒 high guard）：走路時手微微張開、舉著，不前後擺（swing 給 0）
+          if (l.guard) angs[0] += raise * l.guard * amt;
         }
       }
-      let abs = l.kind === 'leg' ? 0 : bAng;
+      let abs = l.kind === 'leg' ? 0 : hx ? hx.th : bAng;
       l.idx.forEach((si, j) => {
         if (l.kind === 'leg') abs = angs[j] ?? 0; else abs += angs[j] ?? 0;
         const s = segs[si];
@@ -421,6 +452,12 @@ export function buildSkeleton(srcCanvas, spec) {
     };
     for (const k of ['arm', 'armSw', 'tail', 'tailSw', 'ear', 'earSw']) q[k] = Math.max(-PART_MAX, Math.min(PART_MAX, Math.round((p[k] || 0) / ANG_STEP) * ANG_STEP));
     q.key = [q.lean, q.crouch, q.headPitch, q.breath, ...q.legL, ...q.legR, q.gait, q.gaitAmt, ...['arm', 'armSw', 'tail', 'tailSw', 'ear', 'earSw'].map(k => Math.round(q[k] / ANG_STEP))].join(',');
+    // 尾巴、耳朵每一節慢半拍的擺動（PuppetView 給的，弧度）：一樣量化成角度級，接在 key 後面（同一組參數永遠畫出同一張圖；尾巴、耳朵各 LAG_SEGS 個，長度固定）；沒給的 key 跟以前一樣
+    if (p.lag) {
+      q.lag = {};
+      for (const k of ['tail', 'ear']) q.lag[k] = (p.lag[k] ?? []).slice(0, LAG_SEGS).map(v => Math.max(-PART_MAX, Math.min(PART_MAX, Math.round((v || 0) / ANG_STEP) * ANG_STEP)));
+      q.key += ',' + ['tail', 'ear'].flatMap(k => q.lag[k].map(v => Math.round(v / ANG_STEP))).join(','); // 用逗號接（測試照逗號拆成數字，量每一節每幀最多變 1 級）
+    }
     return q;
   };
   const cache = new Map(), stats = { built: 0, maxPart: 0 };
@@ -446,6 +483,7 @@ export function buildSkeleton(srcCanvas, spec) {
   // 一輪身體往前走多遠：每隻腳踩地的時候往後 2A 格、占 duty 輪 → 一輪 2A ÷ duty（stride 給 locomotion.js 用：一輪＝2 × stride）
   // trim：比自動木偶（rig.js）多留的邊。scene/pet.js 算位置（頭、對話框、影子）時扣掉，跟自動木偶的物種一樣大
   // cyclic：quantize 的 key 裡哪幾個是繞圈的（[第幾個, 幾級]）：步相 gait 15 → 0 只是往前一格（測試量「姿勢跳格」時照繞圈算）
-  const info = { W, H, hasLegs: legs.length > 0, pad: PAD, trim: PAD - RIG_PAD, cyclic: [[8, GAIT_STEPS]], stride: legs.length ? A / duty : 0, skeleton: true, neckY: spec.head?.pivot[1] ?? 0, hipY: H, legSplit: W / 2, parts: [] };
+  // chainLag：有會慢半拍甩的一串（尾巴、耳朵、布超過一節）：PuppetView 要記根部的擺動
+  const info = { W, H, hasLegs: legs.length > 0, pad: PAD, trim: PAD - RIG_PAD, chainLag: limbs.some(l => ['tail', 'ear', 'cloth'].includes(l.kind) && l.idx.length > 1), cyclic: [[8, GAIT_STEPS]], stride: legs.length ? A / duty : 0, skeleton: true, neckY: spec.head?.pivot[1] ?? 0, hipY: H, legSplit: W / 2, parts: [] };
   return { sets, pose, target, quantize, stats, cache, w: W + PAD * 2, h: H + PAD, info, owner, segs, limbs, SETS };
 }
