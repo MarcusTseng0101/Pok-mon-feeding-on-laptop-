@@ -207,8 +207,8 @@ export class Pet {
 
   // 在螢幕上的矩形（裝置像素）
   rect() {
-    const a = this.asset, S = this.S;
-    const w = a.w * S, h = a.h * S;
+    const a = this.asset, S = this.S, t = a.anim?.info?.trim ?? 0; // 骨架木偶的圖多留了邊（gfx/skeleton.js 的 trim）：扣掉，位置跟自動木偶的物種一樣算
+    const w = (a.w - 2 * t) * S, h = (a.h - t) * S;
     return { x: Math.round(this.x - w / 2), y: Math.round(this.y - h - this.lift() * S), w, h };
   }
   head() { const r = this.rect(); return { x: r.x + r.w / 2, y: r.y }; }
@@ -218,6 +218,8 @@ export class Pet {
   lift() {
     const k = this.dur > 0 ? Math.min(1, this.stateT / this.dur) : 0;
     const bump = this.hopT > 0 ? Math.round(Math.sin((this.hopT / 0.25) * Math.PI) * 4) : 0;
+    // 骨架木偶走路、跑步時身體自己會起伏、腳踩在地上（gfx/skeleton.js）：整張圖再彈起來，腳會離地
+    if (this.asset?.anim?.info?.skeleton && !this.floats) { const s = this.animSet(); if (s === 'walk' || s === 'run') return bump; }
     return bump + this.baseLift(k);
   }
 
@@ -284,7 +286,8 @@ export class Pet {
     if (px < r.x || py < r.y || px >= r.x + r.w || py >= r.y + r.h) return false;
     if (this.act?.intangible?.(this)) return false;
     if (this.state === 'roll' || this.state === 'trip') return true; // 轉動中用外框判定
-    let ax = Math.floor((px - r.x) / S), ay = Math.floor((py - r.y) / S);
+    const t = a.anim?.info?.trim ?? 0; // rect 扣掉了骨架木偶多留的邊，換回圖上的格子要加回來
+    let ax = Math.floor((px - r.x) / S) + t, ay = Math.floor((py - r.y) / S) + t;
     if (this.viewFacing > 0) ax = a.w - 1 - ax;
     if (this.upsideDown) ay = a.h - 1 - ay;
     // 容許 1 美術像素的誤差，細長的寶可夢比較好點
@@ -556,9 +559,9 @@ export class Pet {
         break;
       case 'held':
         if (this.grab && p.known) {
-          const a = this.asset;
-          this.x = p.x - this.grab.dx + (a.w * S) / 2;
-          this.gy = p.y - this.grab.dy + a.h * S + this.alt * S;
+          const a = this.asset, t = a.anim?.info?.trim ?? 0; // 跟 rect() 一樣扣掉骨架木偶多留的邊
+          this.x = p.x - this.grab.dx + ((a.w - 2 * t) * S) / 2;
+          this.gy = p.y - this.grab.dy + (a.h - t) * S + this.alt * S;
         }
         break;
       case 'fall':
@@ -801,7 +804,7 @@ export class Pet {
     if ((this.state !== 'held' || !this.floats) && sink < 0.9) {
       const h = this.alt + this.z;
       const k = Math.max(0.35, 1 - h / 120);
-      const sw = Math.max(2, Math.round((a.w / 2) * k)) * S;
+      const sw = Math.max(2, Math.round(((a.w - 2 * (a.anim?.info?.trim ?? 0)) / 2) * k)) * S;
       ctx.fillStyle = `rgba(20,10,30,${(0.2 * k * Math.min(1, alpha * 1.5)).toFixed(3)})`;
       ctx.fillRect(Math.round(this.x - sw / 2), Math.round(this.gy) - S, sw, S);
       ctx.fillRect(Math.round(this.x - sw / 2 + S), Math.round(this.gy), sw - 2 * S, S);
@@ -821,12 +824,13 @@ export class Pet {
     const ox = xf.ox * S;
     const quarter = flipY ? 0 : xf.quarter;
     const sc = this.stage.env.tiny ? Math.max(1, Math.round(S * TINY)) : S; // 有視窗全螢幕：躲在角落、變小（director.js）；小一點但還是整數倍率
+    const tS = (a.anim?.info?.trim ?? 0) * S, gx = r.x - tS, gy = r.y - tS; // 整張圖的左上角（rect 扣掉了骨架木偶多留的邊）
     if (!quarter && sc === S) {
-      blit(ctx, img, r.x + ox, r.y, S, { flipX: this.viewFacing > 0, flipY, alpha });
-      if (sleepy) blit(ctx, a.dark, r.x + ox, r.y, S, { flipX: this.viewFacing > 0, alpha: 0.18 * alpha });
+      blit(ctx, img, gx + ox, gy, S, { flipX: this.viewFacing > 0, flipY, alpha });
+      if (sleepy) blit(ctx, a.dark, gx + ox, gy, S, { flipX: this.viewFacing > 0, alpha: 0.18 * alpha });
     } else {
       const w = a.w * sc, h = a.h * sc;
-      const feetX = Math.round(this.x + ox), feetY = r.y + a.h * S;
+      const feetX = Math.round(this.x + ox), feetY = r.y + r.h;
       const center = xf.pivot === 'center';
       ctx.save();
       ctx.globalAlpha = alpha;
@@ -840,7 +844,7 @@ export class Pet {
     }
     if (sink > 0) ctx.restore();
     // 被招式打到：白色閃爍
-    if (this.flinchT > 0 && Math.floor(this.flinchT * 20) % 2) blit(ctx, a.white, r.x + ox, r.y, S, { flipX: this.viewFacing > 0, flipY, alpha: 0.6 * alpha });
+    if (this.flinchT > 0 && Math.floor(this.flinchT * 20) % 2) blit(ctx, a.white, gx + ox, gy, S, { flipX: this.viewFacing > 0, flipY, alpha: 0.6 * alpha });
     act?.drawOver?.(this, ctx);
     const carrying = this.stage.game?.tripStatus(this.uid) === 'back';
     if (!this.emote && carrying) drawCarried(this, ctx); // 旅行回來：頂著明信片

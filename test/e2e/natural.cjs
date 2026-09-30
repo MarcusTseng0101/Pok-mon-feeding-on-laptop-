@@ -170,7 +170,9 @@ const test = async ({ page }, check) => {
           const key = p.view?.key;
           if (key && o.lastKey && p.view === o.lastView) {
             const a = o.lastKey.split(',').map(Number), b = key.split(',').map(Number);
-            const st = Math.max(...a.map((x, i) => Math.abs(x - b[i]))), hd = Math.abs((a[1] + a[2] - a[3]) - (b[1] + b[2] - b[3]));
+            // 骨架木偶的步相 gait 是繞圈的（info.cyclic：15 → 0 是往前 1 格，不是 15 格）；其他參數照舊直接相減
+            const cyc = new Map(p.view.anim.info?.cyclic ?? []), stepOf = (x, y, i) => { const d = Math.abs(x - y), n = cyc.get(i); return n ? Math.min(d, n - d) : d; };
+            const st = Math.max(...a.map((x, i) => stepOf(x, b[i], i))), hd = Math.abs((a[1] + a[2] - a[3]) - (b[1] + b[2] - b[3]));
             o.maxStep = Math.max(o.maxStep ?? 0, st, hd);
             if (set !== o.lastSet) o.switchStep = Math.max(o.switchStep ?? 0, st, hd);
             if (Math.max(st, hd) > 1 && (o.stepList ??= []).length < 6) o.stepList.push(`${o.lastSet}→${set} ${p.state} [${o.lastKey}]→[${key}]`);

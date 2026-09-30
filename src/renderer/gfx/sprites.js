@@ -1,6 +1,8 @@
 // 寶可夢圖片：向 main process 要 PNG（有快取），裁掉透明邊、建立命中遮罩與剪影。
 import { makeCanvas, alphaMask, tint } from './pixel.js';
 import { buildRig, quantize, ANG_STEP, LIMITS, PART_MAX } from './rig.js';
+import { buildSkeleton, GAIT_STEPS } from './skeleton.js';
+import { SKELETONS } from './skeletons.js';
 import { fallbackSprite } from './art.js';
 import { speciesOfKey } from '../../core/forms.js';
 
@@ -98,11 +100,15 @@ export class SpriteBank {
 
   // ---------- 會動的圖（原本的像素圖切塊移動，見 gfx/rig.js）----------
   // 同步取得：用現在拿得到的圖（還沒下載好就是替代圖）做成動畫；同一張圖只做一次，所有同一種的共用
+  // 有手標骨架的（gfx/skeletons.js，照圖片編號，不同形態的圖不一樣所以不照物種）用骨架木偶（gfx/skeleton.js：手腳有關節、腳踩地），
+  // 其他、替代圖、圖大小跟標的時候不一樣的，照舊用自動木偶
   peekAnim(id, shiny = false) {
     const still = this.peek(id, shiny);
     let anim = RIGS.get(still);
     if (!anim) {
-      const rig = buildRig(still.canvas, { floats: this.dex.floats?.(speciesOfKey(id)) ?? false });
+      const spec = still.fallback ? null : SKELETONS[Number.parseInt(id, 10)];
+      const fits = spec && (!spec.size || (spec.size[0] === still.canvas.width && spec.size[1] === still.canvas.height));
+      const rig = fits ? buildSkeleton(still.canvas, spec) : buildRig(still.canvas, { floats: this.dex.floats?.(speciesOfKey(id)) ?? false });
       // 每一組動作第一次用到才做（睡覺、出招那些很多隻一輩子都用不到幾次）
       // 每一組的畫面要看的時候才做（木偶畫法只拿 sets 當「現在是哪一組」的標籤，用不到固定的畫面）
       const sets = {};
@@ -115,7 +121,7 @@ export class SpriteBank {
       const assets = new WeakMap();
       const wrap = c => { let x = assets.get(c); if (!x) { x = lazyAsset(c); assets.set(c, x); } return x; };
       const pose = (q, opts) => { const c = rig.pose(q, opts); return c && wrap(c); };
-      anim = { sets, w: rig.w, h: rig.h, info: rig.info, pose, target: rig.target, stats: rig.stats };
+      anim = { sets, w: rig.w, h: rig.h, info: rig.info, pose, target: rig.target, stats: rig.stats, quantize: rig.quantize ?? quantize };
       RIGS.set(still, anim);
     }
     return anim;
@@ -160,6 +166,7 @@ export class AnimView {
 // 彈簧大約 2/ω 秒追到：腳 0.05 秒（要跟著步伐）、身體 0.09 秒、手 0.11、耳朵 0.14、尾巴 0.2（部位慢半拍＝跟隨，規格 0.08–0.2 秒）
 const OMEGA = { lean: 22, crouch: 22, headPitch: 20, breath: 16, lLx: 40, lLy: 40, lRx: 40, lRy: 40, arm: 18, armSw: 18, ear: 14, earSw: 14, tail: 10, tailSw: 10 }; // 猜的，可調整
 const KEYS = Object.keys(OMEGA);
+const GAIT_OMEGA = 12; // 骨架木偶的「走路程度」追目標多快（約 0.17 秒：開始走、停下來時腳慢慢跨開、收回） // 猜的，可調整
 const PART_SPEED = 8; // 部位最快一秒轉幾弧度（規格 F9：不要一直甩） // 猜的，可調整
 const FOLLOW = 0.015; // 身體前後晃的速度（格／秒）帶動尾巴、耳朵往反方向擺多少（弧度） // 猜的，可調整
 const REST_SWING = 0.3; // 休息時帶動的擺幅打幾折（規格 F9） // 猜的，可調整
@@ -223,8 +230,17 @@ export class PuppetView extends AnimView {
       if (Math.abs(head(lv) - head(was)) > 1) lv.breath = was.breath;
     }
     for (const k of KEYS) p[k] = lv[k] * (PARTS.has(k) ? ANG_STEP : 1);
+    // 骨架木偶的步相 gait（0–1 會繞回去）不能用彈簧追（彈簧會往回掃一整圈）：直接照這一組給的；這一組沒給（待機、吃…）就停在原本的步相，
+    // 靠 gaitAmt（走路的程度）用彈簧慢慢收到 0，腳一步一步收回原位，不會一下跳回去
+    // 一幀最多往前（或往後）走 1 格步相（規格 F8、M8：姿勢不跳格）。走最快時一秒 64 格比 60 幀多一點，那時腳會滑一點點；
+    // 從別的動作換回走路時，步相也是一格一格追上去
+    // （還沒走過路的從 0 開始：畫出來的一直是步相 0，第一次走也要一格一格追）
+    if (tg.gait != null) { const g = this.gait ?? 0, d = ((tg.gait - g + 1.5) % 1) - 0.5, lim = 1 / GAIT_STEPS; this.gait = (g + Math.max(-lim, Math.min(lim, d)) + 1) % 1; }
+    const ga = tg.gaitAmt ?? 0;
+    if (this.gaitAmt == null || !(dt > 0)) { this.gaitAmt ??= ga; this.gaitV = 0; }
+    else { const w = GAIT_OMEGA, e = this.gaitAmt - ga, d = Math.exp(-w * dt), m = this.gaitV + w * e; this.gaitAmt = ga + (e + m * dt) * d; this.gaitV = (this.gaitV - w * m * dt) * d; }
     const before = this.anim.stats.built;
-    const q = quantize({ ...p, legL: [p.lLx, p.lLy], legR: [p.lRx, p.lRy] });
+    const q = (this.anim.quantize ?? quantize)({ ...p, legL: [p.lLx, p.lLy], legR: [p.lRx, p.lRy], gait: this.gait ?? 0, gaitAmt: this.gaitAmt });
     const f = this.anim.pose(q, { build: this.budget >= 1 || !this.cur });
     if (this.anim.stats.built > before) this.budget -= 1;
     // 這一幀做不出新圖（超過預算）：還是畫上一張，級數也留在上一張（下一次才不會一次跳兩級）

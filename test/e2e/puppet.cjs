@@ -1,4 +1,4 @@
-// 像素木偶（gfx/rig.js）：72 隻每一隻、每一組動作都做一次，檢查：
+// 像素木偶（gfx/rig.js；有手標骨架的用 gfx/skeleton.js，跟遊戲裡 sprites.peekAnim 選的一樣）：72 隻每一隻、每一組動作都做一次，檢查：
 //   - 每一格的顏色都是原圖有的（轉手、尾巴也沒有混色、沒有糊掉）
 //   - 大小＝原圖＋左右各 pad、上面 pad；腳底那一列在最下面（站的位置不變）
 //   - 每一組動作真的有動（至少 2 種畫面），而且跟待機不一樣
@@ -20,6 +20,8 @@ run('puppet', async ({ page }, check) => {
     const ids = stage.dex.ids;
     await Promise.all(ids.map(id => stage.sprites.get(id)));
     const { buildRig, SETS } = await import('/src/renderer/gfx/rig.js');
+    const { buildSkeleton } = await import('/src/renderer/gfx/skeleton.js');
+    const { SKELETONS } = await import('/src/renderer/gfx/skeletons.js');
     const px = cv => cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
     const colors = cv => { const s = new Set(), d = px(cv); for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 0) s.add(`${d[i]},${d[i + 1]},${d[i + 2]},${d[i + 3]}`); return s; };
     const count = cv => { const d = px(cv); let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 40) n++; return n; };
@@ -31,13 +33,16 @@ run('puppet', async ({ page }, check) => {
       const still = stage.sprites.peek(id, false);
       if (still.fallback) { out.bad.push(`${id} 圖沒載到`); continue; }
       const t0 = performance.now();
-      const rig = buildRig(still.canvas, { floats: stage.dex.floats(id) });
+      // 遊戲裡這一隻用哪一種木偶（peekAnim 決定），這裡照一樣的做；有標骨架的一定要真的用到骨架
+      const skel = !!stage.sprites.peekAnim(id, false).info.skeleton;
+      if (SKELETONS[id] && !skel) out.bad.push(`${id} 有標骨架，遊戲裡卻沒有用到（圖的大小跟標的時候不一樣？）`);
+      const rig = skel ? buildSkeleton(still.canvas, SKELETONS[id]) : buildRig(still.canvas, { floats: stage.dex.floats(id) });
       for (const s of SETS) void rig.sets[s].frames;
       out.ms.push(performance.now() - t0);
       rigs.push([id, rig, still]);
       const base = colors(still.canvas), n0 = count(still.canvas), pad = rig.info.pad;
       const idleSigs = new Set(rig.sets.idle.frames.map(sig));
-      const row = { id, parts: rig.info.parts.map(p => p.kind).join(',') || '-', legs: rig.info.hasLegs };
+      const row = { id, parts: skel ? 'skeleton' : rig.info.parts.map(p => p.kind).join(',') || '-', legs: rig.info.hasLegs };
       if (rig.w !== still.w + pad * 2 || rig.h !== still.h + pad) out.bad.push(`${id} 大小不對 ${rig.w}x${rig.h}`);
       for (const s of SETS) {
         const fr = rig.sets[s].frames, sigs = new Set(fr.map(sig));
