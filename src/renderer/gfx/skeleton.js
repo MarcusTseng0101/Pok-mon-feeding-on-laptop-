@@ -285,6 +285,13 @@ export function buildSkeleton(srcCanvas, spec) {
   };
   // 每一隻腳的步相差：兩腳交替 0、0.5；四腳側對步 後左 0、前左 0.25、後右 0.5、前右 0.75；跳的兩腳一起
   const offsetOf = l => l.phase ?? 0;
+  // 跑的時候換步態（l.runPhase：貓、狐、鹿慢走是側對步，跑起來是跑步的步序；重的動物沒有 runPhase，跑也是快走）。
+  // 走 → 跑之間照走路程度連續換（繞圈的內插），不會一下跳過去
+  const legPhase = (l, amt) => {
+    if (l.runPhase == null || !(amt > 1)) return offsetOf(l);
+    const t = Math.min(1, (amt - 1) / (RUN_AMT - 1)), d = ((l.runPhase - offsetOf(l) + 1.5) % 1) - 0.5;
+    return offsetOf(l) + d * t;
+  };
   // 走路時身體起伏：最低到最高差幾格（腿長的 0.06 倍，至少 1 格）；最低在著地後一點點（下沉） // 猜的，可調整
   const BOB = Math.max(1, Math.round(legLen * 0.06)), S_DOWN = 0.15;
   const nearLeg = legs.find(l => l.side === 'near') ?? legs[0];
@@ -315,7 +322,10 @@ export function buildSkeleton(srcCanvas, spec) {
     const hopUp = spec.gait === 'hop' ? -Math.round(amt * lift * 1.5 * Math.max(0, Math.sin(2 * Math.PI * gph))) : 0;
     // 蹦跳步（spec.gait 'skip'：小孩 skipping、烏鴉）：每一步＝踏一下＋同一隻腳跳一下，踏比跳久；跳的時候身體和撐地的腳一起離地
     const skipY = spec.gait === 'skip' && s > 1 - SKIP_W ? amt * skipH * Math.sin(Math.PI * (s - (1 - SKIP_W)) / SKIP_W) : 0;
-    const by = (q.crouch ?? 0) + bob + hopUp - Math.round(skipY);
+    // 沒有頭的（冰岩怪、波爾凱尼恩：臉很小、當身體的一部分）：呼吸、低頭改成整個身體往下沉（膝蓋彎一點），腳照樣踩地。
+    // 不往上浮：這兩隻的腿本來就幾乎打直，身體往上腿會伸不到地、腳離地
+    const headless = headSeg < 0 ? Math.max(0, q.headPitch ?? 0) + (q.breath ?? 0) : 0;
+    const by = (q.crouch ?? 0) + bob + hopUp - Math.round(skipY) + headless;
     // 左右換重心：身體往踩著地、撐著重量的那隻腳偏；近的腳踩地的正中間偏最多（c：1＝整個壓在近的腳上、−1＝遠的腳）
     const c = walker ? Math.cos(2 * Math.PI * (gph - nearPh - duty / 2)) : 0;
     const bx = spec.sway ? Math.round(amt * spec.sway * c) * swayDir : 0; // spec.sway 格（正面的圖才看得到）
@@ -331,6 +341,8 @@ export function buildSkeleton(srcCanvas, spec) {
       const hp = spec.head.pivot, J = onBody(hp);
       J[1] += (q.headPitch ?? 0) - (q.breath ?? 0);
       // 點頭（spec.headBob 格：鴿子、雞）：頭先停在空中（hold，身體往前走過去，所以頭相對身體往後），再很快往前追（thrust）
+      // 四腳走路點頭（spec.nod 格：山羊、狗、鹿；mammals-locomotion：狗用頭上下擺帶動往前）：一步一點，跟身體一起在下沉時最低
+      if (spec.nod && amt) J[1] += Math.round(Math.min(1, amt) * spec.nod * (0.5 + 0.5 * Math.cos(2 * Math.PI * (s - S_DOWN))));
       if (spec.headBob && amt) { const D = spec.headBob, r = s < HB_HOLD ? D / 2 - (D * s) / HB_HOLD : -D / 2 + (D * (s - HB_HOLD)) / (1 - HB_HOLD); J[0] += face * r * amt; }
       xf[headSeg] = { a: hp, th: bAng + (q.headPitch ?? 0) * 0.08 * -face, J };
     }
@@ -341,9 +353,9 @@ export function buildSkeleton(srcCanvas, spec) {
       let at = hx ? onHead(l.pts[0]) : onBody(l.pts[0]), angs;
       if (l.kind === 'leg') {
         // 腳踝的目標：原本的位置＋步伐（踩在地上的時候不跟著身體動）；另外 legL/legR 是習性指定的抬腳
-        const [fx, fy0, pitch] = footAt(gph + offsetOf(l), amt);
+        const lph = legPhase(l, amt), [fx, fy0, pitch] = footAt(gph + lph, amt);
         // 蹦跳步跳起來的時候，撐地的那隻腳也離地
-        const fy = skipY && ((gph + offsetOf(l)) % 1 + 1) % 1 < duty ? fy0 - skipY : fy0;
+        const fy = skipY && ((gph + lph) % 1 + 1) % 1 < duty ? fy0 - skipY : fy0;
         const extra = l.side === 'far' ? q.legR : q.legL;
         const ank = l.pts[2] ?? l.pts[1];
         const tgt = [ank[0] + fx - (extra?.[0] ?? 0) * face, ank[1] + fy + (extra?.[1] ?? 0)];

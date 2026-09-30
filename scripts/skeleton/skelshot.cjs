@@ -33,7 +33,7 @@ const srv = http.createServer((q, r) => { const f = path.join(ROOT, decodeURICom
       g.lineWidth = 2;
       for (const l of spec.limbs) { g.strokeStyle = '#000'; g.beginPath(); l.pts.forEach(([x, y], k) => (k ? g.lineTo(x * Z, y * Z) : g.moveTo(x * Z, y * Z))); g.stroke();
         for (const [x, y] of l.pts) { g.fillStyle = '#fff'; g.beginPath(); g.arc(x * Z, y * Z, 3, 0, 7); g.fill(); g.stroke(); } }
-      g.fillStyle = '#f0f'; for (const pt of [spec.root, spec.head.pivot]) { g.beginPath(); g.arc(pt[0] * Z, pt[1] * Z, 4, 0, 7); g.fill(); }
+      g.fillStyle = '#f0f'; for (const pt of [spec.root, spec.head?.pivot].filter(Boolean)) { g.beginPath(); g.arc(pt[0] * Z, pt[1] * Z, 4, 0, 7); g.fill(); }
       const fr = Array.from({ length: n }, (_, i) => sk.pose(sk.target(set, i / n)));
       rows.push({ ov, fr, W, H, pad: sk.info.pad });
     }

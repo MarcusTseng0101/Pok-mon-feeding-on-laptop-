@@ -34,10 +34,14 @@ function sameLayer(a, b) {
   return (a.perch?.hwnd ?? null) === (b.perch?.hwnd ?? null);
 }
 
+// 身體多寬、多高（美術像素）：骨架木偶的圖四周多留了邊（gfx/skeleton.js 的 trim），扣掉，跟自動木偶的物種一樣算（不然有骨架的會把旁邊的推得比較遠）
+const artW = p => p.asset.w - 2 * (p.asset.anim?.info?.trim ?? 0);
+const artH = p => p.asset.h - (p.asset.anim?.info?.trim ?? 0);
+
 // 高度有沒有重疊（會飄的在上面飛過去就不會撞到）
 function heightOverlap(a, b) {
-  const a0 = a.alt + a.z, a1 = a0 + a.asset.h * 0.8;
-  const b0 = b.alt + b.z, b1 = b0 + b.asset.h * 0.8;
+  const a0 = a.alt + a.z, a1 = a0 + artH(a) * 0.8;
+  const b0 = b.alt + b.z, b1 = b0 + artH(b) * 0.8;
   return a0 < b1 && b0 < a1;
 }
 
@@ -78,13 +82,13 @@ const RELAX_PASSES = 3; // 一團擠在一起時：推開一對又被第三隻�
 
 // 兩隻腳印的橢圓空間距離：< 1 表示重疊（scene/locomotion.js 用來避開別隻）
 export function footDist(a, b, S) {
-  const rx = (a.asset.w + b.asset.w) * FOOT * S;
+  const rx = (artW(a) + artW(b)) * FOOT * S;
   return Math.hypot((b.x - a.x) / rx, (b.gy - a.gy) / (rx * DEPTH));
 }
 
 // 把一對重疊的推開（只改位置）。沒有重疊回傳 null，有的話回傳推開的方向
 function pushApart(a, b, S) {
-  const rx = (a.asset.w + b.asset.w) * FOOT * S;
+  const rx = (artW(a) + artW(b)) * FOOT * S;
   const ry = rx * DEPTH;
   const dx = b.x - a.x, dy = b.gy - a.gy;
   const nd = footDist(a, b, S);

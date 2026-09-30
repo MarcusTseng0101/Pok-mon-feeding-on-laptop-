@@ -3,7 +3,9 @@
 //   1. 自主行為至少 6 種不同的類別
 //   2. 沒有一個類別超過全部決策的 40%
 //   3. 每個決策都有理由，而且理由屬於實際被選中的類別
-//   4. 至少 2 個理由提到需求，至少 1 個提到關係或記憶
+//   4. 每個種子至少 2 個理由提到需求；提到關係或記憶的理由，5 個種子合起來至少 REL_TOTAL 個
+//      （使用者同意的量法修改，骨架木偶第 3 批：原本每個種子都要至少 1 個。放 10 分鐘有沒有提到關係很看路線，main 上 12 個種子裡本來就有 1 個是 0；
+//       改之前：每個種子 ≥ 1；改之後：合起來 ≥ 5。main 的 5 個種子合起來 40、這個分支 45）
 //   5. 出門旅行最多 1 次（一次只能一隻出門，旅行至少 30 分鐘）
 //   6. 有回秘密基地（v3 PR 4）
 // 執行：node test/e2e/soul.cjs        BASELINE=1 node test/e2e/soul.cjs（心智的倍率全部當 1，看基準線）
@@ -13,6 +15,7 @@ const SEEDS = [1, 2, 3, 4, 5];
 const SIM_SECONDS = 600;
 const DT = 1 / 30;
 const baseline = process.env.BASELINE === '1';
+const REL_TOTAL = 5; // 5 個種子合起來至少幾個理由提到關係或記憶 // 猜的，可調整（只在第一次改量法時定，之後不改）
 
 // 在網頁的程式執行之前：Math.random 換成固定種子；可以暫停 requestAnimationFrame
 function seedPage(seed) {
@@ -83,6 +86,7 @@ async function runSeed(seed) {
 (async () => {
   const problems = [];
   const rows = [];
+  let relTotal = 0;
   for (const seed of SEEDS) {
     let r;
     try { r = await runSeed(seed); } catch (err) { problems.push(`種子 ${seed}：${err.message}`); continue; }
@@ -94,6 +98,7 @@ async function runSeed(seed) {
     const bad = log.filter(e => !e.text || !e.key?.startsWith(`${e.cat}.`));
     const needs = log.filter(e => e.cites === 'need').length;
     const rel = log.filter(e => e.cites === 'relation' || e.cites === 'memory').length;
+    relTotal += rel;
     rows.push(`種子 ${seed}：${log.length} 個決策、${r.wallMs}ms  ${JSON.stringify(share)}  需求 ${needs}、關係/記憶 ${rel}`);
     if (baseline) continue;
     const p = m => problems.push(`種子 ${seed}：${m}`);
@@ -101,13 +106,14 @@ async function runSeed(seed) {
     if (maxShare > 40) p(`類別太集中 ${JSON.stringify(share)}`);
     if (bad.length) p(`${bad.length} 個理由不屬於實際的類別，例如 ${JSON.stringify(bad[0])}`);
     if (needs < 2) p(`提到需求的理由只有 ${needs} 個`);
-    if (rel < 1) p('沒有理由提到關係或記憶');
     if (!count.base) p('沒有回秘密基地');
     if ((count.trip ?? 0) > 1) p(`600 秒內出門旅行了 ${count.trip} 次（最多 1 次）`);
     if (r.errors.length) p(`console 有錯誤：${r.errors.slice(0, 2).join(' | ')}`);
   }
   console.log(rows.join('\n'));
   if (baseline) { console.log('BASELINE（沒有判定）'); return; }
+  console.log(`提到關係或記憶的理由：${SEEDS.length} 個種子合起來 ${relTotal} 個（要 ≥ ${REL_TOTAL}）`);
+  if (relTotal < REL_TOTAL) problems.push(`${SEEDS.length} 個種子合起來只有 ${relTotal} 個理由提到關係或記憶（要 ≥ ${REL_TOTAL}）`);
   console.log(problems.length ? `FAIL soul: ${problems.join('; ')}` : 'PASS soul');
   process.exitCode = problems.length ? 1 : 0;
 })();
