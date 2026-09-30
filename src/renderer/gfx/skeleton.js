@@ -17,6 +17,7 @@ const PAD = 10; // 四周（下面除外）留幾格：大步跨出去的腳、�
 const SEAM = 2.5; // 身體上靠近手腳根部幾格內，跟著手腳動一點（根部不會裂開） // 猜的，可調整
 export const GAIT_STEPS = 16; // 一輪走路切幾張（量化） // 猜的，可調整
 export const GAIT_AMT_STEPS = 4; // 走路的程度分幾級 // 猜的，可調整
+const SHOULDER_MAX = 0.35; // 肩膀最多轉幾弧度（約 20°），再多由手肘彎 // 猜的，可調整
 
 const inPoly = (poly, x, y) => {
   let inside = false;
@@ -51,6 +52,7 @@ const angOf = ([x, y]) => Math.atan2(y, x);
 const polyDist = (poly, x, y) => { let d = Infinity; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) d = Math.min(d, segDist(x, y, poly[j], poly[i])); return d; };
 const MARGIN = 1.5; // 外框外面幾格內、跟這條手腳連著的像素也算它（標框差一格，外框線不會留在原地變成一條散落的點） // 猜的，可調整
 const N8 = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+const STRAY_MAX = 20; // 跟身體主體分開的身體小塊，幾格以內算手腳掉出框外的一小片 // 猜的，可調整
 const N4 = N8.slice(0, 4); // 往外走只走上下左右：像素畫的外框線是斜著一格一格接的，走斜的會從兩格外框線中間鑽過去
 
 // 把每一格像素分給誰：limbs 的外框優先（照 skeletons.js 的順序，先標的先拿），再來是頭，剩下的是身體
@@ -144,11 +146,37 @@ export function assign(spec, alpha, W, H, pix = null) {
         fr = next;
       }
     }
-    // 還是走不到的（框裡跟骨頭、身體都不連著的小塊）：直線距離最近的那一段
+    // 還是走不到的（框裡跟骨頭、身體都不連著的小塊）：直線距離最近的那一段（下面的迴圈）
     for (let i = 0; i < W * H; i++) if (limbOf[i] === li && dist[i] === Infinity) {
       const cx = (i % W) + 0.5, cy = ((i / W) | 0) + 0.5;
       let best = Infinity, bi = -1;
       segs.forEach((s, si) => { if (mine(s)) { const d = segDist(cx, cy, s.a, s.b); if (d < best) { best = d; bi = si; } } });
+      owner[i] = bi;
+    }
+  });
+  // 身體要是一整塊：跟身體主體不連著、又貼著手腳的身體小塊（框外面一點點的手腳尖、葉子尖），給貼著的那條手腳（直線距離最近的那一段）。
+  // 不然手一動，它留在半空中變成一顆散落的點
+  const comp = new Int32Array(W * H).fill(-1), comps = [];
+  for (let i0 = 0; i0 < W * H; i0++) {
+    if (owner[i0] !== -1 || comp[i0] >= 0) continue;
+    const list = [i0]; comp[i0] = comps.length;
+    for (let k = 0; k < list.length; k++) {
+      const x = list[k] % W, y = (list[k] / W) | 0;
+      for (const [dx, dy] of N8) { const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const j = Y * W + X; if (owner[j] === -1 && comp[j] < 0) { comp[j] = comps.length; list.push(j); } }
+    }
+    comps.push(list);
+  }
+  const main = comps.reduce((m, c, k) => (c.length > (comps[m]?.length ?? -1) ? k : m), 0);
+  comps.forEach((list, k) => {
+    if (k === main || list.length > STRAY_MAX) return;
+    // 貼著哪條手腳（8 方向）
+    let li = -1;
+    for (const i of list) { const x = i % W, y = (i / W) | 0; for (const [dx, dy] of N8) { const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const o = owner[Y * W + X]; if (o >= 0 && o !== headSeg) { li = segs[o].limb; break; } } if (li >= 0) break; }
+    if (li < 0) return;
+    for (const i of list) {
+      const cx = (i % W) + 0.5, cy = ((i / W) | 0) + 0.5;
+      let best = Infinity, bi = -1;
+      segs.forEach((s, si) => { if (s.limb === li) { const d = segDist(cx, cy, s.a, s.b); if (d < best) { best = d; bi = si; } } });
       owner[i] = bi;
     }
   });
@@ -303,7 +331,10 @@ export function buildSkeleton(srcCanvas, spec) {
         const alt = l.side === 'far' ? -1 : 1;
         const total = Math.max(-PART_MAX, Math.min(PART_MAX, raise * (q[k] ?? 0) + alt * (q[k + 'Sw'] ?? 0)));
         const n = l.idx.length;
-        angs = l.idx.map((_, j) => (k === 'arm' ? (j === 0 ? total : j === 1 ? -0.5 * total : 0) : total / n)); // 尾巴、耳朵：每一節轉一樣多，加起來末端轉 total
+        // 手：肩膀轉 total、手肘往回彎一半（前臂最後轉 0.5 × total）。肩膀最多轉 SHOULDER_MAX，超過的改由手肘彎（前臂方向不變）：
+        // 長的手整根從肩膀轉太大，肩膀四周的像素會扯裂（布里卡隆攻擊時）；真的手舉高時也是手肘彎得比肩膀多
+        const sh = Math.max(-SHOULDER_MAX, Math.min(SHOULDER_MAX, total));
+        angs = l.idx.map((_, j) => (k === 'arm' ? (j === 0 ? sh : j === 1 ? 0.5 * total - sh : 0) : total / n)); // 尾巴、耳朵：每一節轉一樣多，加起來末端轉 total
         if (k === 'arm' && amt) {
           // 走路時手跟對側的腳一起前後擺：手尖要往前（facing）移。垂直往下的手轉一點就是前後擺；橫著伸的手轉了只是上下，所以幾乎不擺
           const s = Math.cos(2 * Math.PI * (gph + (l.phase ?? 0))), v = [l.pts[l.pts.length - 1][0] - l.pts[0][0], l.pts[l.pts.length - 1][1] - l.pts[0][1]];
