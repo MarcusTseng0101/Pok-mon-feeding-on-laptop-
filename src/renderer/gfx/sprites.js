@@ -1,7 +1,7 @@
 // 寶可夢圖片：向 main process 要 PNG（有快取），裁掉透明邊、建立命中遮罩與剪影。
 import { makeCanvas, alphaMask, tint } from './pixel.js';
 import { buildRig, quantize, ANG_STEP, LIMITS, PART_MAX } from './rig.js';
-import { buildSkeleton, GAIT_STEPS } from './skeleton.js';
+import { buildSkeleton, GAIT_STEPS, LAG_SEGS, LAG_S } from './skeleton.js';
 import { SKELETONS } from './skeletons.js';
 import { fallbackSprite } from './art.js';
 import { speciesOfKey } from '../../core/forms.js';
@@ -239,12 +239,28 @@ export class PuppetView extends AnimView {
     const ga = tg.gaitAmt ?? 0;
     if (this.gaitAmt == null || !(dt > 0)) { this.gaitAmt ??= ga; this.gaitV = 0; }
     else { const w = GAIT_OMEGA, e = this.gaitAmt - ga, d = Math.exp(-w * dt), m = this.gaitV + w * e; this.gaitAmt = ga + (e + m * dt) * d; this.gaitV = (this.gaitV - w * m * dt) * d; }
+    // 骨架木偶的尾巴、耳朵一節跟著一節、慢半拍（follow-the-leader）：記住根部（tailSw、earSw 的級數）最近的樣子，
+    // 第 j 節用「j × LAG_S 秒前」的。每一節每幀最多變 1 級（姿勢不跳格）。習性直接指定的甩法、身體晃帶動的甩都一樣會傳下去
+    let lag = null, lagLv = null;
+    if (this.anim.info?.chainLag) {
+      this.clock = (this.clock ?? 0) + (dt > 0 ? dt : 0);
+      const h = (this.hist ??= []);
+      h.push([this.clock, lv.tailSw, lv.earSw]);
+      while (h.length > 2 && h[1][0] <= this.clock - (LAG_SEGS + 1) * LAG_S) h.shift();
+      const at = t => { for (let i = h.length - 1; i >= 0; i--) if (h[i][0] <= t + 1e-9) return h[i]; return h[0]; };
+      lagLv = { tail: [], ear: [] };
+      for (let j = 1; j <= LAG_SEGS; j++) {
+        const e = at(this.clock - j * LAG_S);
+        [['tail', e[1]], ['ear', e[2]]].forEach(([k, v]) => { const pv = this.lagLv?.[k][j - 1]; lagLv[k].push(pv == null ? v : pv + Math.max(-1, Math.min(1, v - pv))); });
+      }
+      lag = { tail: lagLv.tail.map(v => v * ANG_STEP), ear: lagLv.ear.map(v => v * ANG_STEP) };
+    }
     const before = this.anim.stats.built;
-    const q = (this.anim.quantize ?? quantize)({ ...p, legL: [p.lLx, p.lLy], legR: [p.lRx, p.lRy], gait: this.gait ?? 0, gaitAmt: this.gaitAmt });
+    const q = (this.anim.quantize ?? quantize)({ ...p, legL: [p.lLx, p.lLy], legR: [p.lRx, p.lRy], gait: this.gait ?? 0, gaitAmt: this.gaitAmt, lag });
     const f = this.anim.pose(q, { build: this.budget >= 1 || !this.cur });
     if (this.anim.stats.built > before) this.budget -= 1;
     // 這一幀做不出新圖（超過預算）：還是畫上一張，級數也留在上一張（下一次才不會一次跳兩級）
-    if (f) { this.cur = f; this.key = q.key; this.level = lv; } // key：畫出來那一張的量化參數（測試用）
+    if (f) { this.cur = f; this.key = q.key; this.level = lv; if (lagLv) this.lagLv = lagLv; } // key：畫出來那一張的量化參數（測試用）
     return this;
   }
   get frame() { return this.cur ?? super.frame; }
