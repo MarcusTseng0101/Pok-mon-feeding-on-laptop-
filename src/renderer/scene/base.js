@@ -85,6 +85,14 @@ export class BaseView {
     // 住的地方：在院子後面（左邊的基地放左後方，右邊的放右後方）
     const home = gfx.STRUCTURES[b.stage], hx = this.homeX();
     blit(ctx, home, hx, L.y - home.height * S + 6 * S, S);
+    // 鑰圈兒的收藏罐：住的地方旁邊（有撿東西回來才有）；家具畫在它前面
+    const tr = b.trinkets ?? [];
+    if (tr.length) {
+      const key = tr.map(t => t.kind).join(',');
+      if (this.jarKey !== key) { this.jarCache = gfx.jar(tr.map(t => t.kind)); this.jarKey = key; }
+      const jx = b.side === 'right' ? hx - this.jarCache.width * S - 2 * S : hx + home.width * S + 2 * S;
+      blit(ctx, this.jarCache, jx, L.y - this.jarCache.height * S + 6 * S, S);
+    }
     for (const it of [...b.items].sort((a, c) => a.y - c.y)) {
       if (st.mode?.type === 'base' && st.mode.moveId === it.id) continue; // 正在搬的那個畫在游標上
       const r = this.itemRect(it);

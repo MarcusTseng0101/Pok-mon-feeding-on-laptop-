@@ -19,7 +19,7 @@ import { THOUGHT_HOVER } from '../scene/stage.js';
 import { NEEDS, NEED_ZH, MOOD_ZH } from '../../core/mind.js';
 import { PLACES, PLACE_IDS, placeZh } from '../../core/trips.js';
 import { durationZh, minutesOut } from '../../core/outing.js';
-import { STAGES, FURNITURE, MATERIALS, FLOORS, floorOf, enough, trophiesAllowed } from '../../core/base.js';
+import { STAGES, FURNITURE, MATERIALS, FLOORS, floorOf, enough, trophiesAllowed, TRINKETS, TRINKET_MAX } from '../../core/base.js';
 import * as baseGfx from '../gfx/basegfx.js';
 import * as mail from '../gfx/letters.js';
 import { KINDS as LETTER_KINDS } from '../../core/letters.js';
@@ -531,7 +531,7 @@ export class UI {
         <div class="side floor">地板：${FLOORS.map(f => `<button data-basefloor="${f.id}" class="${floorOf(b) === f.id ? 'sel' : ''}">${esc(f.zh)}</button>`).join('')}</div>
       </div></div>
       <h3>擺家具</h3><div class="furn"></div>
-      <h3>已經擺的</h3><div class="placed"></div></div>`);
+      <h3>已經擺的</h3><div class="placed"></div><div class="trinkets"></div></div>`);
     root.querySelector('.home').append(pixelImg(baseGfx.STRUCTURES[b.stage], 2));
     const full = b.items.length >= cur.maxItems;
     const trophies = b.items.filter(i => i.kind === 'trophy').length;
@@ -544,6 +544,16 @@ export class UI {
     const placed = root.querySelector('.placed');
     if (!b.items.length) placed.append(h('<p class="hint">還沒有家具</p>'));
     for (const it of b.items) placed.append(h(`<div class="row"><span>${esc(FURNITURE[it.kind].zh)}</span><button data-basemove="${esc(it.id)}">搬動</button><button data-baseremove="${esc(it.id)}">收起來</button></div>`));
+    // 鑰圈兒的收藏罐（有撿東西回來才顯示）
+    const tr = b.trinkets ?? [];
+    if (tr.length) {
+      const box = root.querySelector('.trinkets');
+      box.append(h(`<h3>鑰圈兒的收藏（${tr.length}／${TRINKET_MAX}）</h3>`));
+      const row = h(`<div class="row"><span>${esc(tr.map(t => TRINKETS[t.kind]).join('、'))}</span></div>`);
+      row.prepend(pixelImg(baseGfx.jar(tr.map(t => t.kind)), 2));
+      box.append(row);
+      box.append(h(`<p class="hint">鑰圈兒到處找亮晶晶的東西，偶爾叼一個回來放進門口的罐子。${tr.length >= TRINKET_MAX ? '罐子滿了，牠就只看看不撿了。' : ''}</p>`));
+    }
     return root;
   }
 

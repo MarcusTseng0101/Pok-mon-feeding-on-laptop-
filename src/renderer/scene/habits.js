@@ -47,6 +47,11 @@ function orbit(pet, colors, radius, n = 3, speed = 6) {
     pet.stage.fx.add({ rect: colors[i % colors.length], size: S / 2 + (i % 2) * S / 2, x: c.x + Math.cos(a) * radius * S, y: c.y + Math.sin(a) * radius * S * 0.6, life: 0.2 });
   }
 }
+// 鑰圈兒叼著的東西：掛在舌頭下面（圓環的正中間偏下；嘴邊是一串金色的鑰匙，畫在那裡看不出來）
+function holdOnTongue(pet, ctx, img) {
+  const r = pet.rect(), S = pet.S;
+  blit(ctx, img, r.x + r.w * 0.5 - (img.width * S) / 2, r.y + r.h * 0.4, S);
+}
 // 在牠嘴邊畫一個小道具
 // （嘴巴大約在臉朝向那一側、身體中間偏上一點）
 function holdAtMouth(pet, ctx, img, { dy = 0, raise = 0 } = {}) {
@@ -971,10 +976,39 @@ export const HABITS = {
     },
   },
   // 真實參考：喜鵲、烏鴉找到亮晶晶的東西：先低頭湊近仔細看，再開心地抬起頭
+  // 偶爾把找到的叼回基地（core 決定要不要、叼什麼：game.trinketToCarry()，收藏罐滿了就不叼）
   keyfound: {
     zh: '找到了', dur: () => rnd(2.5, 3.5),
-    update(pet, dt, k) { if (once(pet, 'find', k > 0.3)) { pet.showEmote('♥', 1.2); pet.stage.fx.add({ img: art.key, x: pet.x, y: pet.head().y - 4 * pet.S, vy: -20 * pet.S, life: 1.2 }); } },
+    update(pet, dt, k) {
+      if (once(pet, 'find', k > 0.3)) {
+        pet.showEmote('♥', 1.2);
+        pet.hd.carry = pet.stage.baseView ? pet.stage.game?.trinketToCarry() ?? null : null;
+        if (!pet.hd.carry) pet.stage.fx.add({ img: art.key, x: pet.x, y: pet.head().y - 4 * pet.S, vy: -20 * pet.S, life: 1.2 });
+      }
+      if (once(pet, 'go', k > 0.9 && pet.hd.carry)) startHabit(pet, 'keycarry', { kind: pet.hd.carry });
+    },
     puppet: (pet, k) => (k < 0.3 ? { lean: -2, headPitch: 2, crouch: 1 } : { lean: 0, headPitch: -1, crouch: -1, arm: 0.5 }),
+    drawOver: (pet, ctx) => { if (pet.hd.carry) holdOnTongue(pet, ctx, art.trinkets[pet.hd.carry] ?? art.key); },
+  },
+  // 真實參考：喜鵲、烏鴉把撿到的亮晶晶的東西叼回去藏（caching）：叼著直直回去，路上不停下來
+  keycarry: {
+    // dur：大螢幕從另一邊走過來要 30 秒以上，給到 90 秒；離門口 16 格以內就算到了（門口可能在能走的範圍邊邊，走不到正中間） // 猜的，可調整
+    zh: '叼著亮晶晶的東西回基地', dur: 90,
+    start(pet) { const d = pet.stage.baseView?.door(); if (d) pet.hd.door = d; else idle(pet); },
+    update(pet, dt) {
+      const d = pet.hd.door;
+      if (d && (pet.moveTo(d.x, d.y, WALK_SPEED * pet.S, dt) || Math.hypot(pet.x - d.x, pet.gy - d.y) < 16 * pet.S)) startHabit(pet, 'keystash', { kind: pet.hd.kind });
+    },
+    set: stepSet,
+    puppet: () => ({ headPitch: -1, arm: 0.3 }),
+    drawOver: (pet, ctx) => holdOnTongue(pet, ctx, art.trinkets[pet.hd.kind] ?? art.key),
+  },
+  // 放進門口的收藏罐：先低頭放下，再抬頭看一眼
+  keystash: {
+    zh: '放進收藏罐', dur: () => rnd(1.5, 2.2),
+    update(pet, dt, k) { if (once(pet, 'stash', k > 0.5) && pet.stage.game?.stashTrinket(pet.hd.kind)) { pet.showEmote('♥', 1.2); pet.stage.audio.sfx('click'); } },
+    puppet: (pet, k) => (k < 0.5 ? { lean: -2, headPitch: 2, crouch: 1 } : { headPitch: -1, crouch: -1 }),
+    drawOver: (pet, ctx) => { if (!pet.hd.stash) holdOnTongue(pet, ctx, art.trinkets[pet.hd.kind] ?? art.key); },
   },
 
   // ---------- 小木靈系列 ----------
