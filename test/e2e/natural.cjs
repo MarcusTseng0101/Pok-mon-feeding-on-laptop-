@@ -316,9 +316,11 @@ const test = async ({ page }, check) => {
     const { stage } = window.__kalos, p = [...stage.pets.values()].find(q => q.mon.species === sp);
     const r = p.rect();
     // 用舞台自己的判斷（stage.petAt）：這個點點下去選到的一定是牠，不是疊在前面的別隻
-    // 從正中間往外找（以前從左邊 u 0.3 開始找：走路中的 650 在滑鼠按下去之前又往右走了十幾格，點到的變成圖的後緣 u≈0.1，
-    // 那一張走路圖剛好是透明的就拎不起來，偶爾失敗）。範圍一樣是 0.3–0.7，只換找的順序
-    const us = [0, 0.05, -0.05, 0.1, -0.1, 0.15, -0.15, 0.2, -0.2].map(d => 0.5 + d);
+    // 從前進方向那一側往後找（以前從左邊 u 0.3 開始找：走路中的 650 在滑鼠按下去之前又往右走了十幾格，點到的變成圖的後緣 u≈0.1，
+    // 那一張走路圖剛好是透明的就拎不起來，偶爾失敗；改成從中間找還是不夠，全部 e2e 連著跑、機器忙的時候走得更遠）。
+    // 點會往圖的後面漂，從前面開始找漂的空間最大。範圍一樣是 0.3–0.7，只換找的順序；沒在走就從中間往外
+    const dir = p.state === 'walk' && p.target ? Math.sign(p.target.x - p.x) : 0;
+    const us = dir ? [0.7, 0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3].map(u => (dir > 0 ? u : 1 - u)) : [0, 0.05, -0.05, 0.1, -0.1, 0.15, -0.15, 0.2, -0.2].map(d => 0.5 + d);
     for (let v = 0.5; v < 0.95; v += 0.05) for (const u of us) { const x = r.x + r.w * u, y = r.y + r.h * v; if (stage.petAt(x, y) === p) return { x: x / stage.dpr, y: y / stage.dpr }; }
     return null;
   }, sp);
