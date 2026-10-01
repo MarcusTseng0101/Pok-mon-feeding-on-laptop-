@@ -346,14 +346,19 @@ export function buildSkeleton(srcCanvas, spec) {
     const flyBob = spec.fly && fph < FLAP_DOWN ? -Math.round(famp / (spec.flapAmp ?? 0.4) * FLY_BOB * Math.sin((Math.PI * fph) / FLAP_DOWN)) : 0;
     // 懸浮的（spec.hover 格：劍、寶石、鑰匙圈這種沒有腳也沒有翅膀的）：照步相慢慢上下浮，待機也在浮
     const hovY = spec.hover ? -Math.round(spec.hover * Math.sin(2 * Math.PI * gph)) : 0;
-    const by = (q.crouch ?? 0) + bob + hopUp - Math.round(skipY) + headless + flyBob + hovY;
+    // 爬（spec.gait 'crawl'：毛毛蟲、蛞蝓、蝸牛、蛇這種沒有腳、靠身體一波一波往前的）：一輪身體伸長一次再縮回（不縮放整張圖，伸長用往上升 crawlH 格代替）、
+    // 前後搖 crawlRock 弧度（伸長時往前）；後半身、尾巴（cloth）照相位一波一波傳（毛毛蟲的波從尾巴往頭，Trimmer 2014；蛞蝓腳底的波也是從尾往頭，Lai 2010）
+    const crawlW = spec.gait === 'crawl' ? Math.min(1, amt) : 0;
+    const crawlY = crawlW ? -Math.round(crawlW * (spec.crawlH ?? 1) * (0.5 - 0.5 * Math.cos(2 * Math.PI * gph))) : 0;
+    const crawlA = crawlW ? crawlW * (spec.crawlRock ?? 0) * Math.sin(2 * Math.PI * gph) * -face : 0;
+    const by = (q.crouch ?? 0) + bob + hopUp - Math.round(skipY) + headless + flyBob + hovY + crawlY;
     // 左右換重心：身體往踩著地、撐著重量的那隻腳偏；近的腳踩地的正中間偏最多（c：1＝整個壓在近的腳上、−1＝遠的腳）
     const c = walker || spec.waddle ? Math.cos(2 * Math.PI * (gph - nearPh - duty / 2)) : 0; // 沒有腳但有設搖擺的（蛹一邊扭一邊跳）也搖
     const bx = spec.sway ? Math.round(amt * spec.sway * c) * swayDir : 0; // spec.sway 格（正面的圖才看得到）
     // 搖擺（spec.waddle 弧度：企鵝、胖的、腳分很開的）：整個身體往撐地的腳那邊斜，頭跟著左右搖
     // 蝴蝶（spec.flutter 弧度）：身體的傾斜一直變、一抖一抖（AIP 2025：蝴蝶懸停時不停調整身體角度，路線看起來亂）
     const flut = spec.flutter ? spec.flutter * Math.min(1, amt) * (Math.sin(2 * Math.PI * fph) + 0.5 * Math.sin(2 * Math.PI * (3 * gph + 0.3))) : 0;
-    const bAng = bodyAngle(q) + (spec.waddle ? amt * spec.waddle * c * swayDir : 0) + flut;
+    const bAng = bodyAngle(q) + (spec.waddle ? amt * spec.waddle * c * swayDir : 0) + flut + crawlA;
     const root = spec.root;
     // 身體上一點（原圖座標）→ 這一刻的位置
     const onBody = p => { const r = rot([p[0] - root[0], p[1] - root[1]], bAng); return [root[0] + r[0] + bx, root[1] + r[1] + by]; };
