@@ -4,6 +4,7 @@
 //   3. 45 分鐘後點紙條 → 牠從邊邊跑回紙條那裡，給你一張「今天跟你出門」的明信片，相簿多一張
 const { run, ROOT } = require('./lib.cjs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url'); // Windows：import() 要 file:// 網址，不能直接給 C: 的路徑
 
 async function test({ page, shot: rawShot }, check) {
   const shot = async name => {
@@ -60,7 +61,7 @@ async function test({ page, shot: rawShot }, check) {
   await page.evaluate(() => { window.__clock.offset += 50 * 60_000; });
   const d = await page.evaluate(async () => { await window.__kalos.ui.setPhone(true); return window.__kalos.director.pushPhone(); });
   check(d?.outing && d.outing.minutes >= 50 && /家裡那邊下雨/.test(d.outing.line) && d.pics[d.outing.pic], `手機摘要沒有出門中的夥伴：${JSON.stringify(d?.outing)}`);
-  const { createPhoneServer } = await import(path.join(ROOT, 'src/main/phone.js'));
+  const { createPhoneServer } = await import(pathToFileURL(path.join(ROOT, 'src/main/phone.js')).href);
   const dir = path.join(ROOT, 'src/phone');
   const server = createPhoneServer({ getSnapshot: () => d, files: { '': path.join(dir, 'index.html'), 'phone.js': path.join(dir, 'phone.js'), 'phone.css': path.join(dir, 'phone.css'), 'font.woff2': path.join(ROOT, 'src/renderer/fonts/Cubic_11.woff2') } });
   const [u] = await server.start([{ address: '127.0.0.1', tailscale: false }], 39500 + Math.floor(Math.random() * 400));

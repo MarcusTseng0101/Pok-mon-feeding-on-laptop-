@@ -4,6 +4,7 @@
 //   3. 桌面：快轉 10 分鐘，至少有一次自己喝水、看書或吃東西，旁邊擺著杯子、書、碗；沒有任何通知（F35）
 const { run, ROOT } = require('./lib.cjs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url'); // Windows：import() 要 file:// 網址，不能直接給 C: 的路徑
 
 const MIN = 60_000;
 
@@ -34,7 +35,7 @@ async function test({ page, shot: rawShot }, check) {
 
   // 1) 手機頁面：真的小網站，手機的時鐘跟電腦一樣（都撥到午餐時間）
   const snap = await page.evaluate(() => window.__kalos.director.pushPhone());
-  const { createPhoneServer } = await import(path.join(ROOT, 'src/main/phone.js'));
+  const { createPhoneServer } = await import(pathToFileURL(path.join(ROOT, 'src/main/phone.js')).href);
   const dir = path.join(ROOT, 'src/phone');
   const server = createPhoneServer({ getSnapshot: () => snap, files: { '': path.join(dir, 'index.html'), 'phone.js': path.join(dir, 'phone.js'), 'phone.css': path.join(dir, 'phone.css'), 'snap.js': path.join(dir, 'snap.js'), 'snap.css': path.join(dir, 'snap.css'), 'font.woff2': path.join(ROOT, 'src/renderer/fonts/Cubic_11.woff2') } });
   const [u] = await server.start([{ address: '127.0.0.1', tailscale: false }], 39500 + Math.floor(Math.random() * 400));
