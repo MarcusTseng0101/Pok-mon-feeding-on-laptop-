@@ -3,6 +3,7 @@
 //    內容都在、暱稱裡的 HTML 原樣顯示（不會執行）、沒有 token 打不開
 const { run, ROOT } = require('./lib.cjs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url'); // Windows：import() 要 file:// 網址，不能直接給 C: 的路徑
 
 run('phone', async ({ page, shot }, check) => {
   const snap = await page.evaluate(async () => {
@@ -38,7 +39,7 @@ run('phone', async ({ page, shot }, check) => {
   await shot('phone-settings');
 
   // 真的小網站
-  const { createPhoneServer } = await import(path.join(ROOT, 'src/main/phone.js'));
+  const { createPhoneServer } = await import(pathToFileURL(path.join(ROOT, 'src/main/phone.js')).href);
   const dir = path.join(ROOT, 'src/phone');
   const server = createPhoneServer({ getSnapshot: () => d, files: { '': path.join(dir, 'index.html'), 'phone.js': path.join(dir, 'phone.js'), 'phone.css': path.join(dir, 'phone.css'), 'snap.js': path.join(dir, 'snap.js'), 'snap.css': path.join(dir, 'snap.css'), 'font.woff2': path.join(ROOT, 'src/renderer/fonts/Cubic_11.woff2') } });
   const [u] = await server.start([{ address: '127.0.0.1', tailscale: false }], 39000 + Math.floor(Math.random() * 500));

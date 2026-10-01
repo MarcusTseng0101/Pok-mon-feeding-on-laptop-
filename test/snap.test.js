@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import vm from 'node:vm';
+import { fileURLToPath } from 'node:url'; // Windows：.pathname 會變成 /C:/...，要轉回真的路徑
 import { SNAPS } from '../src/core/checkin.js';
 
 const read = p => readFileSync(new URL(p, import.meta.url), 'utf8');
@@ -89,7 +90,7 @@ test('F33：不用 eval、WebAssembly；不連外部網址；模型從同一個�
 
 test('架構規則 2：src/main、src/renderer、src/core 不 import vendor 資料夾', () => {
   const walk = dir => readdirSync(dir, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? walk(`${dir}/${e.name}`) : [`${dir}/${e.name}`]));
-  for (const f of ['src/main', 'src/renderer', 'src/core'].flatMap(d => walk(new URL(`../${d}`, import.meta.url).pathname))) {
+  for (const f of ['src/main', 'src/renderer', 'src/core'].flatMap(d => walk(fileURLToPath(new URL(`../${d}`, import.meta.url))))) {
     if (!/\.(m?js|cjs|html)$/.test(f)) continue;
     assert.doesNotMatch(readFileSync(f, 'utf8'), /vendor\//, f);
   }

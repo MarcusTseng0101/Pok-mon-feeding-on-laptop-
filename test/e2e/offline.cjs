@@ -11,6 +11,7 @@
 //   F30、F33：手機送出的 body 都只有 { kind, id, at }；CSP 違規 0 次
 const { run, ROOT } = require('./lib.cjs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url'); // Windows：import() 要 file:// 網址，不能直接給 C: 的路徑
 const fs = require('node:fs');
 const https = require('node:https');
 const http = require('node:http');
@@ -53,7 +54,7 @@ async function test({ page, shot: rawShot }, check) {
   });
 
   // 真的伺服器；POST act 交給 director.phoneAction（main.js 用 IPC 做一樣的事）
-  const { createPhoneServer, checkServe, serveBase, serveCommand } = await import(path.join(ROOT, 'src/main/phone.js'));
+  const { createPhoneServer, checkServe, serveBase, serveCommand } = await import(pathToFileURL(path.join(ROOT, 'src/main/phone.js')).href);
   const dir = path.join(ROOT, 'src/phone');
   let snap = null;
   const acts = [];

@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as R from '../src/core/routine.js';
 
 const MIN = 60_000, HOUR = 60 * MIN;
@@ -112,7 +112,8 @@ test('只存統計：28 天、每天 4 個數字；壞資料丟掉；同步取�
 // 不同時區：作息日和「幾點」都照當地時間
 test('時區：台北和洛杉磯的同一個瞬間，是各自當地的作息日', () => {
   const file = fileURLToPath(new URL('../src/core/routine.js', import.meta.url));
-  const script = `import(${JSON.stringify(file)}).then(R => { const t = Date.UTC(2026, 8, 26, 16, 30); console.log(R.routineDay(t) + ' ' + R.clockOf(R.minuteOf(t))); })`;
+  // Windows：import() 要 file:// 網址，不能直接給 C: 的路徑
+  const script = `import(${JSON.stringify(pathToFileURL(file).href)}).then(R => { const t = Date.UTC(2026, 8, 26, 16, 30); console.log(R.routineDay(t) + ' ' + R.clockOf(R.minuteOf(t))); })`;
   const run = tz => execFileSync(process.execPath, ['-e', script], { env: { ...process.env, TZ: tz } }).toString().trim();
   assert.equal(run('Asia/Taipei'), '2026-09-26 00:30', '台北 00:30：還算 26 日晚上');
   assert.equal(run('America/Los_Angeles'), '2026-09-26 09:30');

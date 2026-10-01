@@ -8,6 +8,7 @@
 //   6. F30：手機頁面送出的每一個請求 body ≤ 200 bytes，沒有 image/、data:、base64；F33：securitypolicyviolation 0 次
 const { run, ROOT } = require('./lib.cjs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url'); // Windows：import() 要 file:// 網址，不能直接給 C: 的路徑
 
 const FIX = path.join(ROOT, 'test/fixtures/snap');
 
@@ -37,7 +38,7 @@ async function test({ page, shot: rawShot }, check) {
   });
 
   // 真的小網站；POST act 跟 app 一樣交給 director.phoneAction（main.js 用 IPC 做一樣的事）
-  const { createPhoneServer } = await import(path.join(ROOT, 'src/main/phone.js'));
+  const { createPhoneServer } = await import(pathToFileURL(path.join(ROOT, 'src/main/phone.js')).href);
   const dir = path.join(ROOT, 'src/phone');
   let snap = await page.evaluate(() => window.__kalos.director.pushPhone());
   const acts = [];
