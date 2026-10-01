@@ -37,7 +37,7 @@ test('骨架：沒有兩隻的步態組合完全一樣（FM1 每隻都一樣）'
     const legs = s.limbs.filter(l => l.kind === 'leg').map(l => [l.phase ?? 0, l.runPhase ?? null]);
     // 沒有腳的（懸浮的物件，第 5 批）沒有步態可比：再比懸浮的幅度和「有哪些會動的部位」（有腳的照舊只比步態，不會變鬆）
     const parts = legs.length ? null : [s.hover ?? 0, s.limbs.map(l => l.kind).sort().join(',')];
-    const key = JSON.stringify([s.gait, s.duty ?? null, s.strideK ?? null, s.runDuty ?? null, s.waddle ?? 0, s.headBob ?? 0, s.nod ?? 0, legs, s.fly ?? false, s.flapK ?? null, s.flapAmp ?? null, s.glide ?? false, s.flutter ?? 0, parts, s.hopH ?? null, s.hopCrouch ?? null]); // 飛的（第 4 批）比拍翅的欄位；跳（第 7 批）比跳多高、蹲多低
+    const key = JSON.stringify([s.gait, s.duty ?? null, s.strideK ?? null, s.runDuty ?? null, s.waddle ?? 0, s.headBob ?? 0, s.nod ?? 0, legs, s.fly ?? false, s.flapK ?? null, s.flapAmp ?? null, s.glide ?? false, s.flutter ?? 0, parts, s.hopH ?? null, s.hopCrouch ?? null, s.crawlH ?? null, s.crawlRock ?? null]); // 飛的（第 4 批）比拍翅的欄位；跳（第 7 批）比跳多高、蹲多低；爬（第 8 批）比伸多長、搖多少
     assert.ok(!seen.has(key), `${id} 跟 ${seen.get(key)} 的步態組合一模一樣`);
     seen.set(key, id);
   }

@@ -61,6 +61,9 @@ run('desktop', async ({ page, shot }, check) => {
   const typing = await page.evaluate(async () => {
     const { director, stage, api } = window.__kalos;
     for (const p of stage.pets.values()) { p.set('idle', 1); p.x = 150 + Math.random() * 200; p.gy = 600; }
+    // 前面測番茄鐘的時候不能打擾，排隊的主動事件（歡迎回來這種，比打字優先）會擋在打字前面：打字要等它們先放行，
+    // 晚了一秒才輪到，那時候模擬已經快轉好幾秒、大家去玩鬼抓人了，一隻都叫不到（偶爾失敗的原因）。這裡測打字反應本身，排隊清掉（額度在 attention.cjs 測）
+    director.attnQueue = [];
     api.emit('signals', { idleSeconds: 0, cpu: 0.1, typing: true, typingSeconds: 45, inputActive: true, activeSeconds: 60 });
     director.typingCooldown = 0;
     // 記錄每一隻離游標最近的距離（圍觀完會自己走開，所以不能只看最後）
