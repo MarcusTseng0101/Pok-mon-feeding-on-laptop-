@@ -47,6 +47,7 @@ function orbit(pet, colors, radius, n = 3, speed = 6) {
     pet.stage.fx.add({ rect: colors[i % colors.length], size: S / 2 + (i % 2) * S / 2, x: c.x + Math.cos(a) * radius * S, y: c.y + Math.sin(a) * radius * S * 0.6, life: 0.2 });
   }
 }
+const RING_DUR = 2.8; // 胡帕把夥伴送走：一段幾秒（施法的跟被送的一樣長） // 猜的，可調整
 // 朽木妖頭頂多高（美術像素，從腳底算）：圖的高度扣掉骨架多留的邊，再往下一點（頭頂中間是一叢葉子）
 const headTop = on => on.z + on.alt + on.asset.h - (on.asset.anim?.info?.trim ?? 0) - HEAD_TOP_DOWN;
 const HEAD_TOP_DOWN = 12; // 頭頂往下幾格才是站得住的地方 // 猜的，可調整
@@ -1299,6 +1300,51 @@ export const HABITS = {
       blit(ctx, img, c.x - (img.width * S) / 2, c.y - (img.height * S) / 2, S, { alpha: Math.max(0, Math.min(1, a)) * 0.9 });
     },
   },
+  // 胡帕用圓環把附近的夥伴送到別的地方：手往前一指，夥伴腳下開一個圓環把牠吸進去，從另一個圓環冒出來（夥伴嚇一跳、左右看）
+  // 真實參考：變魔術的人把助手變不見：手一揮、指著對方，等對方從別的地方出來時得意地舉手
+  ringSend: {
+    zh: '用圓環把夥伴送到別的地方', social: true,
+    pick: (pet, others) => { const near = others.filter(o => dist(pet, o) < 500 && !o.perch && o.z === 0); return near.length ? pick(near) : null; },
+    begin(pet, o) {
+      const to = o.randomPoint(250, 500);
+      pet.partner = o; o.partner = pet;
+      pet.facing = o.x > pet.x ? 1 : -1;
+      startHabit(pet, 'ringCast', { o });
+      startHabit(o, 'ringed', { by: pet, to: { x: to.x, y: to.y } });
+    },
+  },
+  ringCast: {
+    zh: '指著夥伴打開圓環', dur: RING_DUR,
+    puppet: (pet, k) => (k < 0.15 ? { arm: 0.3, lean: 1 } : k < 0.6 ? { arm: 0.9, armSw: 0.15 * Math.sin(pet.stateT * 10), lean: -1, headPitch: 0 } : { arm: 0.7, crouch: -1, headPitch: -1 }),
+    lift: () => 0,
+    update(pet, dt, k) { if (once(pet, 'cheer', k > 0.85)) pet.showEmote('♪', 1.2); },
+    end: pet => { pet.partner = null; idle(pet); },
+  },
+  // 被送走的那隻：先愣一下 → 被吸進圓環（淡出）→ 從另一邊的圓環冒出來（淡入）→ 嚇一跳、左右看
+  ringed: {
+    zh: '被胡帕的圓環送走', dur: RING_DUR, teleport: true,
+    lift: () => 0,
+    puppet: (pet, k) => (k < 0.15 ? { crouch: -1, ear: 0.5, headPitch: -1 } : k < 0.45 ? { crouch: 1, arm: 0.5 } : { crouch: -1, ear: 0.6, headPitch: -1 }),
+    update(pet, dt, k) {
+      if (once(pet, 'startle', k > 0.02)) pet.showEmote('!', 0.8);
+      if (once(pet, 'warp', k > 0.45)) {
+        const t = pet.hd.to;
+        pet.x = t.x; pet.gy = t.y;
+        if (pet.lv) pet.lv.x = pet.lv.y = 0;
+        pet.stage.audio.sfx('sparkle');
+      }
+    },
+    alpha: pet => { const k = pet.stateT / pet.dur; return k < 0.2 ? 1 : k < 0.42 ? 1 - (k - 0.2) / 0.22 : k < 0.55 ? 0 : Math.min(1, (k - 0.55) / 0.2); },
+    intangible: pet => { const k = pet.stateT / pet.dur; return k > 0.25 && k < 0.7; },
+    // 圓環：先開在牠身上，到了另一邊再開一次（畫在牠所在的地方；過去前後各一個）
+    drawOver(pet, ctx) {
+      const k = pet.stateT / pet.dur, img = art.ring(pet.stateT), S = pet.S;
+      const a = k < 0.1 ? k * 10 : k < 0.45 ? 1 : k < 0.5 ? (0.5 - k) * 20 : k < 0.55 ? (k - 0.5) * 20 : k < 0.8 ? 1 : Math.max(0, (0.9 - k) * 10);
+      const c = center(pet);
+      blit(ctx, img, c.x - (img.width * S) / 2, c.y - (img.height * S) / 2, S, { alpha: Math.max(0, Math.min(1, a)) * 0.9 });
+    },
+    end(pet) { pet.partner = null; pet.set('look', 2); pet.showEmote('?', 1.4); }, // 嚇一跳：這裡是哪裡？
+  },
   // 真實參考：鯨魚從噴氣孔噴氣：身體先往下壓、憋一下，氣往上衝的時候背上的手臂舉起來、頭抬起
   steam: {
     zh: '從背上的手臂噴出蒸氣', dur: () => rnd(3, 5),
@@ -1367,7 +1413,7 @@ export const HABITS_BY_SPECIES = {
   710: ['lantern', 'hypno'], 711: ['lantern', 'knock'],
   712: ['ride'], 713: ['mend'],
   714: ['ultrasound'], 715: ['ultrasound'],
-  716: ['rainbow'], 717: ['darkwings'], 718: ['cells'], 719: ['diamonds'], 720: ['portal'], 721: ['steam'],
+  716: ['rainbow'], 717: ['darkwings'], 718: ['cells'], 719: ['diamonds'], 720: ['portal', 'ringSend'], 721: ['steam'],
 };
 
 // 一段平均多長（秒；nextBout 算時間分配用，PR-N5）：dur 大多是 rnd(a, b)，亂數固定在 0.5 算出來的就是平均。
