@@ -75,7 +75,7 @@ const test = async ({ page }, check) => {
     const mulberry = s => () => { s |= 0; s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
     const realRandom = Math.random;
     const dt = 1 / 30, N = Math.round(30 * 60 * MIN), S = stage.S;
-    const pets = [...stage.pets.values()].sort((a, b) => a.mon.species - b.mon.species);
+    let pets = [...stage.pets.values()].sort((a, b) => a.mon.species - b.mon.species);
     const med = a => { const s = a.slice().sort((x, y) => x - y); return s.length ? s[s.length >> 1] : 0; };
     const EXEMPT = new Set(['held', 'fall', 'move', 'battle', 'faint', 'duel', 'appear', 'teleport']); // 被拎、掉落、放招、瞬移：不算瞬間起步
     const SOCIAL = p => Boolean(p.partner || p.group);
@@ -91,11 +91,36 @@ const test = async ({ page }, check) => {
     };
 
     const seeds = [], series = [];
+    const { createRng } = await import('/src/core/rng.js');
+    // 假時鐘（M8 偶爾失敗的原因）：以前種子、dt 都固定了，但遊戲裡很多地方看真的時間（打擾額度、冷卻、setTimeout 的「12 秒後」），
+    // 模擬一幀跑多快要看電腦當時多忙，同一個種子每次結果不一樣（main 上 4 次失敗 2 次）。
+    // 模擬的時候：時間跟著模擬走（每幀 dt）、setTimeout 照模擬的時間觸發、畫面自己的迴圈先停（不在兩個種子之間偷跑）
+    const RealDate = Date, realST = window.setTimeout, realCT = window.clearTimeout;
+    let simNow = new RealDate(2026, 5, 15, 14, 0, 0).getTime(), tid = 1e9;
+    const timers = new Map();
+    class SimDate extends RealDate { constructor(...a) { if (a.length) super(...a); else super(simNow); } static now() { return simNow; } }
+    window.Date = SimDate;
+    window.setTimeout = (fn, ms = 0, ...args) => { const id = ++tid; timers.set(id, { at: simNow + (+ms || 0), fn: () => fn(...args) }); return id; };
+    window.clearTimeout = id => { if (!timers.delete(id)) realCT(id); };
+    const realPerf = performance.now, perf0 = performance.now(), sim0 = simNow;
+    performance.now = () => perf0 + (simNow - sim0); // 舞台的「忙」、拎起來的判斷用的
+    window.__holdRaf = true;
+    const simTick = ms => { simNow += ms; for (const [id, t] of [...timers]) if (t.at <= simNow && timers.delete(id)) t.fn(); };
     for (const seed of SEEDS) {
-      const rng = mulberry(seed * 9973);
+      // 遊戲自己的亂數（core/rng.js，有 pick、weighted…）：以前換成只有一個函式的版本，遊戲裡用到 rng.pick 就壞掉；
+      // director 也有自己的一個（用真的時間當種子），以前沒換到，導演的決定（誰跟誰玩）每次都不一樣
+      const rng = createRng(seed * 9973);
       Math.random = rng;
-      if (typeof game.rng === 'function') game.rng = rng;
-      // 每個種子從一樣的起點開始
+      game.rng = rng; director.rng = rng;
+      // 每個種子從一樣的起點開始（打擾額度、排隊的主動事件也清掉：以前留著上一個種子或開場時真的時間跑出來的）
+      game.state.attention.granted = []; director.attnQueue = [];
+      // 每個種子重新放一批新的（以前沿用同一批：身上的冷卻、上一段做了什麼、計時器都還留著，同一個種子每次起點不一樣）
+      // uid、性格也固定（以前是開場用真的亂數抽的：core/life.js 用 uid 當每隻作息的種子、性格影響習性的權重）；性格每個種子各自抽
+      const mons = pets.map(p => p.mon);
+      mons.forEach(m => { m.uid = `natural-${m.species}`; m.nature = rng.pick(stage.dex.natures).slug; });
+      stage.pets.clear(); stage.fx.parts = [];
+      pets = mons.map(m => stage.addPet(m, { x: stage.W / 2, gy: stage.H * 0.6 }));
+      for (const p of pets) p.asset;
       pets.forEach((p, i) => {
         Object.assign(p.mon, { fullness: 150, enjoyment: 150 });
         p.mon.mind = null; p.mon.memory = [];
@@ -109,6 +134,7 @@ const test = async ({ page }, check) => {
         wdist: 0, wcyc: 0, bumps: 0, stride: p.view?.anim?.info?.stride || 2, lastV: 0, lastF: p.viewFacing ?? p.facing, jumpStates: {}, lastSet: p.animSet(), lastCanvas: null, setSwitch: 0, bigSwitch: 0, switchDiffs: [], mv: [], soc: [], frames: new Set(),
       }));
       for (let i = 0; i < N; i++) {
+        simTick(dt * 1000);
         const before = pets.map(p => ({ x: p.x, y: p.gy, a: p.animT, st: p.state, kv: Math.abs(p.kvx ?? 0) + Math.abs(p.kvy ?? 0) > 0 }));
         const stopped = stage.stopT > 0; // 這一幀開始時在「頓一下」（stage.update 會把 dt 乘 0.12）
         director.update?.(dt);
@@ -257,6 +283,10 @@ const test = async ({ page }, check) => {
       });
     }
     Math.random = realRandom;
+    // 時鐘換回真的；還沒到時間的 setTimeout 照剩下的時間交給真的 setTimeout
+    window.Date = RealDate; window.setTimeout = realST; window.clearTimeout = realCT; window.__holdRaf = false; delete performance.now;
+    if (performance.now !== realPerf) performance.now = realPerf;
+    for (const t of timers.values()) realST(t.fn, Math.max(0, t.at - simNow));
     // M9 的對照組：不同種子的兩隻（不在同一次模擬，一定互不相干）也算一樣的相關係數。
     // 兩隻都常常休息很久時，就算完全無關，66 對裡面最大的也可能很高；這個是「純巧合」有多高
     const corr0 = (x, y, mx, my) => {
@@ -438,6 +468,14 @@ const test = async ({ page }, check) => {
   console.log(JSON.stringify(summary));
   for (const s of r) console.log(`種子 ${s.seed}：` + Object.entries(s.per).map(([sp, v]) => `${sp} 動${v.moving}% 換${v.M8_changesPerMin}/分 [${Object.entries(v.M5_share).map(([k, x]) => k + x).join(' ')}]`).join(' | '));
   console.log(`模擬 ${MIN} 分鐘 × ${SEEDS.length} 個種子，花了 ${secs.toFixed(0)} 秒`);
+};
+
+// 假時鐘要停畫面自己的迴圈（window.__holdRaf，跟 life.cjs 一樣）
+test.options = {
+  init: () => {
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = cb => (window.__holdRaf ? setTimeout(() => window.requestAnimationFrame(cb), 50) : raf(cb));
+  },
 };
 
 run('natural', test);
