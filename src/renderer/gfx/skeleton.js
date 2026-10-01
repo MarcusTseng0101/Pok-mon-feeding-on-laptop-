@@ -24,6 +24,7 @@ export const LAG_SEGS = 3; // 尾巴、耳朵最多記幾節的延遲（第 2～
 export const LAG_S = 0.07; // 一節比前一節慢幾秒（規格：部位慢半拍 0.08–0.2 秒；3 節加起來約 0.2） // 猜的，可調整
 const HB_HOLD = 0.6; // 點頭：一步裡頭停著（hold）占多少，剩下是往前追（thrust）；鴿子走快時 hold 變短 // 猜的，可調整
 const SKIP_W = 0.35; // 蹦跳步：一步裡「跳」占多少（踏比跳久） // 猜的，可調整
+const HOP_LAND = 0.3; // 跳：踩地的那半輪裡，前後各多少用來壓低（著地吸收衝擊、起跳前蓄力） // 猜的，可調整
 const FLAP_DOWN = 0.55; // 拍翅：往下拍占一下的多少（往下拍稍久，Animator Notebook） // 猜的，可調整
 const WING_LAG = 0.08; // 翅膀一節比前一節晚多少拍翅相位（翅膀尖比根部慢） // 猜的，可調整
 const FLY_BOB = 1; // 往下拍時身體被推上去幾格 // 猜的，可調整
@@ -323,7 +324,15 @@ export function buildSkeleton(srcCanvas, spec) {
     const s = ((2 * (gph - nearPh)) % 1 + 1) % 1;
     const walker = legs.length || spec.robe; // 袍子蓋住腳的（spec.robe）：看不到腳，身體照樣一步一起伏
     const bob = walker && spec.gait !== 'hop' ? Math.round(amt * BOB * (0.5 + 0.5 * Math.cos(2 * Math.PI * (s - S_DOWN)))) : 0;
-    const hopUp = spec.gait === 'hop' ? -Math.round(amt * lift * 1.5 * Math.max(0, Math.sin(2 * Math.PI * gph))) : 0;
+    // 跳（spec.gait 'hop'：青蛙、兔子、小鳥、沒有腳的圓東西）：著地時壓低吸收衝擊 → 起跳前再蹲低蓄力 → 腳離地的那半輪騰空往上。
+    // 壓低用身體下沉（不縮放整張圖）；有腳的膝蓋會彎。沒有腳的用 spec.hopH 指定跳多高（不然照腿長算，沒有腿只有 1 格）
+    let hopUp = 0;
+    if (spec.gait === 'hop' && amt) {
+      const ph = ((gph % 1) + 1) % 1, C = spec.hopCrouch ?? 1, Hh = spec.hopH ?? lift * 1.5;
+      if (ph < duty) { const u = ph / duty; hopUp = u < HOP_LAND ? C * Math.sin((Math.PI * u) / HOP_LAND) : u > 1 - HOP_LAND ? C * Math.sin((Math.PI * (u - (1 - HOP_LAND))) / HOP_LAND) : 0; }
+      else hopUp = -Hh * Math.sin((Math.PI * (ph - duty)) / (1 - duty));
+      hopUp = Math.round(Math.min(1, amt) * hopUp);
+    }
     // 蹦跳步（spec.gait 'skip'：小孩 skipping、烏鴉）：每一步＝踏一下＋同一隻腳跳一下，踏比跳久；跳的時候身體和撐地的腳一起離地
     const skipY = spec.gait === 'skip' && s > 1 - SKIP_W ? amt * skipH * Math.sin(Math.PI * (s - (1 - SKIP_W)) / SKIP_W) : 0;
     // 沒有頭的（冰岩怪、波爾凱尼恩：臉很小、當身體的一部分）：呼吸、低頭改成整個身體往下沉（膝蓋彎一點），腳照樣踩地。
@@ -339,7 +348,7 @@ export function buildSkeleton(srcCanvas, spec) {
     const hovY = spec.hover ? -Math.round(spec.hover * Math.sin(2 * Math.PI * gph)) : 0;
     const by = (q.crouch ?? 0) + bob + hopUp - Math.round(skipY) + headless + flyBob + hovY;
     // 左右換重心：身體往踩著地、撐著重量的那隻腳偏；近的腳踩地的正中間偏最多（c：1＝整個壓在近的腳上、−1＝遠的腳）
-    const c = walker ? Math.cos(2 * Math.PI * (gph - nearPh - duty / 2)) : 0;
+    const c = walker || spec.waddle ? Math.cos(2 * Math.PI * (gph - nearPh - duty / 2)) : 0; // 沒有腳但有設搖擺的（蛹一邊扭一邊跳）也搖
     const bx = spec.sway ? Math.round(amt * spec.sway * c) * swayDir : 0; // spec.sway 格（正面的圖才看得到）
     // 搖擺（spec.waddle 弧度：企鵝、胖的、腳分很開的）：整個身體往撐地的腳那邊斜，頭跟著左右搖
     // 蝴蝶（spec.flutter 弧度）：身體的傾斜一直變、一抖一抖（AIP 2025：蝴蝶懸停時不停調整身體角度，路線看起來亂）
@@ -379,7 +388,8 @@ export function buildSkeleton(srcCanvas, spec) {
         // 腳踝的目標：原本的位置＋步伐（踩在地上的時候不跟著身體動）；另外 legL/legR 是習性指定的抬腳
         const lph = legPhase(l, amt), [fx, fy0, pitch] = footAt(gph + lph, amt);
         // 蹦跳步跳起來的時候，撐地的那隻腳也離地
-        const fy = skipY && ((gph + lph) % 1 + 1) % 1 < duty ? fy0 - skipY : fy0;
+        // 跳的騰空那半輪（hopUp < 0）：腳跟著身體一起上去，腿保持原本的形狀（不然身體上去、腳又照步伐抬，腿被拉開會碎）
+        const fy = (skipY && ((gph + lph) % 1 + 1) % 1 < duty ? fy0 - skipY : fy0) + (spec.gait === 'hop' && hopUp < 0 ? hopUp : 0);
         const extra = l.side === 'far' ? q.legR : q.legL;
         const ank = l.pts[2] ?? l.pts[1];
         const tgt = [ank[0] + fx - (extra?.[0] ?? 0) * face, ank[1] + fy + (extra?.[1] ?? 0)];
