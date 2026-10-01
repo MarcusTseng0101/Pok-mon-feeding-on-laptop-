@@ -68,9 +68,10 @@ async function test({ page, shot }, check) {
     const t0 = Date.now();
     while (Date.now() - t0 < 12000 && stage.pets.get(uid)?.cursorSit?.seated !== true) await new Promise(r => setTimeout(r, 100));
     const p = stage.pets.get(uid);
-    return { uid, best: p?.mon.affection, seated: p?.cursorSit?.seated, state: p?.state };
+    // 是不是開場把好感設成 220 的那隻（最高的）：比 uid，不比好感的數字（好感會隨時間自己慢慢加一點，220 → 220.008，以前偶爾不相等就失敗）
+    return { uid, best: p?.mon.affection, isBest: uid === game.state.mons[0].uid && game.state.mons.every(m => m.affection <= p.mon.affection), seated: p?.cursorSit?.seated, state: p?.state };
   });
-  check(stressed.best === 220 && stressed.state === 'cursorSit', `壓力大時沒有坐到游標旁：${JSON.stringify(stressed)}`);
+  check(stressed.isBest && stressed.state === 'cursorSit', `壓力大時沒有坐到游標旁：${JSON.stringify(stressed)}`);
 
   // 4) 認識滿一週：里程碑通知＋故事頁
   const ms = await page.evaluate(async () => {

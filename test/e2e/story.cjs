@@ -69,21 +69,24 @@ run('story', async ({ page, shot }, check) => {
   // 4) AZ：站在秘密基地旁邊；不點他就不會說話、也不會發生下一件事；點了才說
   await page.evaluate(() => window.__kalos.director.tickStory({ force: true }));
   await page.waitForTimeout(300);
+  // 認 AZ 要用 director.visitor：夥伴喝東西、看書擺在面前的杯子和書（scene/lifeacts.js）、地上的痕跡也是 kind 'npc' 的道具，
+  // 以前找「任何一個 npc」，剛好有夥伴在喝東西時，AZ 明明走了還是被當成沒走（偶爾失敗的原因）
   const az = await page.evaluate(() => {
     const { stage, director, game } = window.__kalos;
-    const npc = stage.props.find(p => p.kind === 'npc' && !p.gone);
+    const npc = director.visitor && !director.visitor.gone ? director.visitor : null;
     const blocked = !director.tickStory({ force: true });
     return { npc: Boolean(npc), holoHidden: document.querySelector('.holo').classList.contains('hidden'), blocked, done: game.state.story.done.includes('az-visit') };
   });
   check(az.npc && az.holoHidden && az.blocked && !az.done, `AZ 沒有站在基地旁邊等你點：${JSON.stringify(az)}`);
   await shot('story-visit');
-  await page.evaluate(() => { const { stage } = window.__kalos; stage.fire('click', stage.props.find(p => p.kind === 'npc')); });
+  await page.evaluate(() => { const { stage, director } = window.__kalos; window.__az = director.visitor; stage.fire('click', director.visitor); });
   const azNames = await talkThrough('x');
   await page.waitForTimeout(900);
   const azAfter = await page.evaluate(() => {
     const { stage, game } = window.__kalos;
     for (let i = 0; i < 40; i++) stage.update(1 / 30);
-    return { done: game.state.story.done.includes('az-visit'), npcLeft: !stage.props.some(p => p.kind === 'npc' && !p.gone) };
+    const v = window.__az;
+    return { done: game.state.story.done.includes('az-visit'), npcLeft: !v || v.gone || !stage.props.includes(v) };
   });
   check(azNames.includes('AZ') && azAfter.done && azAfter.npcLeft, `跟 AZ 說完話以後不對：${JSON.stringify({ azNames, azAfter })}`);
 

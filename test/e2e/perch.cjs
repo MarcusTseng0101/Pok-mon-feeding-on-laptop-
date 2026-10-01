@@ -11,6 +11,7 @@ run('perch', async ({ page, shot }, check) => {
     for (const id of [656, 659, 700, 668, 713]) { const m = game.createMon(id, {}); m.affection = 120; m.out = true; game.state.mons.push(m); }
     director.syncPets();
     director.nextSpawnAt = Infinity;
+    game.canDepart = () => false; // 不讓夥伴自己去旅行（以前沒關：10 分鐘的模擬裡偶爾有一隻出門，少一隻可以跳）
     const t0 = Date.now();
     while (stage.pets.size < 6 && Date.now() - t0 < 10000) await new Promise(r => setTimeout(r, 50));
     api.emit('windows', [WIN]);
@@ -133,6 +134,7 @@ run('perch', async ({ page, shot }, check) => {
     for (const p of pets) p.set('idle', 1); // 接下來測「自己跳上去」：大家自由活動
     // 6) 自己跳上去：有視窗的時候，自由活動 10 分鐘，至少會有一隻自己跳上去
     //    （v3 以後牠們會去基地、睡午覺、出門，6 分鐘平均約 3 次，一次都沒有的機會約 5%；10 分鐘約 0.5%）
+    //    2026-10-01 重量（不讓夥伴出門以後跑 10 次）：10 分鐘平均 3.4 次（1–5 次），一次都沒有的機會約 3%，比上面的估計高；門檻沒改
     api.emit('windows', [WIN]);
     // 固定成白天：半夜（1–6 點）大家都在睡覺，本來就不會跳上視窗（測試不能看真的時鐘）
     window.__kalos.director.updateEnv = () => {};
