@@ -47,6 +47,27 @@ function orbit(pet, colors, radius, n = 3, speed = 6) {
     pet.stage.fx.add({ rect: colors[i % colors.length], size: S / 2 + (i % 2) * S / 2, x: c.x + Math.cos(a) * radius * S, y: c.y + Math.sin(a) * radius * S * 0.6, life: 0.2 });
   }
 }
+// 朽木妖頭頂多高（美術像素，從腳底算）：圖的高度扣掉骨架多留的邊，再往下一點（頭頂中間是一叢葉子）
+const headTop = on => on.z + on.alt + on.asset.h - (on.asset.anim?.info?.trim ?? 0) - HEAD_TOP_DOWN;
+const HEAD_TOP_DOWN = 12; // 頭頂往下幾格才是站得住的地方 // 猜的，可調整
+const HEAD_GUEST_CHANCE = 0.5; // 朽木妖伸根鬚時，有夥伴跳上來的機會 // 猜的，可調整
+const HEAD_GUEST_MAX = 0.5; // 多小才跳得上去：圖鑑的身高不到朽木妖的一半（朽木妖 1.5 m → 0.75 m 以下，例：哈力栗 0.4 m） // 猜的，可調整
+const HEAD_CROUCH = 0.35, HEAD_JUMP = 0.6; // 蹲、跳各幾秒 // 猜的，可調整
+// 附近閒著、夠小的夥伴（站在視窗上、還在半空中的不算）。小不小看圖鑑的身高（每張圖畫出來都差不多大，不能看圖）
+function headGuest(pet) {
+  const dex = pet.stage.dex, H = dex.get(pet.mon.species)?.height ?? 1.5;
+  const ok = around(pet, 400).filter(o => !o.perch && o.z === 0 && (dex.get(o.mon.species)?.height ?? 9) <= H * HEAD_GUEST_MAX);
+  return ok.length ? pick(ok) : null;
+}
+// 從朽木妖頭上跳下來：往旁邊跳、掉到地上（會飄的直接飄到旁邊）
+function hopDownHead(pet) {
+  const on = pet.hd.on, side = Math.random() < 0.5 ? -1 : 1;
+  if (on && on.partner === pet) on.partner = null;
+  pet.partner = null;
+  if (pet.floats) { pet.z = 0; pet.x += side * (on?.asset.w ?? 40) * 0.5 * pet.S; pet.clamp(); pet.set('idle', 1); return; }
+  pet.vz = 60; pet.vx = side * 50 * pet.S; pet.vy = 10 * pet.S;
+  pet.set('fall');
+}
 // 鑰圈兒叼著的東西：掛在舌頭下面（圓環的正中間偏下；嘴邊是一串金色的鑰匙，畫在那裡看不出來）
 function holdOnTongue(pet, ctx, img) {
   const r = pet.rect(), S = pet.S;
@@ -1039,15 +1060,73 @@ export const HABITS = {
     end(pet) { pet.partner = null; pet.set('look', 2); pet.showEmote('?', 1.6); }, // 迷路了
   },
   // 真實參考：樹扎根：腳站開站穩、身體慢慢往下沉，手（樹枝）往上伸、隨風輕輕晃
+  // 站著不動伸根鬚的時候，附近小隻的夥伴偶爾自己跳上頭頂站一下（像鳥站在樹上）；朽木妖一動就跳下來
   roots: {
     zh: '從腳底伸出根鬚連結四周', dur: () => rnd(5, 9),
-    update(pet, dt) {
+    update(pet, dt, k) {
+      if (once(pet, 'guest', k > 0.1) && Math.random() < HEAD_GUEST_CHANCE) {
+        const g = headGuest(pet);
+        if (g) {
+          g.partner = pet; pet.partner = g;
+          pet.dur = Math.max(pet.dur, pet.stateT + rnd(10, 16)); // 有人上來：多站一會兒
+          startHabit(g, 'climbHead', { on: pet });
+        }
+      }
+      // 上來的那隻被拎走、自己跳下去了：放開
+      if (pet.partner && !['climbHead', 'headSit'].includes(pet.partner.state === 'habit' ? pet.partner.habitName : '')) pet.partner = null;
       if (Math.random() > dt * 18) return;
       const a = Math.random() * Math.PI * 2, v = 25 * pet.S;
       pet.stage.fx.add({ rect: Math.random() < 0.5 ? '#6e4a28' : '#4a9a3a', size: pet.S / 2, x: pet.x, y: pet.gy - pet.S, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.4, life: 2, fade: true });
     },
     puppet: pet => ({ crouch: 2, legL: [-1, 0], legR: [1, 0], arm: 0.6, armSw: 0.1 * Math.sin(pet.stateT * 1.2), headPitch: 1, breath: 0 }),
     lift: () => 0,
+    end: pet => { pet.partner = null; idle(pet); },
+  },
+  // 走到朽木妖旁邊，蹲一下跳上頭頂（真實參考：松鼠、小鳥跳上樹：先蹲低蓄力，拋物線跳上去）
+  climbHead: {
+    zh: '跳上朽木妖的頭', dur: 20,
+    intangible: () => true, // 走過去、跳上去的途中不跟別隻推來推去
+    start(pet) {
+      const on = pet.hd.on;
+      pet.hd.side = pet.x < on.x ? -1 : 1;
+      pet.hd.phase = 'walk';
+    },
+    update(pet, dt) {
+      const on = pet.hd.on, S = pet.S;
+      if (!on || on.leaving || on.state !== 'habit' || on.habitName !== 'roots') { pet.z = 0; idle(pet); return; }
+      if (pet.hd.phase === 'walk') {
+        const gap = ((on.asset.w * 0.3 + pet.asset.w * 0.5) * S);
+        if (pet.moveTo(on.x + pet.hd.side * gap, on.gy + 2 * S, WALK_SPEED * S, dt)) { pet.hd.phase = 'crouch'; pet.hd.t = 0; pet.hd.x0 = pet.x; pet.facing = on.x > pet.x ? 1 : -1; }
+        return;
+      }
+      pet.hd.t += dt;
+      if (pet.hd.phase === 'crouch') { if (pet.hd.t > HEAD_CROUCH) { pet.hd.phase = 'jump'; pet.hd.t = 0; pet.squashT = 0.12; } return; }
+      // 跳：x 從旁邊移到頭頂正上方、z 從地上升到頭頂，再加一個拋物線
+      const k = Math.min(1, pet.hd.t / HEAD_JUMP), top = headTop(on);
+      pet.x = pet.hd.x0 + (on.x - pet.hd.x0) * k;
+      pet.gy = on.gy + 1;
+      pet.z = top * k + Math.sin(k * Math.PI) * 10;
+      if (k >= 1) { pet.squashT = 0.15; pet.stage.audio.sfx('land'); startHabit(pet, 'headSit', { on }); }
+    },
+    set: pet => (pet.hd.phase === 'walk' ? stepSet(pet) : 'idle'),
+    puppet: pet => (pet.hd.phase === 'crouch' ? { crouch: 2, lean: -1 } : pet.hd.phase === 'jump' ? { crouch: -1, arm: 0.6 } : null),
+    lift: () => 0,
+  },
+  // 站在朽木妖頭上：跟著朽木妖的頭，左右看看（真實參考：鳥站在樹枝上，身體不動、頭轉來轉去）
+  headSit: {
+    zh: '站在朽木妖的頭上', dur: () => rnd(8, 14),
+    start: pet => pet.showEmote('♪', 1.2),
+    update(pet) {
+      const on = pet.hd.on;
+      if (!on || on.leaving || on.state === 'held') { hopDownHead(pet); return; } // 朽木妖被拎走：掉下來
+      pet.x = on.x;
+      pet.gy = on.gy + 1; // 畫在朽木妖前面
+      pet.z = headTop(on);
+      if (on.state !== 'habit' || on.habitName !== 'roots') hopDownHead(pet); // 朽木妖要走了：跳下來
+    },
+    puppet: pet => ({ crouch: 1, headPitch: -1, lean: Math.round(Math.sin(pet.stateT * 0.8)) }),
+    lift: () => 0,
+    end: pet => hopDownHead(pet),
   },
   // 真實參考：夜裡提著燈籠站著的人：身體不動，只有慢慢左右看
   lantern: {
