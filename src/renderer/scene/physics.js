@@ -19,6 +19,7 @@ function ghostly(p) {
   if (p.act?.intangible?.(p)) return true;
   if ((p.act?.sink?.(p) ?? 0) > 0.3) return true;
   if (p.habitName === 'ride' && p.state === 'habit') return true;
+  if (p.habitName === 'headSit' && p.state === 'habit') return true; // 站在朽木妖的頭上
   if (p.hidden) return true; // 捉迷藏躲起來
   return false;
 }
