@@ -35,7 +35,7 @@ export const FURNITURE = {
 
 // 一開始就有：帳篷＋一張小床（不然累了沒地方睡）
 export function defaultBase(now = 0) {
-  return { side: 'left', stage: 0, floor: 'sand', items: [{ id: 'bed0', kind: 'bed', x: 0, y: 1, updatedAt: now }], updatedAt: now };
+  return { side: 'left', stage: 0, floor: 'sand', items: [{ id: 'bed0', kind: 'bed', x: 0, y: 1, updatedAt: now }], trinkets: [], updatedAt: now };
 }
 
 export function normalizeBase(raw, now = 0) {
@@ -45,6 +45,7 @@ export function normalizeBase(raw, now = 0) {
     stage: Number.isInteger(raw.stage) ? Math.max(0, Math.min(STAGES.length - 1, raw.stage)) : 0,
     floor: floorOf(raw), // 舊存檔沒有：沙地
     items: [],
+    trinkets: normalizeTrinkets(raw.trinkets), // 舊存檔沒有：空的
     updatedAt: Number.isFinite(raw.updatedAt) ? raw.updatedAt : now,
   };
   for (const it of Array.isArray(raw.items) ? raw.items : []) {
@@ -142,12 +143,41 @@ export function upgrade(state, now) {
   return { ok: true, stage: next };
 }
 
+// ---------- 鑰圈兒的收藏 ----------
+// 鑰圈兒（707）到處找亮晶晶的東西，偶爾叼一個回基地，放進門口的收藏罐。只是收藏，不影響數值、不用材料、不占家具的格子
+export const TRINKETS = { key: '鑰匙', coin: '硬幣', button: '鈕扣', marble: '彈珠', bottlecap: '瓶蓋', bell: '鈴鐺' };
+export const TRINKET_MAX = 8; // 收藏罐放得下幾個，滿了就不再撿 // 猜的，可調整
+export const TRINKET_CHANCE = 0.3; // 找到亮晶晶的東西時，叼回去的機會 // 猜的，可調整
+
+// 合法的才留、同一個 id 只留一個、照撿到的時間排（一樣就比 id，兩邊對調結果才一樣），最多 TRINKET_MAX 個（留先撿到的）
+export function normalizeTrinkets(raw) {
+  const seen = new Map();
+  for (const t of Array.isArray(raw) ? raw : []) {
+    if (!t || typeof t.id !== 'string' || !TRINKETS[t.kind] || !Number.isFinite(t.at)) continue;
+    const id = t.id.slice(0, 40);
+    if (!seen.has(id)) seen.set(id, { id, kind: t.kind, at: t.at });
+  }
+  return [...seen.values()].sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).slice(0, TRINKET_MAX);
+}
+export const trinketRoom = base => (base.trinkets?.length ?? 0) < TRINKET_MAX;
+
+// 放進收藏罐。不改 base.updatedAt：收藏另外合併（兩邊的加起來），不讓「撿了一個硬幣」蓋掉另一台電腦剛擺好的家具
+export function addTrinket(state, kind, now, id) {
+  if (!TRINKETS[kind] || !trinketRoom(state.base)) return false;
+  (state.base.trinkets ??= []).push({ id, kind, at: now });
+  return true;
+}
+
 // ---------- 同步 ----------
-// 整個基地用最後修改的時間決定用哪一邊（last-writer-wins；一樣就比內容，兩邊對調結果才一樣）
+// 整個基地用最後修改的時間決定用哪一邊（last-writer-wins；一樣就比內容，兩邊對調結果才一樣）。
+// 收藏罐例外：兩邊撿到的加起來（同一個 id 只算一次），不會因為另一台比較晚擺家具就不見
 export function mergeBase(a, b) {
   if (!a || !b) return structuredClone(a ?? b);
-  if (a.updatedAt !== b.updatedAt) return structuredClone(a.updatedAt > b.updatedAt ? a : b);
-  return structuredClone(JSON.stringify(a) >= JSON.stringify(b) ? a : b);
+  const out = a.updatedAt !== b.updatedAt
+    ? structuredClone(a.updatedAt > b.updatedAt ? a : b)
+    : structuredClone(JSON.stringify({ ...a, trinkets: null }) >= JSON.stringify({ ...b, trinkets: null }) ? a : b);
+  out.trinkets = normalizeTrinkets([...(a.trinkets ?? []), ...(b.trinkets ?? [])]);
+  return out;
 }
 
 // ---------- 旅行帶回來的材料 ----------

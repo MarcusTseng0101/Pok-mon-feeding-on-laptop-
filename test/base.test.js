@@ -158,3 +158,47 @@ test('住的地方：可以鑽進去睡幾隻、門口在圖上的哪裡', () =>
   for (const s of B.STAGES) assert.ok(Number.isInteger(s.door) && s.door > 0);
   assert.deepEqual(B.FLOORS.map(f => f.id), ['sand', 'park']);
 });
+
+test('鑰圈兒的收藏：舊存檔沒有就是空的；叼什麼由遊戲的亂數決定；最多 8 個，滿了就不叼；不改 base.updatedAt', () => {
+  const { g, tick } = game();
+  assert.deepEqual(g.state.base.trinkets, []);
+  const old = structuredClone(g.state.base); delete old.trinkets;
+  assert.deepEqual(B.normalizeBase(old).trinkets, [], '舊存檔');
+  const updatedAt = g.state.base.updatedAt;
+  let tries = 0;
+  while (g.state.base.trinkets.length < B.TRINKET_MAX && tries++ < 500) {
+    tick(1000);
+    const kind = g.trinketToCarry();
+    if (kind) { assert.ok(B.TRINKETS[kind], kind); assert.equal(g.stashTrinket(kind), true); }
+  }
+  assert.equal(g.state.base.trinkets.length, B.TRINKET_MAX);
+  assert.ok(tries > B.TRINKET_MAX, '不是每次找到都叼（TRINKET_CHANCE）');
+  for (let i = 0; i < 50; i++) assert.equal(g.trinketToCarry(), null, '滿了就不叼');
+  assert.equal(g.stashTrinket('coin'), false, '滿了放不進去');
+  assert.equal(g.state.base.updatedAt, updatedAt, '不改 base.updatedAt（不蓋掉另一台擺的家具）');
+  // 存檔讀回來一樣；壞掉的、不認識的、重複的不收
+  assert.deepEqual(B.normalizeBase(structuredClone(g.state.base)).trinkets, g.state.base.trinkets);
+  const bad = [{ id: 'a', kind: 'sword', at: 1 }, { id: 5, kind: 'coin', at: 1 }, { id: 'b', kind: 'coin' }, null, { id: 'c', kind: 'coin', at: 2 }, { id: 'c', kind: 'bell', at: 3 }];
+  assert.deepEqual(B.normalizeTrinkets(bad), [{ id: 'c', kind: 'coin', at: 2 }]);
+});
+
+test('鑰圈兒的收藏：同步時兩邊撿到的加起來（另一台比較晚擺家具也不會不見），兩邊對調結果一樣、最多 8 個', () => {
+  const { g } = game();
+  const a = structuredClone(g.state.base), b = structuredClone(g.state.base);
+  a.trinkets = [{ id: 'ta', kind: 'coin', at: T0 + 10 }];
+  b.trinkets = [{ id: 'tb', kind: 'bell', at: T0 + 20 }];
+  b.updatedAt = T0 + 99999; b.floor = 'park'; // 另一台比較晚改了地板
+  const m1 = B.mergeBase(a, b), m2 = B.mergeBase(b, a);
+  assert.equal(m1.floor, 'park', '基地本身照舊用最後改的那一邊');
+  assert.deepEqual(m1.trinkets.map(t => t.id), ['ta', 'tb'], '收藏兩邊加起來');
+  assert.deepEqual(m1, m2, '兩邊對調結果一樣');
+  // 一樣的時間：也是對調結果一樣
+  const c = structuredClone(a), d = structuredClone(a); c.trinkets = [{ id: 'x', kind: 'key', at: 1 }]; d.side = 'right';
+  assert.deepEqual(B.mergeBase(c, d), B.mergeBase(d, c));
+  // 加起來超過 8 個：留先撿到的
+  const many = n => Array.from({ length: n }, (_, i) => ({ id: `m${n}-${i}`, kind: 'marble', at: T0 + i * 2 + (n === 6 ? 1 : 0) }));
+  a.trinkets = many(6); b.trinkets = many(5);
+  const m = B.mergeBase(a, b);
+  assert.equal(m.trinkets.length, B.TRINKET_MAX);
+  assert.ok(m.trinkets.every((t, i, arr) => !i || arr[i - 1].at <= t.at));
+});

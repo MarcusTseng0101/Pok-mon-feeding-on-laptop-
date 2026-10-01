@@ -861,6 +861,17 @@ export class Game {
   baseUpgrade() { const r = baseRules.upgrade(this.state, this.now()); if (r.ok) { this.emit('base'); this.emit('bag'); } return r; }
   baseSide(side) { this.state.base.side = side === 'right' ? 'right' : 'left'; this.state.base.updatedAt = this.now(); this.emit('base'); }
   baseFloor(id) { const ok = baseRules.setFloor(this.state, id, this.now()); if (ok) this.emit('base'); return ok; }
+  // 鑰圈兒找到亮晶晶的東西：要不要叼回去、叼的是什麼（收藏罐滿了就不叼）。回傳種類或 null
+  trinketToCarry() {
+    if (!baseRules.trinketRoom(this.state.base) || this.rng() >= baseRules.TRINKET_CHANCE) return null;
+    return this.rng.pick(Object.keys(baseRules.TRINKETS));
+  }
+  // 叼到基地門口了：放進收藏罐
+  stashTrinket(kind) {
+    const ok = baseRules.addTrinket(this.state, kind, this.now(), `trinket${this.now().toString(36)}${Math.floor(this.rng() * 1e4).toString(36)}`);
+    if (ok) this.emit('base');
+    return ok;
+  }
 
   // ---- 信（core/letters.js）----
   // 誰來寫信：在桌面上、好感最高的

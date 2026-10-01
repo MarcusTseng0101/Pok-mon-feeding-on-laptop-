@@ -263,6 +263,15 @@ export function fallbackSprite(types, seed = 1) {
 export const twig = fromMap(['......KK', '..KKKKBK', 'KKBBBBK.', 'KBBKK...', '.KK.....'], { K, B: '#9a6a3a' });
 export const leaf = fromMap(['..KK', '.KGK', 'KGGK', 'KGK.', '.K..'], { K: '#1e4a1e', G: '#6ac84a' });
 export const key = fromMap(['.KKK....', 'KY.YKKKK', 'KY.YYYYK', '.KKKK.KK'], { K: '#6a5a20', Y: '#f8d850' });
+// 鑰圈兒撿回基地的亮晶晶的東西（core/base.js 的 TRINKETS）：叼著的時候畫這個
+export const trinkets = {
+  key,
+  coin: fromMap(['.KKK.', 'KYWYK', 'KYYYK', 'KYYYK', '.KKK.'], { K: '#8a6a10', Y: '#ffc030', W: '#fff0a0' }),
+  button: fromMap(['.KKK.', 'KPPPK', 'KP.PK', 'KPPPK', '.KKK.'], { K: '#8a2a4a', P: '#ff6a8a' }),
+  marble: fromMap(['.KKK.', 'KWBBK', 'KBBBK', 'KBBDK', '.KKK.'], { K: '#1a4a7a', W: '#ffffff', B: '#5ab8ff', D: '#2a78c8' }),
+  bottlecap: fromMap(['KKKKK', 'KRWRK', 'KRRRK', '.KKK.'], { K: '#6a1a1a', R: '#e04040', W: '#ffd0d0' }),
+  bell: fromMap(['..K..', '.KSK.', 'KSWSK', 'KSSSK', 'KKKKK', '..K..'], { K: '#4a4a5a', S: '#c8c8d8', W: '#ffffff' }),
+};
 export const diamond = fromMap(['.KKK.', 'KWLLK', 'KLLLK', '.KLK.', '..K..'], { K: '#3a6a9a', W: '#ffffff', L: '#bfe8ff' });
 const FLOWER_COLORS = ['#ff5d8f', '#ffd84a', '#ffffff', '#7ab8ff', '#ff9d3a'];
 export const flowers = FLOWER_COLORS.map(c => fromMap(['.P.P.', 'PPYPP', '.PPP.', '..G..', '.GG..'], { P: c, Y: c === '#ffd84a' ? '#ff9d3a' : '#ffd84a', G: '#4a9a3a' }));

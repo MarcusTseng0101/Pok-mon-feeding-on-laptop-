@@ -75,6 +75,18 @@ export const FURNITURE_ART = {
   }),
 };
 
+// 鑰圈兒的收藏罐：玻璃罐裡看得到撿回來的東西（一個一格 2×2 的顏色，最多 8 個，core/base.js 的 TRINKET_MAX）
+export const TRINKET_COLORS = { key: '#f8d850', coin: '#ffc030', button: '#ff6a8a', marble: '#5ab8ff', bottlecap: '#e04040', bell: '#c8c8d8' };
+export function jar(kinds) {
+  return paint(12, 15, set => {
+    const t = tools(set), G = '#bfe8ff', E = '#5a8aa8';
+    t.box(3, 0, 6, 2, '#8a5a3a'); // 蓋子
+    t.box(1, 2, 10, 13, G, E); // 罐子
+    for (let y = 4; y < 13; y++) set(2, y, '#ffffff'); // 玻璃的反光
+    kinds.slice(0, 8).forEach((k, i) => { const x = 3 + (i % 3) * 2 + (Math.floor(i / 3) % 2), y = 11 - Math.floor(i / 3) * 3; t.rect(x, y, 2, 2, TRINKET_COLORS[k] ?? '#ffffff'); });
+  });
+}
+
 // 院子的地面（W 格 × H 格），邊緣用棋盤格淡出，看起來不像一個方塊
 // floor：sand（沙地，住的地方越好顏色越深）／park（遊樂園：粉紅、淺藍、奶黃的格子磚，零星的彩色小星星）
 export function yard(gw, gh, stage, floor = 'sand') {
