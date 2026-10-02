@@ -76,5 +76,7 @@ git checkout -- docs/screens                      # 跑完還原被蓋掉的舊�
 
 ## 5. 文件
 
-- `README.md`：每個功能一段（怎麼玩、猜的數字、限制）、e2e 清單、架構清單。加功能就補。
+- `README.md`：給一般人看的首頁（簡介、安裝、怎麼玩、隱私、授權）。大功能在「特色」補一句。
+- `docs/GUIDE.md`（玩法詳解）：每個功能一段（怎麼玩、猜的數字、限制）。加功能就補。
+- `docs/DEVELOPMENT.md`（開發與測試）：開發指令、e2e 清單、木偶／骨架的技術說明、架構清單。加 e2e、加檔案就補。
 - 第三方檔案的來源和授權：`src/phone/vendor/LICENSES.md`；測試照片：`test/fixtures/snap/SOURCES.md`；測試用憑證：`test/fixtures/tls/README.md`。
