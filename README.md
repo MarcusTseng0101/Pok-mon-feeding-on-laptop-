@@ -32,8 +32,8 @@
 ### Windows（最簡單）
 
 1. 到 [Releases](https://github.com/MarcusTseng0101/Pok-mon-feeding-on-laptop-/releases/latest) 下載其中一個：
-   - **`Kalos Amie Setup x.y.z.exe`**：安裝版，會放進開始功能表，可以從「設定 → 應用程式」解除安裝
-   - **`Kalos Amie x.y.z.exe`**：免安裝版，點兩下就能玩（放在隨身碟也行）
+   - **`Kalos.Amie.Setup.x.y.z.exe`**：安裝版，會放進開始功能表，可以從「設定 → 應用程式」解除安裝
+   - **`Kalos.Amie.x.y.z.exe`**：免安裝版，點兩下就能玩（放在隨身碟也行）
 2. 打開時 Windows 可能會跳出 **「Windows 已保護您的電腦」**：這是因為安裝檔沒有付費的程式碼簽章，不是病毒。
    按 **「其他資訊」→「仍要執行」** 就可以了。（不放心的話可以照下面「從原始碼執行」自己跑）
 3. 第一次打開會請你選一隻最初的夥伴。
