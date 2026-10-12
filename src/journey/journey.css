@@ -1,0 +1,157 @@
+/* 卡洛斯旅行：像掌機的畫面。字是桌面版用的俐方體 11 號（OFL，src/renderer/fonts） */
+@font-face {
+  font-family: Cubic11;
+  src: url(../renderer/fonts/Cubic_11.woff2) format('woff2');
+}
+:root {
+  --bezel: #1d2333;
+  --screen: #f4f1e6;
+  --ink: #26232b;
+  --soft: #6d6a75;
+  --accent: #e8402a;
+  --accent-ink: #fff;
+  --line: #2b2f3d;
+  --panel: #fffdf6;
+  --ok: #3cbc5c;
+  --mid: #f2b630;
+  --low: #e5483a;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bezel); }
+body {
+  font-family: Cubic11, 'Noto Sans TC', system-ui, sans-serif;
+  color: var(--ink);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+}
+#app { max-width: 520px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; }
+#top {
+  display: flex; gap: 8px; align-items: center; padding: 10px 14px; color: #e9e6da; font-size: 15px;
+}
+#where { flex: 1; font-size: 18px; }
+#when { color: #b9b6c6; }
+#mute { background: none; border: 1px solid #556; color: #e9e6da; border-radius: 6px; width: 34px; height: 30px; font: inherit; }
+#mute.off { color: #778; }
+#screen {
+  flex: 1; margin: 0 10px 10px; background: var(--screen); border: 4px solid var(--line); border-radius: 10px;
+  padding: 14px; position: relative; overflow: hidden; display: flex; flex-direction: column;
+}
+.sprite { image-rendering: pixelated; width: 96px; height: 96px; object-fit: contain; }
+.sprite.missing { visibility: hidden; }
+button {
+  font: inherit; color: var(--ink); background: var(--panel); border: 3px solid var(--line); border-radius: 8px;
+  padding: 12px 14px; font-size: 17px; min-height: 52px; touch-action: manipulation;
+}
+button:active:not(:disabled) { transform: translateY(2px); }
+button:disabled { opacity: .45; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: #7a1d12; }
+h1, h2 { margin: 0 0 10px; font-weight: normal; }
+h2 { font-size: 20px; }
+small { color: var(--soft); font-size: 13px; }
+
+/* 開場 */
+.title { text-align: center; margin-top: 40px; }
+.title h1 { font-size: 34px; }
+.starters { display: grid; gap: 10px; }
+.starter { display: grid; grid-template-columns: 96px 1fr; grid-template-rows: auto auto auto; text-align: left; align-items: center; column-gap: 10px; padding: 6px 12px; }
+.starter .sprite { grid-row: 1 / 4; }
+.starter b { font-size: 20px; font-weight: normal; }
+
+.type { display: inline-block; font-size: 12px; padding: 2px 6px; border-radius: 4px; color: #fff; margin-right: 4px; background: #888; }
+.t-normal { background: #9a9a7a; } .t-fire { background: #e8742a; } .t-water { background: #4a82e0; } .t-grass { background: #5aae3a; }
+.t-electric { background: #d8b020; } .t-ice { background: #6ac8c8; } .t-fighting { background: #b8302a; } .t-poison { background: #9a40a0; }
+.t-ground { background: #c8a050; } .t-flying { background: #8a8ae8; } .t-psychic { background: #f0507a; } .t-bug { background: #9aae20; }
+.t-rock { background: #aa9a3a; } .t-ghost { background: #6a5a98; } .t-dragon { background: #6a3af0; } .t-dark { background: #6a5a4a; }
+.t-steel { background: #a8a8c0; } .t-fairy { background: #e88ac8; }
+
+/* 血條、好感 */
+.hp { display: block; height: 10px; background: #d7d3c6; border: 2px solid var(--line); border-radius: 6px; overflow: hidden; margin: 4px 0; }
+.hp i { display: block; height: 100%; transition: width .5s steps(12); }
+.hp i.ok { background: var(--ok); } .hp i.mid { background: var(--mid); } .hp i.low { background: var(--low); }
+.hearts { color: #e8507a; letter-spacing: 2px; }
+
+/* 地圖 */
+.area { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.lead { display: flex; flex-direction: column; background: var(--panel); border: 3px solid var(--line); border-radius: 8px; overflow: hidden; }
+.lead .stats { display: flex; flex-direction: column; padding: 8px 12px; }
+.lead b { font-weight: normal; font-size: 18px; }
+.bob { animation: bob 1.2s steps(2) infinite; }
+/* 小舞台：天空跟著現實的時段變（清晨、白天、黃昏、夜晚），地面是草地、城鎮是石板路 */
+.scene, .arena { position: relative; background: var(--sky); }
+.scene { height: 170px; display: flex; align-items: flex-end; justify-content: center; border-bottom: 3px solid var(--line); }
+.scene::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 46px; background: var(--ground); border-top: 3px solid rgba(0,0,0,.18); }
+.scene.k-town::after { background: repeating-linear-gradient(90deg, #c9b99a 0 22px, #b9a888 22px 24px); }
+.scene .sprite { position: relative; z-index: 1; width: 128px; height: 128px; margin-bottom: 14px; }
+.scene.walking .sprite { animation: walk .35s steps(2) 1; }
+@keyframes walk { 50% { transform: translateX(10px) translateY(-4px); } }
+.tod-morning { --sky: linear-gradient(#ffd9b0, #bfe4f2); --ground: #8fcf6a; }
+.tod-day { --sky: linear-gradient(#7cc4f4, #cdeefc); --ground: #79c25a; }
+.tod-dusk { --sky: linear-gradient(#f08a5a, #fbd08a); --ground: #6fa04a; }
+.tod-night { --sky: linear-gradient(#1c2350, #3d4a86); --ground: #3c6a3e; }
+@keyframes bob { 50% { transform: translateY(-3px); } }
+.dots { display: flex; gap: 6px; justify-content: center; padding: 4px 0; }
+.dots i { width: 14px; height: 14px; border: 3px solid var(--line); border-radius: 50%; background: var(--panel); }
+.dots i.done { background: var(--accent); }
+.moods, .line, .hint, .badges { margin: 0; color: var(--soft); font-size: 14px; line-height: 1.5; }
+.line { color: var(--ink); font-size: 16px; }
+.soon { color: var(--soft); }
+.badges { color: #8a6a10; }
+.menu { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: auto; }
+
+/* 對話框 */
+#msg {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom)); width: min(500px, calc(100% - 28px));
+  background: var(--panel); border: 4px solid var(--line); border-radius: 10px; padding: 14px 16px 22px; min-height: 92px; z-index: 10;
+  box-shadow: 0 4px 0 rgba(0,0,0,.25);
+}
+#msg p { margin: 0; font-size: 18px; line-height: 1.5; }
+#msg .more { position: absolute; right: 14px; bottom: 6px; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* 對戰 */
+.battle { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.arena { flex: 1; min-height: 360px; border: 3px solid var(--line); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; }
+.arena .side { position: relative; z-index: 1; }
+.arena .side .sprite { position: relative; }
+.arena .side.foe .sprite { background: radial-gradient(ellipse 60% 18% at 50% 88%, var(--ground) 96%, transparent 100%); }
+.arena .side.me .sprite { background: radial-gradient(ellipse 62% 16% at 50% 92%, var(--ground) 96%, transparent 100%); }
+.side { display: flex; align-items: flex-end; gap: 8px; }
+.side.foe { justify-content: space-between; }
+.side.me { justify-content: space-between; }
+.side .panel { flex: 1; background: var(--panel); border: 3px solid var(--line); border-radius: 8px; padding: 6px 10px; max-width: 230px; }
+.side .panel b { font-weight: normal; }
+.side .sprite.front { width: 150px; height: 150px; }
+.side .sprite.back { width: 170px; height: 170px; }
+.sprite.hit { animation: hit .4s steps(2) 2; }
+@keyframes hit { 50% { opacity: .2; } }
+.actions { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+.moves { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.move { color: #fff; border-color: rgba(0,0,0,.45); position: relative; text-shadow: 0 1px 0 rgba(0,0,0,.4); }
+.move[data-hint]::after { content: attr(data-hint); display: block; font-size: 11px; opacity: .9; }
+.row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.list { gap: 6px; }
+.list p { margin: 0 0 4px; }
+.ringwrap { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 18px; background: rgba(244,241,230,.35); z-index: 5; }
+.ring { width: 150px; height: 150px; border: 5px solid #3cbc5c; border-radius: 50%; }
+.ringwrap p { background: var(--panel); border: 3px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+.sprite.target { filter: drop-shadow(0 0 6px #3cbc5c); }
+
+/* 隊伍、背包、圖鑑 */
+.party, .bag, .dex { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.party .mon { display: flex; gap: 10px; align-items: center; text-align: left; padding: 4px 10px; }
+.party .mon > span { flex: 1; display: flex; flex-direction: column; }
+.party .mon b { font-weight: normal; }
+.party .mon.first { border-color: var(--accent); }
+.party .sprite { width: 72px; height: 72px; }
+.bag ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.bag li { display: flex; align-items: center; justify-content: space-between; background: var(--panel); border: 3px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 17px; }
+.bag li button { min-height: 40px; padding: 6px 10px; font-size: 15px; }
+.dex .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
+.dex .cell { background: var(--panel); border: 2px solid #c9c4b4; border-radius: 6px; text-align: center; height: 76px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.dex .cell .sprite { width: 56px; height: 56px; }
+.dex .cell.seen .sprite { filter: brightness(0); opacity: .5; }
+.dex .cell > span { font-size: 22px; color: #bbb; }
+.close { margin-top: 8px; }
+.error { color: var(--low); }

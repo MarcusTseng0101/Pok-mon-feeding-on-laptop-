@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- 不准內嵌程式；圖片只從 PokeAPI 在 GitHub 上的原始檔來（第一次看到會下載，之後 WebView 自己快取） -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: https://raw.githubusercontent.com; connect-src 'self'">
+  <title>卡洛斯旅行</title>
+  <link rel="stylesheet" href="journey.css">
+</head>
+<body>
+  <main id="app">
+    <header id="top">
+      <span id="where"></span>
+      <span id="when"></span>
+      <button id="mute" type="button" aria-label="聲音">♪</button>
+    </header>
+    <section id="screen"></section>
+    <div id="msg" hidden>
+      <p id="msgText"></p>
+      <span class="more">▼</span>
+    </div>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

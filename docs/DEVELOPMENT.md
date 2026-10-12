@@ -17,6 +17,16 @@ npm run dist       # 打包成安裝檔（Windows: NSIS + portable；在各自�
 沒有螢幕的環境可以做冒煙測試：`KALOS_SMOKE=out.png npx electron .` 會在 8 秒後把透明視窗截圖存到 `out.png` 並結束。
 也可以不開 Electron，直接用靜態伺服器打開 `src/renderer/index.html?dev=1`，會自動改用 `mock-api.js`（存檔放在 localStorage）。
 
+手機遊戲「卡洛斯旅行」（[設計](JOURNEY.md)）：瀏覽器打開 `src/journey/index.html` 就能玩（沒有計步器）。打包成 Android APK：
+
+```bash
+# 需要 JDK 17、Android SDK（platform 34、build-tools 34）、Gradle 8.7 以上（都不在 package.json 裡）
+ANDROID_HOME=<SDK> JAVA_HOME=<JDK> GRADLE=<gradle 執行檔> node scripts/journey-apk.mjs            # → dist/kalos-journey-debug.apk
+ANDROID_HOME=<SDK> JAVA_HOME=<JDK> GRADLE=<gradle 執行檔> node scripts/journey-apk.mjs --install  # 再用 adb 裝到接著 USB 的手機
+```
+
+除錯版的 WebView 可以用電腦的 Chrome 遠端偵錯（`chrome://inspect`），`scripts/journey-device.cjs` 用這個在真的手機上點一輪。
+
 瀏覽器端的回歸測試放在 `test/e2e/`（需要另外裝好的 Playwright，不在 `package.json` 裡）：
 
 ```bash
@@ -45,6 +55,7 @@ node test/e2e/snap.cjs         # 拍照一起做：真的模型猜杯子、空�
 node test/e2e/offline.cjs      # 斷網也能用：本機 HTTPS 代理假裝 tailscale serve；設定裡測試連線、斷網重新整理還在、斷網拍照排隊、連回來送出（時間是按下去的那一刻）、清掉手機資料從電腦回來、換網址後舊的說網址換了
 node test/e2e/us.cjs           # 心情（選單最上面問、很累／很開心／壓力大的效果）、認識滿一週、中秋頭上的月亮、每週日的信
 node test/e2e/routine.cjs      # 作息：早上說早安、半夜打哈欠陪你（專注中不會）、專注兩小時慶祝
+node test/e2e/journey.cjs      # 手機遊戲：手機大小的瀏覽器，開場、選夥伴、走 2 號道路（打野生的、丟球、訓練家）、換帶頭、傷藥、圖鑑、重新打開還在、離開 20 小時有禮物不會少東西
 node test/e2e/battle.cjs       # 道館對戰：館主點了才開打、選夥伴選招式打到贏、徽章與超級手環、上場就超級進化、認輸明天再來、傳說寶可夢抓到才算
 node test/e2e/base.cjs         # 秘密基地：空地點不到、家具點得到、擺放和搬動、累了鑽進帳篷（住滿了去床上）、晚上回基地睡
 node test/e2e/hoopa.cjs        # 胡帕的圓環：夥伴淡出、被送到 150 格以外、出來左右看、partner 清掉；送到一半真的用滑鼠拎起來不會卡住；截圖 hoopa-ring-in／hoopa-ring-out
@@ -192,6 +203,7 @@ src/core/                    遊戲規則（純 JS，不碰 DOM／Electron，nod
   checkin.js                 拍照一起做：誰、幾點到幾點、一起做什麼（id 去重、手機時間夾住；手機在 src/phone/snap.js）
   calendar.js                節日（農曆日期表 2025–2040）、季節
   phonedata.js  qr.js        手機頁面看到的摘要／QR code 產生器
+  journey.js  moves.js       手機遊戲「卡洛斯旅行」的規則（路線、對戰、捕獲、計步、離開的禮物）／招式資料（桌面和手機共用）
   vivillon.js                時區 → 彩粉蝶花紋（scripts/build-vivillon.mjs 產生）
   amie.js  capture.js  encounter.js  evolution.js  save.js  dex.js  rng.js  shiny.js
 src/main/                    Electron 主程序
@@ -205,6 +217,8 @@ src/main/                    Electron 主程序
 src/phone/                   手機頁面本身（index.html、phone.js、phone.css；拍照一起做 snap.js、snap.css；斷網也能用 sw.js）
   vendor/                    手機上辨識照片用的 TensorFlow.js＋COCO-SSD（只給手機，電腦不載入；授權見 LICENSES.md）
   preload.cjs                給 renderer 的窄介面（contextIsolation + sandbox）
+src/journey/                 手機遊戲的畫面（index.html、app.js、journey.css）；設計見 docs/JOURNEY.md
+android/                     手機遊戲的 Android 外殼（WebView，純 Java）；scripts/journey-apk.mjs 打包
 src/core/minigames.js        小遊戲的計分與獎勵（純函式）
 src/core/perch.js focus.js eggs.js   視窗頂邊、番茄鐘、孵蛋的規則（eggdata.js 由 scripts/build-eggs.mjs 產生）
 src/core/weather.js achievements.js sync.js   天氣、獎章、同步的合併規則

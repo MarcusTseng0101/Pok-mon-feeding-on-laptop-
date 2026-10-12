@@ -146,4 +146,4 @@ async function run(name, fn) {
   }
 }
 
-module.exports = { open, run, ROOT };
+module.exports = { open, run, ROOT, serve, loadPlaywright, fetchSprite };
