@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 跟遊戲外框同一個深藍，打開時不會先閃一下白 -->
+    <style name="Journey" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bezel</item>
+        <item name="android:statusBarColor">@color/bezel</item>
+        <item name="android:navigationBarColor">@color/bezel</item>
+    </style>
+    <color name="bezel">#1d2333</color>
+</resources>
